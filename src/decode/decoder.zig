@@ -1,0 +1,346 @@
+const std = @import("std");
+const wa = @import("wasm-core");
+const Instruction = wa.Instruction;
+const BinaryReader = @import("./binary_reader.zig").BinaryReader;
+const utils = @import("./utils.zig");
+const Error = @import("./errors.zig").Error;
+
+pub const Decoder = struct {
+    pub fn new() Decoder {
+        return .{};
+    }
+
+    pub fn parseAll(self: Decoder, buffer: []const u8, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator) (Error || error{OutOfMemory})!void {
+        var reader = BinaryReader.new(buffer);
+        while (!reader.eof()) {
+            const inst = try parse(&reader, allocator);
+            try outputArray.append(inst);
+            try self.fillInfoIfBlockInstruction(&reader, outputArray, allocator, inst);
+        }
+    }
+
+    fn fillInfoIfBlockInstruction(self: Decoder, reader: *BinaryReader, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator, inst: Instruction) (Error || error{OutOfMemory})!void {
+        const block_pos = outputArray.items.len - 1;
+        switch (inst) {
+            .block => {
+                const pos = try self.parseBlock(reader, outputArray, allocator);
+                outputArray.items[block_pos].block.end = pos;
+            },
+            .loop => {
+                const pos = try self.parseBlock(reader, outputArray, allocator);
+                outputArray.items[block_pos].loop.end = pos;
+            },
+            .@"if" => {
+                const val = try self.parseIfBlock(reader, outputArray, allocator);
+                outputArray.items[block_pos].@"if".@"else" = val[0];
+                outputArray.items[block_pos].@"if".end = val[1].?;
+            },
+            else => return,
+        }
+    }
+
+    fn parseBlock(self: Decoder, reader: *BinaryReader, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator) (Error || error{OutOfMemory})!wa.InstractionAddr {
+        while (!reader.eof()) {
+            const inst = try parse(reader, allocator);
+            try outputArray.append(inst);
+            if (inst == .end) {
+                const pos1: wa.InstractionAddr = @intCast(outputArray.items.len - 1);
+                return pos1;
+            } else {
+                try self.fillInfoIfBlockInstruction(reader, outputArray, allocator, inst);
+            }
+        }
+        unreachable;
+    }
+
+    fn parseIfBlock(self: Decoder, reader: *BinaryReader, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const ?wa.InstractionAddr {
+        var pos1: ?wa.InstractionAddr = null;
+        while (!reader.eof()) {
+            const inst = try parse(reader, allocator);
+            try outputArray.append(inst);
+            if (inst == .@"else") {
+                // TODO: check wheter the member variable is already set
+                pos1 = @intCast(outputArray.items.len);
+            }
+            if (inst == .end) {
+                const pos2: wa.InstractionAddr = @intCast(outputArray.items.len - 1);
+                return &.{ pos1, pos2 };
+            } else {
+                try self.fillInfoIfBlockInstruction(reader, outputArray, allocator, inst);
+            }
+        }
+        unreachable;
+    }
+
+    fn parse(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction {
+        const op = std.wasm.Opcode;
+        const n = std.wasm.opcode;
+        const op_code = try reader.readU8();
+        const inst: Instruction = switch (op_code) {
+            n(op.end) => .end,
+            n(op.@"else") => .@"else",
+
+            // contronl instructions
+            n(op.nop) => .nop,
+            n(op.@"unreachable") => .@"unreachable",
+            n(op.block) => .{ .block = try block(reader) },
+            n(op.loop) => .{ .loop = try block(reader) },
+            n(op.@"if") => .{ .@"if" = try ifBlock(reader) },
+            n(op.br) => .{ .br = try reader.readVarU32() },
+            n(op.br_if) => .{ .br_if = try reader.readVarU32() },
+            n(op.br_table) => .{ .br_table = try brTable(reader, allocator) },
+            n(op.@"return") => .@"return",
+            n(op.call) => .{ .call = try reader.readVarU32() },
+            n(op.call_indirect) => .{ .call_indirect = try reader.readVarU32() },
+
+            // reference instructions
+            0xD0 => .{ .ref_null = try refType(reader) },
+            0xD1 => .ref_is_null,
+            0xD2 => .{ .ref_func = try reader.readVarU32() },
+
+            // parametric instructions
+            n(op.drop) => .drop,
+            n(op.select) => .select,
+            //0x1C => .{ .selectv = try createArray(types.ValueType, valtype) },
+
+            // variable instructions
+            n(op.local_get) => .{ .local_get = try reader.readVarU32() },
+            n(op.local_set) => .{ .local_set = try reader.readVarU32() },
+            n(op.local_tee) => .{ .local_tee = try reader.readVarU32() },
+            n(op.global_get) => .{ .global_get = try reader.readVarU32() },
+            n(op.global_set) => .{ .global_set = try reader.readVarU32() },
+
+            // memory instructions
+            n(op.i32_load) => .{ .i32_load = try memArg(reader) },
+            n(op.i64_load) => .{ .i64_load = try memArg(reader) },
+            n(op.f32_load) => .{ .f32_load = try memArg(reader) },
+            n(op.f64_load) => .{ .f64_load = try memArg(reader) },
+            n(op.i32_load8_s) => .{ .i32_load8_s = try memArg(reader) },
+            n(op.i32_load8_u) => .{ .i32_load8_u = try memArg(reader) },
+            n(op.i32_load16_s) => .{ .i32_load16_s = try memArg(reader) },
+            n(op.i32_load16_u) => .{ .i32_load16_u = try memArg(reader) },
+            n(op.i64_load8_s) => .{ .i64_load8_s = try memArg(reader) },
+            n(op.i64_load8_u) => .{ .i64_load8_u = try memArg(reader) },
+            n(op.i64_load16_s) => .{ .i64_load16_s = try memArg(reader) },
+            n(op.i64_load16_u) => .{ .i64_load16_u = try memArg(reader) },
+            n(op.i64_load32_s) => .{ .i64_load32_s = try memArg(reader) },
+            n(op.i64_load32_u) => .{ .i64_load32_u = try memArg(reader) },
+            n(op.i32_store) => .{ .i32_store = try memArg(reader) },
+            n(op.i64_store) => .{ .i64_store = try memArg(reader) },
+            n(op.f32_store) => .{ .f32_store = try memArg(reader) },
+            n(op.f64_store) => .{ .f64_store = try memArg(reader) },
+            n(op.i32_store8) => .{ .i32_store8 = try memArg(reader) },
+            n(op.i32_store16) => .{ .i32_store16 = try memArg(reader) },
+            n(op.i64_store8) => .{ .i64_store8 = try memArg(reader) },
+            n(op.i64_store16) => .{ .i64_store16 = try memArg(reader) },
+            n(op.i64_store32) => .{ .i64_store32 = try memArg(reader) },
+            n(op.memory_size) => .memory_size,
+            n(op.memory_grow) => .memory_grow,
+            //n(op.memory_init) => Inst { .memory_init = try dataIdx() },
+            //n(op.data_drop) => Inst { .data_drop = try dataIdx() },
+            //n(op.memory_copy) => .memory_copy,
+            //n(op.memory_fill) => .memory_fill,
+
+            // numeric instructions (1)
+            n(op.i32_const) => .{ .i32_const = try reader.readVarI32() },
+            n(op.i64_const) => .{ .i64_const = try reader.readVarI64() },
+            n(op.f32_const) => .{ .f32_const = try reader.readF32() },
+            n(op.f64_const) => .{ .f64_const = try reader.readF64() },
+
+            // numeric instructions (2) i32
+            n(op.i32_eqz) => .i32_eqz,
+            n(op.i32_eq) => .i32_eq,
+            n(op.i32_ne) => .i32_ne,
+            n(op.i32_lt_s) => .i32_lt_s,
+            n(op.i32_lt_u) => .i32_lt_u,
+            n(op.i32_gt_s) => .i32_gt_s,
+            n(op.i32_gt_u) => .i32_gt_u,
+            n(op.i32_le_s) => .i32_le_s,
+            n(op.i32_le_u) => .i32_le_u,
+            n(op.i32_ge_s) => .i32_ge_s,
+            n(op.i32_ge_u) => .i32_ge_u,
+
+            // numeric instructions (2) i64
+            n(op.i64_eqz) => .i64_eqz,
+            n(op.i64_eq) => .i64_eq,
+            n(op.i64_ne) => .i64_ne,
+            n(op.i64_lt_s) => .i64_lt_s,
+            n(op.i64_lt_u) => .i64_lt_u,
+            n(op.i64_gt_s) => .i64_gt_s,
+            n(op.i64_gt_u) => .i64_gt_u,
+            n(op.i64_le_s) => .i64_le_s,
+            n(op.i64_le_u) => .i64_le_u,
+            n(op.i64_ge_s) => .i64_ge_s,
+            n(op.i64_ge_u) => .i64_ge_u,
+
+            // numeric instructions (2) f32
+            n(op.f32_eq) => .f32_eq,
+            n(op.f32_ne) => .f32_ne,
+            n(op.f32_lt) => .f32_lt,
+            n(op.f32_gt) => .f32_gt,
+            n(op.f32_le) => .f32_le,
+            n(op.f32_ge) => .f32_ge,
+
+            // numeric instructions (2) f64
+            n(op.f64_eq) => .f64_eq,
+            n(op.f64_ne) => .f64_ne,
+            n(op.f64_lt) => .f64_lt,
+            n(op.f64_gt) => .f64_gt,
+            n(op.f64_le) => .f64_le,
+            n(op.f64_ge) => .f64_ge,
+
+            // numeric instructions (3) i32
+            n(op.i32_clz) => .i32_clz,
+            n(op.i32_ctz) => .i32_ctz,
+            n(op.i32_popcnt) => .i32_popcnt,
+            n(op.i32_add) => .i32_add,
+            n(op.i32_sub) => .i32_sub,
+            n(op.i32_mul) => .i32_mul,
+            n(op.i32_div_s) => .i32_div_s,
+            n(op.i32_div_u) => .i32_div_u,
+            n(op.i32_rem_s) => .i32_rem_s,
+            n(op.i32_rem_u) => .i32_rem_u,
+            n(op.i32_and) => .i32_and,
+            n(op.i32_or) => .i32_or,
+            n(op.i32_xor) => .i32_xor,
+            n(op.i32_shl) => .i32_shl,
+            n(op.i32_shr_s) => .i32_shr_s,
+            n(op.i32_shr_u) => .i32_shr_u,
+            n(op.i32_rotl) => .i32_rotl,
+            n(op.i32_rotr) => .i32_rotr,
+
+            // numeric instructions (3) i64
+            n(op.i64_clz) => .i64_clz,
+            n(op.i64_ctz) => .i64_ctz,
+            n(op.i64_popcnt) => .i64_popcnt,
+            n(op.i64_add) => .i64_add,
+            n(op.i64_sub) => .i64_sub,
+            n(op.i64_mul) => .i64_mul,
+            n(op.i64_div_s) => .i64_div_s,
+            n(op.i64_div_u) => .i64_div_u,
+            n(op.i64_rem_s) => .i64_rem_s,
+            n(op.i64_rem_u) => .i64_rem_u,
+            n(op.i64_and) => .i64_and,
+            n(op.i64_or) => .i64_or,
+            n(op.i64_xor) => .i64_xor,
+            n(op.i64_shl) => .i64_shl,
+            n(op.i64_shr_s) => .i64_shr_s,
+            n(op.i64_shr_u) => .i64_shr_u,
+            n(op.i64_rotl) => .i64_rotl,
+            n(op.i64_rotr) => .i64_rotr,
+
+            // numeric instructions (3) f32
+            n(op.f32_abs) => .f32_abs,
+            n(op.f32_neg) => .f32_neg,
+            n(op.f32_ceil) => .f32_ceil,
+            n(op.f32_floor) => .f32_floor,
+            n(op.f32_trunc) => .f32_trunc,
+            n(op.f32_nearest) => .f32_nearest,
+            n(op.f32_sqrt) => .f32_sqrt,
+            n(op.f32_add) => .f32_add,
+            n(op.f32_sub) => .f32_sub,
+            n(op.f32_mul) => .f32_mul,
+            n(op.f32_div) => .f32_div,
+            n(op.f32_min) => .f32_min,
+            n(op.f32_max) => .f32_max,
+            0x98 => .f32_copy_sign,
+
+            // numeric instructions (3) f64
+            n(op.f64_abs) => .f64_abs,
+            n(op.f64_neg) => .f64_neg,
+            n(op.f64_ceil) => .f64_ceil,
+            n(op.f64_floor) => .f64_floor,
+            n(op.f64_trunc) => .f64_trunc,
+            n(op.f64_nearest) => .f64_nearest,
+            n(op.f64_sqrt) => .f64_sqrt,
+            n(op.f64_add) => .f64_add,
+            n(op.f64_sub) => .f64_sub,
+            n(op.f64_mul) => .f64_mul,
+            n(op.f64_div) => .f64_div,
+            n(op.f64_min) => .f64_min,
+            n(op.f64_max) => .f64_max,
+            0xA6 => .f64_copy_sign,
+
+            // numeric instructions (4)
+            n(op.i32_wrap_i64) => .i32_wrap_i64,
+            n(op.i32_trunc_f32_s) => .i32_trunc_f32_s,
+            n(op.i32_trunc_f32_u) => .i32_trunc_f32_u,
+            n(op.i32_trunc_f64_s) => .i32_trunc_f64_s,
+            n(op.i32_trunc_f64_u) => .i32_trunc_f64_u,
+            n(op.i64_extend_i32_s) => .i64_extend_i32_s,
+            n(op.i64_extend_i32_u) => .i64_extend_i32_u,
+            n(op.i64_trunc_f32_s) => .i64_trunc_f32_s,
+            n(op.i64_trunc_f32_u) => .i64_trunc_f32_u,
+            n(op.i64_trunc_f64_s) => .i64_trunc_f64_s,
+            n(op.i64_trunc_f64_u) => .i64_trunc_f64_u,
+            n(op.f32_convert_i32_s) => .f32_convert_i32_s,
+            n(op.f32_convert_i32_u) => .f32_convert_i32_u,
+            n(op.f32_convert_i64_s) => .f32_convert_i64_s,
+            n(op.f32_convert_i64_u) => .f32_convert_i64_u,
+            n(op.f32_demote_f64) => .f32_demote_f64,
+            n(op.f64_convert_i32_s) => .f64_convert_i32_s,
+            n(op.f64_convert_i32_u) => .f64_convert_i32_u,
+            n(op.f64_convert_i64_s) => .f64_convert_i64_s,
+            n(op.f64_convert_i64_u) => .f64_convert_i64_u,
+            n(op.f64_promote_f32) => .f64_promote_f32,
+            n(op.i32_reinterpret_f32) => .i32_reinterpret_f32,
+            n(op.i64_reinterpret_f64) => .i64_reinterpret_f64,
+            n(op.f32_reinterpret_i32) => .f32_reinterpret_i32,
+            n(op.f64_reinterpret_i64) => .f64_reinterpret_i64,
+
+            // numeric instructions (5)
+            n(op.i32_extend8_s) => .i32_extend8_s,
+            n(op.i32_extend16_s) => .i32_extend16_s,
+            n(op.i64_extend8_s) => .i64_extend8_s,
+            n(op.i64_extend16_s) => .i64_extend16_s,
+            n(op.i64_extend32_s) => .i64_extend32_s,
+
+            else => unreachable,
+        };
+
+        return inst;
+    }
+
+    fn memArg(reader: *BinaryReader) Error!Instruction.MemArg {
+        const a = try reader.readVarU32();
+        const o = try reader.readVarU32();
+        return .{ .@"align" = a, .offset = o };
+    }
+
+    fn refType(reader: *BinaryReader) Error!wa.RefType {
+        const byte = try reader.readU8();
+        return utils.refTypeFromNum(byte) orelse return Error.MalformedRefType;
+    }
+
+    fn block(reader: *BinaryReader) Error!Instruction.BlockInfo {
+        const ty = try blockType(reader);
+        return .{ .type = ty }; // `end` is set at the end of block
+    }
+
+    fn ifBlock(reader: *BinaryReader) Error!Instruction.IfBlockInfo {
+        const ty = try blockType(reader);
+        return .{ .type = ty }; // `else` and `end` is set at the end of block
+    }
+
+    fn blockType(reader: *BinaryReader) Error!Instruction.BlockType {
+        const byte = try reader.readU8();
+        return switch (byte) {
+            0x40 => .empty,
+            0x6f...0x70 => .{ .value_type = utils.valueTypeFromNum(byte) orelse return Error.MalformedBlockType },
+            0x7b...0x7f => .{ .value_type = utils.valueTypeFromNum(byte) orelse return Error.MalformedBlockType },
+            else => .{ .type_index = byte }, // TODO: handle s33
+        };
+    }
+
+    fn brTable(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction.BrTableType {
+        const size = try reader.readVarU32();
+        const array = try allocator.alloc(wa.LabelIdx, size);
+
+        for (0..size) |i| {
+            array[i] = try reader.readVarU32();
+        }
+
+        const default = try reader.readVarU32();
+        return .{ .label_idxs = array, .default_label_idx = default };
+    }
+};

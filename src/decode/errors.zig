@@ -1,0 +1,16 @@
+pub const Error = error{
+    EOF,
+    MagicHeaderNotDetected,
+    UnknownBinaryVersion,
+    MalformedFunctypeMagicNumber,
+    MalformedSectionId,
+    MalformedImportKind,
+    MalformedExportKind,
+    MalformedValueType,
+    MalformedLimitId,
+    MalformedRefType,
+    MalformedMutId,
+    MalformedBlockType,
+    TypeMismatch,
+    OtherError,
+};
