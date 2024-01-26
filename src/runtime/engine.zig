@@ -711,13 +711,13 @@ pub const Engine = struct {
     }
 
     fn opIntAdd(comptime T: type, lhs: T, rhs: T) Error!T {
-        return @addWithOverflow(lhs, rhs)[0];
+        return lhs +% rhs;
     }
     fn opIntSub(comptime T: type, lhs: T, rhs: T) Error!T {
-        return @subWithOverflow(lhs, rhs)[0];
+        return lhs -% rhs;
     }
     fn opIntMul(comptime T: type, lhs: T, rhs: T) Error!T {
-        return @mulWithOverflow(lhs, rhs)[0];
+        return lhs *% rhs;
     }
     fn opIntDivS(comptime T: type, lhs: T, rhs: T) Error!T {
         if (T == i32 and lhs == -2147483648 and rhs == -1) return Error.IntegerOverflow;
