@@ -1,6 +1,6 @@
 #!/bin/sh
 
-(cd spec_test; find . -iname '*.json' -print) | cut -c 3- | while read i; do
+(cd spec_test; ls *.json) | while read i; do
     p=`zig build run -- $i 2>&1 | grep 'test pass' | wc -l`; a=`grep -c assert_  spec_test/$i`
     echo $i $p $a
 done | awk '{
