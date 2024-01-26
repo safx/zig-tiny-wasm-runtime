@@ -161,7 +161,7 @@ pub const ModuleLoader = struct {
 
     fn global(self: *Self) Error!wa.Global {
         const gtype = try self.globalType();
-        const exp = try self.initExpr(gtype.value_type);
+        const exp = try self.initExpr();
         return .{ .type = gtype, .init = exp };
     }
 
@@ -175,7 +175,7 @@ pub const ModuleLoader = struct {
         const kind = try self.reader.readVarU32();
         switch (kind) {
             0 => {
-                const exp = try self.initExpr(wa.ValueType.func_ref);
+                const exp = try self.initExpr();
                 const ys = try self.funcidxs();
                 const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
                 for (ys, 0..) |y, i| {
@@ -198,7 +198,7 @@ pub const ModuleLoader = struct {
         const kind = try self.reader.readVarU32();
         switch (kind) {
             0 => {
-                const exp = try self.initExpr(wa.ValueType.i32);
+                const exp = try self.initExpr();
                 const len = try self.reader.readVarU32();
                 const init_array = try self.reader.readBytes(len);
                 const mode = wa.DataMode{ .active = .{ .mem_idx = 0, .offset = exp } };
@@ -248,28 +248,28 @@ pub const ModuleLoader = struct {
         return .{ .mutability = m, .value_type = vtype };
     }
 
-    fn initExpr(self: *Self, elem_type: wa.ValueType) Error!wa.InitExpression {
+    fn initExpr(self: *Self) Error!wa.InitExpression {
         const op = try self.reader.readU8();
-        const value = try self.initExprValue(op, elem_type);
+        const value = try self.initExprValue(op);
         const end = try self.reader.readU8();
         _ = end; // TODO check
         return value;
     }
 
-    fn initExprValue(self: *Self, op: u8, elem_type: wa.ValueType) Error!wa.InitExpression {
+    fn initExprValue(self: *Self, op: u8) Error!wa.InitExpression {
         const n = std.wasm.opcode;
         switch (op) {
             n(.i32_const) => {
-                return if (elem_type == wa.ValueType.i32) .{ .i32_const = try self.reader.readVarI32() } else Error.TypeMismatch;
+                return .{ .i32_const = try self.reader.readVarI32() };
             },
             n(.i64_const) => {
-                return if (elem_type == wa.ValueType.i64) .{ .i64_const = try self.reader.readVarI64() } else Error.TypeMismatch;
+                return .{ .i64_const = try self.reader.readVarI64() };
             },
             n(.f32_const) => {
-                return if (elem_type == wa.ValueType.f32) .{ .f32_const = try self.reader.readF32() } else Error.TypeMismatch;
+                return .{ .f32_const = try self.reader.readF32() };
             },
             n(.f64_const) => {
-                return if (elem_type == wa.ValueType.f64) .{ .f64_const = try self.reader.readF64() } else Error.TypeMismatch;
+                return .{ .f64_const = try self.reader.readF64() };
             },
             else => {
                 unreachable;
