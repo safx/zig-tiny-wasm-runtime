@@ -390,11 +390,11 @@ pub const Engine = struct {
             .i32_div_s => try self.binOp(i32, opIntDivS),
             .i32_div_u => try self.binOp(i32, opIntDivU),
             .i32_rem_s => try self.binOp(i32, opIntRemS),
-            // .i32_rem_u,
-            // .i32_and,
-            // .i32_or,
-            // .i32_xor,
-            // .i32_shl,
+            .i32_rem_u => try self.binOp(i32, opIntRemU),
+            .i32_and => try self.binOp(i32, opIntAnd),
+            .i32_or => try self.binOp(i32, opIntOr),
+            .i32_xor => try self.binOp(i32, opIntXor),
+            .i32_shl => try self.binOp(i32, opIntShl),
             // .i32_shr_s,
             // .i32_shr_u,
             // .i32_rotl,
@@ -747,12 +747,39 @@ pub const Engine = struct {
                 //  -  @mod(-2147483647, -1000) -> panic
                 const num: i64 = @intCast(lhs);
                 const den: i64 = @intCast(rhs);
-                const res = @mod(if (num > 0) num else -num, if (den > 0) den else -den);
-                const res2: i32 = @intCast(if (lhs > 0) res else -res);
-                return res2;
+                const res_tmp = @mod(if (num > 0) num else -num, if (den > 0) den else -den);
+                const res: i32 = @intCast(if (lhs > 0) res_tmp else -res_tmp);
+                return res;
             }
         }
         return @mod(lhs, rhs);
+    }
+
+    fn opIntRemU(comptime T: type, lhs: T, rhs: T) Error!T {
+        if (rhs == 0) return Error.IntegerDivideByZero;
+        if (T == i32) {
+            const num: u32 = @bitCast(lhs);
+            const den: u32 = @bitCast(rhs);
+            const res = @mod(num, den);
+            return @bitCast(res);
+        }
+        return @mod(lhs, rhs);
+    }
+
+    fn opIntAnd(comptime T: type, lhs: T, rhs: T) Error!T {
+        return lhs & rhs;
+    }
+
+    fn opIntOr(comptime T: type, lhs: T, rhs: T) Error!T {
+        return lhs | rhs;
+    }
+
+    fn opIntXor(comptime T: type, lhs: T, rhs: T) Error!T {
+        return lhs ^ rhs;
+    }
+
+    fn opIntShl(comptime T: type, lhs: T, rhs: T) Error!T {
+        return lhs << @intCast(@mod(rhs, @bitSizeOf(T)));
     }
 
     fn opFloatNeg(comptime T: type, value: T) Error!T {
