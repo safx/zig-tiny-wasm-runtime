@@ -397,8 +397,8 @@ pub const Engine = struct {
             .i32_shl => try self.binOp(i32, opIntShl),
             .i32_shr_s => try self.binOp(i32, opIntShrS),
             .i32_shr_u => try self.binOp(i32, opIntShrU),
-            // .i32_rotl,
-            // .i32_rotr,
+            .i32_rotl => try self.binOp(i32, opIntRotl),
+            .i32_rotr => try self.binOp(i32, opIntRotr),
 
             // numeric instructions (3) i64
             // .i64_clz,
@@ -791,6 +791,36 @@ pub const Engine = struct {
         const r: u32 = @bitCast(rhs);
         const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
         return @bitCast(res);
+    }
+
+    fn opIntRotl(comptime T: type, lhs: T, rhs: T) Error!T {
+        if (T == i32) {
+            var num: u32 = @bitCast(lhs);
+            const b = @bitSizeOf(T);
+            const r = @mod(rhs, b);
+            const r1: u5 = @intCast(r);
+            const r2: u5 = @intCast(@mod(b - r, b));
+            const res = (num << r1) | (num >> r2);
+            const res2: i32 = @bitCast(res);
+            return res2;
+        } else {
+            unreachable;
+        }
+    }
+
+    fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
+        if (T == i32) {
+            var num: u32 = @bitCast(lhs);
+            const b = @bitSizeOf(T);
+            const r = @mod(rhs, b);
+            const r1: u5 = @intCast(r);
+            const r2: u5 = @intCast(@mod(b - r, b));
+            const res = (num >> r1) | (num << r2);
+            const res2: i32 = @bitCast(res);
+            return res2;
+        } else {
+            unreachable;
+        }
     }
 
     fn opFloatNeg(comptime T: type, value: T) Error!T {
