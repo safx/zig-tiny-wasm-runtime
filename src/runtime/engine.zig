@@ -395,8 +395,8 @@ pub const Engine = struct {
             .i32_or => try self.binOp(i32, opIntOr),
             .i32_xor => try self.binOp(i32, opIntXor),
             .i32_shl => try self.binOp(i32, opIntShl),
-            // .i32_shr_s,
-            // .i32_shr_u,
+            .i32_shr_s => try self.binOp(i32, opIntShrS),
+            .i32_shr_u => try self.binOp(i32, opIntShrU),
             // .i32_rotl,
             // .i32_rotr,
 
@@ -780,6 +780,17 @@ pub const Engine = struct {
 
     fn opIntShl(comptime T: type, lhs: T, rhs: T) Error!T {
         return lhs << @intCast(@mod(rhs, @bitSizeOf(T)));
+    }
+
+    fn opIntShrS(comptime T: type, lhs: T, rhs: T) Error!T {
+        return lhs >> @intCast(@mod(rhs, @bitSizeOf(T)));
+    }
+
+    fn opIntShrU(comptime T: type, lhs: T, rhs: T) Error!T {
+        const l: u32 = @bitCast(lhs);
+        const r: u32 = @bitCast(rhs);
+        const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
+        return @bitCast(res);
     }
 
     fn opFloatNeg(comptime T: type, value: T) Error!T {
