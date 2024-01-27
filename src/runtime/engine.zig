@@ -271,7 +271,10 @@ pub const Engine = struct {
             .br_if => |label_idx| return self.opBrIf(label_idx),
             .br_table => |table_info| return self.opBrTable(table_info),
             .@"return" => return FlowControl.exit,
-            // .call: types.FuncIdx,
+            .call => |func_idx| {
+                const module = self.stack.topFrame().module;
+                _ = try self.invokeFunction(module.func_addrs[func_idx]);
+            },
             // .call_indirect: types.TypeIdx,
 
             // reference instructions
