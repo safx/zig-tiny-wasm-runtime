@@ -340,16 +340,16 @@ pub const Engine = struct {
 
             // numeric instructions (2) i32
             .i32_eqz => try self.unOp(i32, opIntEqz),
-            // .i32_eq,
-            // .i32_ne,
-            // .i32_lt_s,
-            // .i32_lt_u,
-            // .i32_gt_s,
-            // .i32_gt_u,
-            // .i32_le_s,
-            // .i32_le_u,
-            // .i32_ge_s,
-            // .i32_ge_u,
+            .i32_eq => try self.binOp(i32, opIntEq),
+            .i32_ne => try self.binOp(i32, opIntNe),
+            .i32_lt_s => try self.binOp(i32, opIntLtS),
+            .i32_lt_u => try self.binOp(i32, opIntLtU),
+            .i32_gt_s => try self.binOp(i32, opIntGtS),
+            .i32_gt_u => try self.binOp(i32, opIntGtU),
+            .i32_le_s => try self.binOp(i32, opIntLeS),
+            .i32_le_u => try self.binOp(i32, opIntLeU),
+            .i32_ge_s => try self.binOp(i32, opIntGeS),
+            .i32_ge_u => try self.binOp(i32, opIntGeU),
 
             // numeric instructions (2) i64
             .i64_eqz => try self.unOp(i64, opIntEqz),
@@ -730,6 +730,54 @@ pub const Engine = struct {
     fn opExtend16(comptime T: type, value: T) Error!T {
         const result: i16 = @truncate(value);
         return result;
+    }
+
+    fn opIntEq(comptime T: type, lhs: T, rhs: T) Error!T {
+        return if (lhs == rhs) 1 else 0;
+    }
+
+    fn opIntNe(comptime T: type, lhs: T, rhs: T) Error!T {
+        return if (lhs != rhs) 1 else 0;
+    }
+
+    fn opIntLtS(comptime T: type, lhs: T, rhs: T) Error!T {
+        return if (lhs < rhs) 1 else 0;
+    }
+
+    fn opIntLtU(comptime T: type, lhs: T, rhs: T) Error!T {
+        const l: u32 = @bitCast(lhs);
+        const r: u32 = @bitCast(rhs);
+        return if (l < r) 1 else 0;
+    }
+
+    fn opIntGtS(comptime T: type, lhs: T, rhs: T) Error!T {
+        return if (lhs > rhs) 1 else 0;
+    }
+
+    fn opIntGtU(comptime T: type, lhs: T, rhs: T) Error!T {
+        const l: u32 = @bitCast(lhs);
+        const r: u32 = @bitCast(rhs);
+        return if (l > r) 1 else 0;
+    }
+
+    fn opIntLeS(comptime T: type, lhs: T, rhs: T) Error!T {
+        return if (lhs <= rhs) 1 else 0;
+    }
+
+    fn opIntLeU(comptime T: type, lhs: T, rhs: T) Error!T {
+        const l: u32 = @bitCast(lhs);
+        const r: u32 = @bitCast(rhs);
+        return if (l <= r) 1 else 0;
+    }
+
+    fn opIntGeS(comptime T: type, lhs: T, rhs: T) Error!T {
+        return if (lhs >= rhs) 1 else 0;
+    }
+
+    fn opIntGeU(comptime T: type, lhs: T, rhs: T) Error!T {
+        const l: u32 = @bitCast(lhs);
+        const r: u32 = @bitCast(rhs);
+        return if (l >= r) 1 else 0;
     }
 
     fn opIntAdd(comptime T: type, lhs: T, rhs: T) Error!T {
