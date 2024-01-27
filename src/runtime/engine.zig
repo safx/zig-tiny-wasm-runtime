@@ -499,9 +499,9 @@ pub const Engine = struct {
             // .f32_reinterpret_i32,
             // .f64_reinterpret_i64,
 
-            // .// numeric instructions (5)
-            // .i32_extend8_s,
-            // .i32_extend16_s,
+            // numeric instructions (5)
+            .i32_extend8_s => try self.unOp(i32, opExtend8),
+            .i32_extend16_s => try self.unOp(i32, opExtend16),
             // .i64_extend8_s,
             // .i64_extend16_s,
             // .i64_extend32_s,
@@ -720,6 +720,16 @@ pub const Engine = struct {
 
     fn opIntEqz(comptime T: type, value: T) Error!T {
         return if (value == 0) 1 else 0;
+    }
+
+    fn opExtend8(comptime T: type, value: T) Error!T {
+        const result: i8 = @truncate(value);
+        return result;
+    }
+
+    fn opExtend16(comptime T: type, value: T) Error!T {
+        const result: i16 = @truncate(value);
+        return result;
     }
 
     fn opIntAdd(comptime T: type, lhs: T, rhs: T) Error!T {
