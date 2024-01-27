@@ -381,9 +381,9 @@ pub const Engine = struct {
             // .f64_ge,
 
             // numeric instructions (3) i32
-            // .i32_clz,
-            // .i32_ctz,
-            // .i32_popcnt,
+            .i32_clz => try self.unOp(i32, opIntClz),
+            .i32_ctz => try self.unOp(i32, opIntCtz),
+            .i32_popcnt => try self.unOp(i32, opIntPopcnt),
             .i32_add => try self.binOp(i32, opIntAdd),
             .i32_sub => try self.binOp(i32, opIntSub),
             .i32_mul => try self.binOp(i32, opIntMul),
@@ -401,9 +401,9 @@ pub const Engine = struct {
             .i32_rotr => try self.binOp(i32, opIntRotr),
 
             // numeric instructions (3) i64
-            // .i64_clz,
-            // .i64_ctz,
-            // .i64_popcnt,
+            .i64_clz => try self.unOp(i64, opIntClz),
+            .i64_ctz => try self.unOp(i64, opIntCtz),
+            .i64_popcnt => try self.unOp(i64, opIntPopcnt),
             .i64_add => try self.binOp(i64, opIntAdd),
             .i64_sub => try self.binOp(i64, opIntSub),
             .i64_mul => try self.binOp(i64, opIntMul),
@@ -704,6 +704,18 @@ pub const Engine = struct {
         const lhs = self.stack.pop().value.as(T);
         const result = try f(T, lhs, rhs);
         try self.stack.pushValue(result);
+    }
+
+    fn opIntClz(comptime T: type, value: T) Error!T {
+        return @clz(value);
+    }
+
+    fn opIntCtz(comptime T: type, value: T) Error!T {
+        return @ctz(value);
+    }
+
+    fn opIntPopcnt(comptime T: type, value: T) Error!T {
+        return @popCount(value);
     }
 
     fn opIntEqz(comptime T: type, value: T) Error!T {
