@@ -262,7 +262,7 @@ pub const Engine = struct {
             .@"else" => return try self.opElse(),
 
             // contronl instructions
-            // .nop,
+            .nop => {},
             // .@"unreachable",
             .block => |block_info| try self.opBlock(block_info),
             .loop => |block_info| try self.opLoop(block_info, ip),
