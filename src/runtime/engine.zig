@@ -573,7 +573,7 @@ pub const Engine = struct {
 
     fn opBrTable(self: *Self, table_info: Instruction.BrTableType) error{OutOfMemory}!FlowControl {
         const value = self.stack.pop().value.i32;
-        const pos: usize = @intCast(value);
+        const pos: u32 = @bitCast(value);
         const label_idx = if (pos < table_info.label_idxs.len) table_info.label_idxs[pos] else table_info.default_label_idx;
         return self.opBr(label_idx);
     }
