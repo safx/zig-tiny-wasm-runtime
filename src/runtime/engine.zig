@@ -556,10 +556,16 @@ pub const Engine = struct {
     fn opBr(self: *Self, label_idx: wa.LabelIdx) error{OutOfMemory}!FlowControl {
         const label = self.stack.getNthLabelFromTop(label_idx);
         const vals = try self.stack.popValues(label.arity);
+
+        // use copied slice for avoiding violation error in appendSlice
+        const copies = try self.allocator.alloc(types.StackItem, vals.len);
+        defer self.allocator.free(copies);
+        @memcpy(copies, vals);
+
         for (0..label_idx + 1) |_| {
             self.stack.popValuesAndUppermostLabel();
         }
-        try self.stack.appendSlice(vals);
+        try self.stack.appendSlice(copies);
         std.debug.print("== br \n", .{});
         self.printStack();
 
