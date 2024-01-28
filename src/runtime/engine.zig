@@ -356,16 +356,16 @@ pub const Engine = struct {
 
             // numeric instructions (2) i64
             .i64_eqz => try self.unOp(i64, opIntEqz),
-            // .i64_eq,
-            // .i64_ne,
-            // .i64_lt_s,
-            // .i64_lt_u,
-            // .i64_gt_s,
-            // .i64_gt_u,
-            // .i64_le_s,
-            // .i64_le_u,
-            // .i64_ge_s,
-            // .i64_ge_u,
+            .i64_eq => try self.binOp(i64, opIntEq),
+            .i64_ne => try self.binOp(i64, opIntNe),
+            .i64_lt_s => try self.binOp(i64, opIntLtS),
+            .i64_lt_u => try self.binOp(i64, opIntLtU),
+            .i64_gt_s => try self.binOp(i64, opIntGtS),
+            .i64_gt_u => try self.binOp(i64, opIntGtU),
+            .i64_le_s => try self.binOp(i64, opIntLeS),
+            .i64_le_u => try self.binOp(i64, opIntLeU),
+            .i64_ge_s => try self.binOp(i64, opIntGeS),
+            .i64_ge_u => try self.binOp(i64, opIntGeU),
 
             // numeric instructions (2) f32
             // .f32_eq,
@@ -413,15 +413,15 @@ pub const Engine = struct {
             .i64_div_s => try self.binOp(i64, opIntDivS),
             .i64_div_u => try self.binOp(i64, opIntDivU),
             .i64_rem_s => try self.binOp(i64, opIntRemS),
-            // .i64_rem_u,
-            // .i64_and,
-            // .i64_or,
-            // .i64_xor,
-            // .i64_shl,
-            // .i64_shr_s,
-            // .i64_shr_u,
-            // .i64_rotl,
-            // .i64_rotr,
+            .i64_rem_u => try self.binOp(i64, opIntRemU),
+            .i64_and => try self.binOp(i64, opIntAnd),
+            .i64_or => try self.binOp(i64, opIntOr),
+            .i64_xor => try self.binOp(i64, opIntXor),
+            .i64_shl => try self.binOp(i64, opIntShl),
+            .i64_shr_s => try self.binOp(i64, opIntShrS),
+            .i64_shr_u => try self.binOp(i64, opIntShrU),
+            .i64_rotl => try self.binOp(i64, opIntRotl),
+            .i64_rotr => try self.binOp(i64, opIntRotr),
 
             // numeric instructions (3) f32
             // .f32_abs,
@@ -505,9 +505,9 @@ pub const Engine = struct {
             // numeric instructions (5)
             .i32_extend8_s => try self.unOp(i32, opExtend8),
             .i32_extend16_s => try self.unOp(i32, opExtend16),
-            // .i64_extend8_s,
-            // .i64_extend16_s,
-            // .i64_extend32_s,
+            .i64_extend8_s => try self.unOp(i64, opExtend8),
+            .i64_extend16_s => try self.unOp(i64, opExtend16),
+            .i64_extend32_s => try self.unOp(i64, opExtend32),
 
             else => unreachable,
         }
@@ -741,6 +741,11 @@ pub const Engine = struct {
         return result;
     }
 
+    fn opExtend32(comptime T: type, value: T) Error!T {
+        const result: i32 = @truncate(value);
+        return result;
+    }
+
     fn opIntEq(comptime T: type, lhs: T, rhs: T) Error!T {
         return if (lhs == rhs) 1 else 0;
     }
@@ -754,9 +759,15 @@ pub const Engine = struct {
     }
 
     fn opIntLtU(comptime T: type, lhs: T, rhs: T) Error!T {
-        const l: u32 = @bitCast(lhs);
-        const r: u32 = @bitCast(rhs);
-        return if (l < r) 1 else 0;
+        if (T == i32) {
+            const l: u32 = @bitCast(lhs);
+            const r: u32 = @bitCast(rhs);
+            return if (l < r) 1 else 0;
+        } else {
+            const l: u64 = @bitCast(lhs);
+            const r: u64 = @bitCast(rhs);
+            return if (l < r) 1 else 0;
+        }
     }
 
     fn opIntGtS(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -764,9 +775,15 @@ pub const Engine = struct {
     }
 
     fn opIntGtU(comptime T: type, lhs: T, rhs: T) Error!T {
-        const l: u32 = @bitCast(lhs);
-        const r: u32 = @bitCast(rhs);
-        return if (l > r) 1 else 0;
+        if (T == i32) {
+            const l: u32 = @bitCast(lhs);
+            const r: u32 = @bitCast(rhs);
+            return if (l > r) 1 else 0;
+        } else {
+            const l: u64 = @bitCast(lhs);
+            const r: u64 = @bitCast(rhs);
+            return if (l > r) 1 else 0;
+        }
     }
 
     fn opIntLeS(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -774,9 +791,15 @@ pub const Engine = struct {
     }
 
     fn opIntLeU(comptime T: type, lhs: T, rhs: T) Error!T {
-        const l: u32 = @bitCast(lhs);
-        const r: u32 = @bitCast(rhs);
-        return if (l <= r) 1 else 0;
+        if (T == i32) {
+            const l: u32 = @bitCast(lhs);
+            const r: u32 = @bitCast(rhs);
+            return if (l <= r) 1 else 0;
+        } else {
+            const l: u64 = @bitCast(lhs);
+            const r: u64 = @bitCast(rhs);
+            return if (l <= r) 1 else 0;
+        }
     }
 
     fn opIntGeS(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -784,9 +807,15 @@ pub const Engine = struct {
     }
 
     fn opIntGeU(comptime T: type, lhs: T, rhs: T) Error!T {
-        const l: u32 = @bitCast(lhs);
-        const r: u32 = @bitCast(rhs);
-        return if (l >= r) 1 else 0;
+        if (T == i32) {
+            const l: u32 = @bitCast(lhs);
+            const r: u32 = @bitCast(rhs);
+            return if (l >= r) 1 else 0;
+        } else {
+            const l: u64 = @bitCast(lhs);
+            const r: u64 = @bitCast(rhs);
+            return if (l >= r) 1 else 0;
+        }
     }
 
     fn opIntAdd(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -830,14 +859,27 @@ pub const Engine = struct {
                 // note: @mod of negative number returns unintended result.
                 //  -  @mod(-2147483647,  1000) == 353 (not -647)
                 //  -  @mod(-2147483647, -1000) -> panic
-                const num: i64 = @intCast(lhs);
-                const den: i64 = @intCast(rhs);
+                const num: i33 = @intCast(lhs);
+                const den: i33 = @intCast(rhs);
                 const res_tmp = @mod(if (num > 0) num else -num, if (den > 0) den else -den);
                 const res: i32 = @intCast(if (lhs > 0) res_tmp else -res_tmp);
                 return res;
             }
+        } else {
+            if (lhs == -9223372036854775808 and rhs == -1) return 0;
+            if (lhs >= 0 and rhs > 0) {
+                return @mod(lhs, rhs);
+            } else {
+                // note: @mod of negative number returns unintended result.
+                //  -  @mod(-2147483647,  1000) == 353 (not -647)
+                //  -  @mod(-2147483647, -1000) -> panic
+                const num: i65 = @intCast(lhs);
+                const den: i65 = @intCast(rhs);
+                const res_tmp = @mod(if (num > 0) num else -num, if (den > 0) den else -den);
+                const res: i64 = @intCast(if (lhs > 0) res_tmp else -res_tmp);
+                return res;
+            }
         }
-        return @mod(lhs, rhs);
     }
 
     fn opIntRemU(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -847,8 +889,12 @@ pub const Engine = struct {
             const den: u32 = @bitCast(rhs);
             const res = @mod(num, den);
             return @bitCast(res);
+        } else {
+            const num: u64 = @bitCast(lhs);
+            const den: u64 = @bitCast(rhs);
+            const res = @mod(num, den);
+            return @bitCast(res);
         }
-        return @mod(lhs, rhs);
     }
 
     fn opIntAnd(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -872,10 +918,17 @@ pub const Engine = struct {
     }
 
     fn opIntShrU(comptime T: type, lhs: T, rhs: T) Error!T {
-        const l: u32 = @bitCast(lhs);
-        const r: u32 = @bitCast(rhs);
-        const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
-        return @bitCast(res);
+        if (T == i32) {
+            const l: u32 = @bitCast(lhs);
+            const r: u32 = @bitCast(rhs);
+            const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
+            return @bitCast(res);
+        } else {
+            const l: u64 = @bitCast(lhs);
+            const r: u64 = @bitCast(rhs);
+            const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
+            return @bitCast(res);
+        }
     }
 
     fn opIntRotl(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -889,7 +942,14 @@ pub const Engine = struct {
             const res2: i32 = @bitCast(res);
             return res2;
         } else {
-            unreachable;
+            var num: u64 = @bitCast(lhs);
+            const b = @bitSizeOf(T);
+            const r = @mod(rhs, b);
+            const r1: u6 = @intCast(r);
+            const r2: u6 = @intCast(@mod(b - r, b));
+            const res = (num << r1) | (num >> r2);
+            const res2: i64 = @bitCast(res);
+            return res2;
         }
     }
 
@@ -904,7 +964,14 @@ pub const Engine = struct {
             const res2: i32 = @bitCast(res);
             return res2;
         } else {
-            unreachable;
+            var num: u64 = @bitCast(lhs);
+            const b = @bitSizeOf(T);
+            const r = @mod(rhs, b);
+            const r1: u6 = @intCast(r);
+            const r2: u6 = @intCast(@mod(b - r, b));
+            const res = (num >> r1) | (num << r2);
+            const res2: i64 = @bitCast(res);
+            return res2;
         }
     }
 
