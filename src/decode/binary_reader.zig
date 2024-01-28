@@ -69,27 +69,35 @@ pub const BinaryReader = struct {
     }
 
     pub fn readVarU32(self: *Self) error{EOF}!u32 {
-        return self.readLeb(u32, u5, false);
+        return self.readLeb(u32);
     }
 
     pub fn readVarI32(self: *Self) error{EOF}!i32 {
-        return self.readLeb(i32, u5, true);
+        return self.readLeb(i32);
     }
 
     pub fn readVarU64(self: *Self) error{EOF}!u64 {
-        return self.readLeb(u64, u6, false);
+        return self.readLeb(u64);
     }
 
     pub fn readVarI64(self: *Self) error{EOF}!i64 {
-        return self.readLeb(i64, u6, true);
+        return self.readLeb(i64);
     }
 
-    fn readLeb(self: *Self, comptime NumType: type, comptime ShiftType: type, comptime arith_shift: bool) error{EOF}!NumType {
-        var result: NumType = 0;
+    fn readLeb(self: *Self, comptime NumType: type) error{EOF}!NumType {
+        if (NumType != i32 and NumType != u32 and NumType != i64 and NumType != u64) {
+            @compileLog("Unknown Number Type");
+        }
+
+        const BaseType = if (NumType == i32 or NumType == u32) u32 else u64;
+        const ShiftType = if (BaseType == u32) u5 else u6;
+        const arith_shift = NumType == i32 or NumType == i64;
+
+        var result: BaseType = 0;
         var shift: ShiftType = 0;
         while (true) {
             const byte = try self.readU8();
-            const num = @as(NumType, byte);
+            const num = @as(BaseType, byte);
             result |= (num & 0x7f) << shift;
             if (byte & 0x80 == 0)
                 break;
@@ -98,9 +106,9 @@ pub const BinaryReader = struct {
         if (arith_shift and shift > 0) {
             // avoiding `error: type 'u5' cannot represent integer value '32'`
             const ashift = (31 - shift) + 1;
-            return (result << ashift) >> ashift;
+            return @bitCast((result << ashift) >> ashift);
         } else {
-            return result;
+            return @bitCast(result);
         }
     }
 };
