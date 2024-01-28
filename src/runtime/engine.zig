@@ -800,6 +800,7 @@ pub const Engine = struct {
     }
     fn opIntDivS(comptime T: type, lhs: T, rhs: T) Error!T {
         if (T == i32 and lhs == -2147483648 and rhs == -1) return Error.IntegerOverflow;
+        if (T == i64 and lhs == -9223372036854775808 and rhs == -1) return Error.IntegerOverflow;
         if (rhs == 0) return Error.IntegerDivideByZero;
         return @divTrunc(lhs, rhs);
     }
@@ -811,8 +812,13 @@ pub const Engine = struct {
             const r: u32 = @bitCast(rhs);
             const res = @divTrunc(l, r);
             return @bitCast(res);
+        } else {
+            if (lhs == -9223372036854775808 and rhs == -1) return 0;
+            const l: u64 = @bitCast(lhs);
+            const r: u64 = @bitCast(rhs);
+            const res = @divTrunc(l, r);
+            return @bitCast(res);
         }
-        return @divTrunc(lhs, rhs);
     }
     fn opIntRemS(comptime T: type, lhs: T, rhs: T) Error!T {
         if (rhs == 0) return Error.IntegerDivideByZero;

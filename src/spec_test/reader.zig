@@ -69,8 +69,8 @@ fn argFromJson(json: std.json.Value) !Const {
         const num = try std.fmt.parseInt(u32, value, 10);
         return Const{ .i32_const = @bitCast(num) };
     } else if (strcmp(type_, "i64")) {
-        const num = try std.fmt.parseInt(i64, value, 10);
-        return Const{ .i64_const = num };
+        const num = try std.fmt.parseInt(u64, value, 10);
+        return Const{ .i64_const = @bitCast(num) };
     } else if (strcmp(type_, "f32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
         return Const{ .f32_const = num };
