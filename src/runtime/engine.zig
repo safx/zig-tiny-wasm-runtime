@@ -284,7 +284,16 @@ pub const Engine = struct {
 
             // parametric instructions
             .drop => _ = self.stack.pop(),
-            // .select,
+            .select => {
+                const c = self.stack.pop().value.asI32();
+                const val2 = self.stack.pop();
+                const val1 = self.stack.pop();
+                if (c != 0) {
+                    try self.stack.push(val1);
+                } else {
+                    try self.stack.push(val2);
+                }
+            },
             // .selectv: []types.ValueType,
 
             // variable instructions
