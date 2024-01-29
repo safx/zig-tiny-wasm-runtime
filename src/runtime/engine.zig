@@ -284,17 +284,8 @@ pub const Engine = struct {
 
             // parametric instructions
             .drop => _ = self.stack.pop(),
-            .select => {
-                const c = self.stack.pop().value.asI32();
-                const val2 = self.stack.pop();
-                const val1 = self.stack.pop();
-                if (c != 0) {
-                    try self.stack.push(val1);
-                } else {
-                    try self.stack.push(val2);
-                }
-            },
-            // .selectv: []types.ValueType,
+            .select => try self.select(),
+            .selectv => try self.select(),
 
             // variable instructions
             .local_get => |local_idx| try self.opLocalGet(local_idx),
@@ -591,6 +582,18 @@ pub const Engine = struct {
         const pos: u32 = @bitCast(value);
         const label_idx = if (pos < table_info.label_idxs.len) table_info.label_idxs[pos] else table_info.default_label_idx;
         return self.opBr(label_idx);
+    }
+
+    // parametric instructions
+    fn select(self: *Self) error{OutOfMemory}!void {
+        const c = self.stack.pop().value.asI32();
+        const val2 = self.stack.pop();
+        const val1 = self.stack.pop();
+        if (c != 0) {
+            try self.stack.push(val1);
+        } else {
+            try self.stack.push(val2);
+        }
     }
 
     fn opLocalGet(self: *Self, local_idx: wa.LocalIdx) (Error || error{OutOfMemory})!void {
