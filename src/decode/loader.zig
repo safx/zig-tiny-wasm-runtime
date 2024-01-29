@@ -44,7 +44,6 @@ pub const ModuleLoader = struct {
         var data_count: u32 = 0;
 
         while (self.section()) |sec| {
-            //std.debug.print("=> {}\n", .{std.json.fmt(sec, .{})});
             switch (sec) {
                 .type => |d| types_ = d,
                 .import => |d| imports = d,
@@ -175,16 +174,39 @@ pub const ModuleLoader = struct {
         const kind = try self.reader.readVarU32();
         switch (kind) {
             0 => {
-                const exp = try self.initExpr();
+                const expr = try self.initExpr();
                 const ys = try self.funcidxs();
                 const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
                 for (ys, 0..) |y, i| {
                     init_array[i] = wa.InitExpression{ .ref_func = y };
                 }
-                const mode = wa.ElementMode{ .active = .{ .table_idx = 0, .offset = exp } };
+                const mode = wa.ElementMode{ .active = .{ .table_idx = 0, .offset = expr } };
                 return .{ .type = .funcref, .init = init_array, .mode = mode };
             },
-            1...7 => unreachable, // TODO
+            1 => {
+                const et = try self.reader.readU8();
+                _ = et; // == 0x00
+                const ys = try self.funcidxs();
+                const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
+                for (ys, 0..) |y, i| {
+                    init_array[i] = wa.InitExpression{ .ref_func = y };
+                }
+                return .{ .type = .funcref, .init = init_array, .mode = .passive };
+            },
+            2 => {
+                const x = try self.reader.readVarU32();
+                const expr = try self.initExpr();
+                const et = try self.reader.readU8();
+                _ = et; // == 0x00
+                const ys = try self.funcidxs();
+                const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
+                for (ys, 0..) |y, i| {
+                    init_array[i] = wa.InitExpression{ .ref_func = y };
+                }
+                const mode = wa.ElementMode{ .active = .{ .table_idx = x, .offset = expr } };
+                return .{ .type = .funcref, .init = init_array, .mode = mode };
+            },
+            3...7 => std.debug.print("** {}\n", .{kind}), // TODO
             else => unreachable,
         }
         unreachable;
