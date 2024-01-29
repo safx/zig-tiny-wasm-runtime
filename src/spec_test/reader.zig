@@ -84,6 +84,12 @@ fn argFromJson(json: std.json.Value) !Value {
             num = try std.fmt.parseInt(wa.ExternAddr, value, 10);
         }
         return Value{ .extern_ref = num };
+    } else if (strcmp(type_, "funcref")) {
+        var num: ?wa.ExternAddr = null;
+        if (!strcmp(value, "null")) {
+            num = try std.fmt.parseInt(wa.ExternAddr, value, 10);
+        }
+        return Value{ .func_ref = num };
     } else {
         std.debug.print("+++ {s}\n", .{type_});
         unreachable;
@@ -120,6 +126,12 @@ fn resultFromJson(json: std.json.Value) !Result {
             num = try std.fmt.parseInt(wa.ExternAddr, value, 10);
         }
         return .{ .@"const" = .{ .extern_ref = num } };
+    } else if (strcmp(type_, "funcref")) {
+        var num: ?wa.ExternAddr = null;
+        if (!strcmp(value, "null")) {
+            num = try std.fmt.parseInt(wa.ExternAddr, value, 10);
+        }
+        return .{ .@"const" = .{ .func_ref = num } };
     } else {
         std.debug.print("+++ {s}\n", .{type_});
         unreachable;
