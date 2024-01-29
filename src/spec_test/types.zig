@@ -1,4 +1,6 @@
-pub const Error = @import("wasm-decode").Error || @import("wasm-runtime").Error;
+const decode = @import("wasm-decode");
+const runtime = @import("wasm-runtime");
+pub const Error = decode.Error || runtime.Error;
 
 // https://github.com/WebAssembly/spec/tree/master/interpreter#scripts
 
@@ -23,13 +25,7 @@ pub const Action = union(enum) {
     get,
 };
 
-pub const Const = union(enum) {
-    i32_const: i32,
-    i64_const: i64,
-    f32_const: u32,
-    f64_const: u64,
-    v128_const: i128,
-};
+pub const Const = runtime.Value;
 
 pub const Result = union(enum) {
     @"const": Const,

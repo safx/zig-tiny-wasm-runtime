@@ -1,4 +1,5 @@
 const std = @import("std");
+const wa = @import("wasm-runtime");
 const types = @import("./types.zig");
 const Action = types.Action;
 const Command = types.Command;
@@ -67,17 +68,24 @@ fn argFromJson(json: std.json.Value) !Const {
     const value = json.object.get("value").?.string;
     if (strcmp(type_, "i32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
-        return Const{ .i32_const = @bitCast(num) };
+        return Const{ .i32 = @bitCast(num) };
     } else if (strcmp(type_, "i64")) {
         const num = try std.fmt.parseInt(u64, value, 10);
-        return Const{ .i64_const = @bitCast(num) };
+        return Const{ .i64 = @bitCast(num) };
     } else if (strcmp(type_, "f32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
-        return Const{ .f32_const = num };
+        return Const{ .f32 = num };
     } else if (strcmp(type_, "f64")) {
         const num = try std.fmt.parseInt(u64, value, 10);
-        return Const{ .f64_const = num };
+        return Const{ .f64 = num };
+    } else if (strcmp(type_, "externref")) {
+        var num: ?wa.ExternAddr = null;
+        if (!strcmp(value, "null")) {
+            num = try std.fmt.parseInt(wa.ExternAddr, value, 10);
+        }
+        return Const{ .extern_ref = num };
     } else {
+        std.debug.print("+++ {s}\n", .{type_});
         unreachable;
     }
 }
@@ -96,17 +104,24 @@ fn resultFromJson(json: std.json.Value) !Result {
     const value = json.object.get("value").?.string;
     if (strcmp(type_, "i32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
-        return .{ .@"const" = .{ .i32_const = @bitCast(num) } };
+        return .{ .@"const" = .{ .i32 = @bitCast(num) } };
     } else if (strcmp(type_, "i64")) {
         const num = try std.fmt.parseInt(u64, value, 10);
-        return .{ .@"const" = .{ .i64_const = @bitCast(num) } };
+        return .{ .@"const" = .{ .i64 = @bitCast(num) } };
     } else if (strcmp(type_, "f32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
-        return .{ .@"const" = .{ .f32_const = num } };
+        return .{ .@"const" = .{ .f32 = num } };
     } else if (strcmp(type_, "f64")) {
         const num = try std.fmt.parseInt(u64, value, 10);
-        return .{ .@"const" = .{ .f64_const = num } };
+        return .{ .@"const" = .{ .f64 = num } };
+    } else if (strcmp(type_, "externref")) {
+        var num: ?wa.ExternAddr = null;
+        if (!strcmp(value, "null")) {
+            num = try std.fmt.parseInt(wa.ExternAddr, value, 10);
+        }
+        return .{ .@"const" = .{ .extern_ref = num } };
     } else {
+        std.debug.print("+++ {s}\n", .{type_});
         unreachable;
     }
 }
@@ -133,6 +148,8 @@ fn errorFromString(str: []const u8) types.Error {
         return E.IntegerOverflow;
     } else if (strcmp(str, "out of bounds memory access")) {
         return E.OutOfBoundsMemoryAccess;
+    } else if (strcmp(str, "undefined element")) {
+        return E.UndefinedElement;
     } else {
         std.debug.print("??? {s}\n", .{str});
         unreachable;

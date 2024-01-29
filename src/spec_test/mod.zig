@@ -75,7 +75,7 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
                     .invoke => |iarg| {
                         const func_args = try allocator.alloc(runtime.Value, iarg.args.len);
                         for (iarg.args, 0..) |a, i| {
-                            func_args[i] = valueFromConst(a);
+                            func_args[i] = a;
                         }
                         const ret = try engine.invokeFunctionByName(iarg.field, func_args);
                         defer allocator.free(ret);
@@ -89,7 +89,7 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
                                 std.debug.print("====================\n", .{});
                                 std.debug.print("\t  Test failed at line {}\n", .{arg.line});
                                 std.debug.print("\t  return =  {any}\n", .{ret});
-                                std.debug.print("\texpected = {any}\n", .{valueFromConst(exp.@"const")});
+                                std.debug.print("\texpected = {any}\n", .{exp.@"const"});
                                 std.debug.print("====================\n", .{});
                                 @panic("Test failed.");
                             }
@@ -104,7 +104,7 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
                     .invoke => |iarg| {
                         const func_args = try allocator.alloc(runtime.Value, iarg.args.len);
                         for (iarg.args, 0..) |a, i| {
-                            func_args[i] = valueFromConst(a);
+                            func_args[i] = a;
                         }
                         _ = engine.invokeFunctionByName(iarg.field, func_args) catch |err| {
                             const match_error = err == arg.trap;
@@ -131,25 +131,15 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
     }
 }
 
-fn valueFromConst(init_expr: types.Const) runtime.Value {
-    return switch (init_expr) {
-        .i32_const => |val| .{ .i32 = val },
-        .i64_const => |val| .{ .i64 = val },
-        .f32_const => |val| .{ .f32 = val },
-        .f64_const => |val| .{ .f64 = val },
-        else => unreachable,
-    };
-}
-
 fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
     switch (expected) {
         .@"const" => |exp_const| {
             switch (exp_const) {
-                .i32_const, .i64_const => |ev| switch (result) {
+                .i32, .i64 => |ev| switch (result) {
                     .i32, .i64 => |rv| return ev == rv,
                     else => return false,
                 },
-                .f32_const => |ev| switch (result) {
+                .f32 => |ev| switch (result) {
                     .i32, .i64 => |rv| {
                         const r: i32 = @intCast(rv);
                         return ev == r;
@@ -160,7 +150,7 @@ fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
                     },
                     else => return false,
                 },
-                .f64_const => |ev| switch (result) {
+                .f64 => |ev| switch (result) {
                     .i32, .i64 => |rv| {
                         const r: i64 = @intCast(rv);
                         return ev == r;

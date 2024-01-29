@@ -3,4 +3,5 @@ pub const Error = error{
     OutOfBoundsMemoryAccess,
     IntegerDivideByZero,
     IntegerOverflow,
+    UndefinedElement,
 };
