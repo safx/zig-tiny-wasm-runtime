@@ -2,14 +2,14 @@ const std = @import("std");
 const wa = @import("wasm-core");
 
 pub const ModuleInst = struct {
-    types: []const wa.FuncType = &.{},
-    func_addrs: []FuncAddr = &.{},
-    table_addrs: []TableAddr = &.{},
-    mem_addrs: []MemAddr = &.{},
-    global_addrs: []GlobalAddr = &.{},
-    elem_addrs: []ElemAddr = &.{},
-    data_addrs: []DataAddr = &.{},
-    exports: []ExportInst = &.{},
+    types: []const wa.FuncType,
+    func_addrs: []FuncAddr,
+    table_addrs: []TableAddr,
+    mem_addrs: []MemAddr,
+    global_addrs: []GlobalAddr,
+    elem_addrs: []ElemAddr,
+    data_addrs: []DataAddr,
+    exports: []ExportInst,
 };
 
 pub const Store = struct {
@@ -47,7 +47,7 @@ pub const Stack = struct {
         try self.push(.{ .value = val });
     }
 
-    pub fn pushValueAs(self: *Self, T: type, value: T) error{OutOfMemory}!void {
+    pub fn pushValueAs(self: *Self, comptime T: type, value: T) error{OutOfMemory}!void {
         const val = Value.from(value);
         try self.push(.{ .value = val });
     }
@@ -177,7 +177,7 @@ pub const FuncInst = struct {
 
 pub const TableInst = struct {
     type: wa.TableType,
-    elem: []RefValue,
+    elem: []?RefValue,
 };
 
 pub const MemInst = struct {
@@ -192,7 +192,7 @@ pub const GlobalInst = struct {
 
 pub const ElemInst = struct {
     type: wa.RefType,
-    elem: RefValue,
+    elem: []RefValue,
 };
 
 pub const DataInst = struct {
@@ -333,9 +333,8 @@ test "Value" {
 }
 
 pub const RefValue = union(enum) {
-    ref_null: wa.RefType,
-    ref: FuncAddr,
-    ref_extern: ExternAddr,
+    func_ref: FuncAddr,
+    extern_ref: ExternAddr,
 };
 
 pub const ExternalValue = union(enum) {

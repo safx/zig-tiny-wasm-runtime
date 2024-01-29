@@ -90,7 +90,7 @@ pub const Decoder = struct {
             n(.br_table) => .{ .br_table = try brTable(reader, allocator) },
             n(.@"return") => .@"return",
             n(.call) => .{ .call = try reader.readVarU32() },
-            n(.call_indirect) => .{ .call_indirect = try reader.readVarU32() },
+            n(.call_indirect) => .{ .call_indirect = try callIndirect(reader) },
 
             // reference instructions
             0xD0 => .{ .ref_null = try refType(reader) },
@@ -356,5 +356,11 @@ pub const Decoder = struct {
 
         const default = try reader.readVarU32();
         return .{ .label_idxs = label_idxs, .default_label_idx = default };
+    }
+
+    fn callIndirect(reader: *BinaryReader) Error!Instruction.CallIndirectArg {
+        const x = try reader.readVarU32();
+        const y = try reader.readVarU32();
+        return .{ .type_idx = y, .table_idx = x };
     }
 };

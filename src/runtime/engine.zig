@@ -156,6 +156,24 @@ pub const Engine = struct {
 
         // 13: push aux frame
         // 14, 15: element segment
+        for (module.elements, 0..) |elem, i| {
+            switch (elem.mode) {
+                .active => |active_type| {
+                    const n = elem.init.len;
+                    try self.execInitExpr(active_type.offset);
+                    _ = try self.execOneInstruction(0, .{ .i32_const = 0 });
+                    _ = try self.execOneInstruction(0, .{ .i32_const = @intCast(n) });
+                    _ = try self.execOneInstruction(0, .{
+                        .table_init = .{
+                            .elem_idx = @intCast(i),
+                            .table_idx = 0, // FIXME: elem.mode,
+                        },
+                    });
+                    _ = try self.execOneInstruction(0, .{ .elem_drop = @intCast(i) });
+                },
+                else => continue,
+            }
+        }
 
         // 16: data segment
         for (module.datas, 0..) |data, i| {
@@ -192,10 +210,14 @@ pub const Engine = struct {
         var mod_inst = types.ModuleInst{
             .types = module.types,
             .func_addrs = try self.allocator.alloc(types.FuncAddr, module.funcs.len),
-            .data_addrs = try self.allocator.alloc(types.DataAddr, module.datas.len),
+            .table_addrs = try self.allocator.alloc(types.TableAddr, module.tables.len), // TODO
             .mem_addrs = try self.allocator.alloc(types.MemAddr, module.memories.len),
+            .global_addrs = try self.allocator.alloc(types.GlobalAddr, module.globals.len), // TODO
+            .elem_addrs = try self.allocator.alloc(types.ElemAddr, module.elements.len),
+            .data_addrs = try self.allocator.alloc(types.DataAddr, module.datas.len),
             .exports = try self.allocator.alloc(types.ExportInst, module.exports.len),
         };
+
         try self.modules.append(mod_inst);
         const mod_inst_p = &self.modules.items[self.modules.items.len - 1];
 
@@ -205,6 +227,9 @@ pub const Engine = struct {
         }
 
         // 3, 9, 15: table
+        for (module.tables, 0..) |table, i| {
+            mod_inst.table_addrs[i] = try allocTable(&self.store, table, self.allocator);
+        }
 
         // 4, 10, 16: memory
         for (module.memories, 0..) |mem, i| {
@@ -214,6 +239,9 @@ pub const Engine = struct {
         // 5, 11, 17: global
 
         // 6, 12: element segment
+        for (module.elements, 0..) |elem, i| {
+            mod_inst.elem_addrs[i] = try allocElement(&self.store, elem, self.allocator);
+        }
 
         // 7, 13: data segment
         for (module.datas, 0..) |data, i| {
@@ -275,7 +303,36 @@ pub const Engine = struct {
                 const module = self.stack.topFrame().module;
                 _ = try self.invokeFunction(module.func_addrs[func_idx]);
             },
-            // .call_indirect: types.TypeIdx,
+            .call_indirect => |arg| {
+                std.debug.print("call_indirect: {any}\n", .{arg});
+                const module = self.stack.topFrame().module;
+                const ta = module.table_addrs[arg.table_idx];
+                const tab = self.store.tables.items[ta];
+
+                const ft_expect = module.types[arg.type_idx];
+
+                const i = self.stack.pop().value.asI32();
+                if (i >= tab.elem.len)
+                    return Error.UndefinedElement;
+                const rx = tab.elem[@intCast(i)];
+                if (rx == null)
+                    return Error.UninitializedElement;
+                const r = rx.?.func_ref;
+
+                const f = self.store.funcs.items[@intCast(r)];
+                const ft_actual = f.type;
+                if (ft_expect.parameter_types.len != ft_actual.parameter_types.len or ft_expect.result_types.len != ft_actual.result_types.len)
+                    return Error.IndirectCallTypeMismatch;
+
+                for (ft_expect.parameter_types, ft_actual.parameter_types) |e, a| {
+                    if (e != a) return Error.IndirectCallTypeMismatch;
+                }
+                for (ft_expect.result_types, ft_actual.result_types) |e, a| {
+                    if (e != a) return Error.IndirectCallTypeMismatch;
+                }
+
+                _ = try self.invokeFunction(r);
+            },
 
             // reference instructions
             // .ref_null: types.RefType,
@@ -296,9 +353,58 @@ pub const Engine = struct {
 
             // table instructions
             // .table_get: types.TableIdx,
-            // .table_set: types.TableIdx,
-            // .table_init: TblArg,
-            // .elem_drop: types.ElemIdx,
+            .table_set => |table_idx| {
+                const module = self.stack.topFrame().module;
+                const a = module.table_addrs[table_idx];
+                const tab = self.store.tables.items[a];
+                const val = self.stack.pop().value;
+                const i = self.stack.pop().value.asI32();
+                // TODO check
+                tab.elem[@intCast(i)] = .{ .func_ref = val.func_ref.? }; // FIXME
+
+                {
+                    for (self.store.tables.items, 0..) |table, ix| {
+                        std.debug.print("**** table [{}]\n", .{ix});
+                        var out = std.ArrayList(u8).init(std.heap.c_allocator);
+                        defer out.deinit();
+                        try std.json.stringify(table.elem, .{}, out.writer());
+                        std.debug.print("*** {s}\n", .{out.items});
+                    }
+                }
+            },
+            .table_init => |arg| {
+                const module = self.stack.topFrame().module;
+                while (true) {
+                    const ta = module.table_addrs[arg.elem_idx];
+                    const tab = self.store.tables.items[ta];
+                    const ea = module.elem_addrs[arg.table_idx];
+                    const elem = self.store.elems.items[ea];
+                    const n = self.stack.pop().value.asI32();
+                    const s = self.stack.pop().value.asI32();
+                    const d = self.stack.pop().value.asI32();
+
+                    // TODO: check
+                    _ = tab;
+
+                    if (n == 0)
+                        break;
+
+                    const ref = elem.elem[@intCast(s)];
+                    try self.stack.pushValueAs(i32, d);
+                    try self.stack.push(.{ .value = .{ .func_ref = ref.func_ref } }); // FIXME
+                    const inst = Instruction{ .table_set = arg.elem_idx };
+                    _ = try self.execOneInstruction(0, inst);
+                    try self.stack.pushValueAs(i32, d + 1);
+                    try self.stack.pushValueAs(i32, s + 1);
+                    try self.stack.pushValueAs(i32, n - 1);
+                }
+            },
+            .elem_drop => |elem_idx| {
+                const module = self.stack.topFrame().module;
+                const a = module.elem_addrs[elem_idx];
+                const elem = self.store.elems.items[a];
+                _ = elem; // TODO: delete elem
+            },
             // .table_copy: TblArg,
             // .table_grow: types.TableIdx,
             // .table_size: types.TableIdx,
@@ -1012,6 +1118,18 @@ pub const Engine = struct {
         return try appendElement(types.FuncInst, &store.funcs, inst);
     }
 
+    /// `alloctable` in wasm spec
+    /// https://webassembly.github.io/spec/core/exec/modules.html#tables
+    fn allocTable(store: *types.Store, table: wa.TableType, allocator: std.mem.Allocator) error{OutOfMemory}!types.TableAddr {
+        var elem = try allocator.alloc(?types.RefValue, table.limit.min);
+        @memset(elem, null);
+        const inst = types.TableInst{
+            .type = table,
+            .elem = elem,
+        };
+        return try appendElement(types.TableInst, &store.tables, inst);
+    }
+
     /// `allocmemory` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/modules.html#memories
     fn allocMemory(store: *types.Store, mem: wa.MemoryType, allocator: std.mem.Allocator) error{OutOfMemory}!types.MemAddr {
@@ -1021,6 +1139,20 @@ pub const Engine = struct {
         };
         @memset(inst.data, 0);
         return try appendElement(types.MemInst, &store.mems, inst);
+    }
+
+    /// `allocelem` in wasm spec
+    /// https://webassembly.github.io/spec/core/exec/modules.html#element-segments
+    fn allocElement(store: *types.Store, elememt: wa.Element, allocator: std.mem.Allocator) error{OutOfMemory}!types.ElemAddr {
+        var elem = try allocator.alloc(types.RefValue, elememt.init.len);
+        for (0..elem.len) |i| {
+            elem[i] = .{ .func_ref = elememt.init[i].ref_func };
+        }
+        const inst = types.ElemInst{
+            .type = elememt.type,
+            .elem = elem,
+        };
+        return try appendElement(types.ElemInst, &store.elems, inst);
     }
 
     /// `allocdata` in wasm spec

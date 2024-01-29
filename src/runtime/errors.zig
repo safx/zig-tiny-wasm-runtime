@@ -4,4 +4,6 @@ pub const Error = error{
     IntegerDivideByZero,
     IntegerOverflow,
     UndefinedElement,
+    UninitializedElement,
+    IndirectCallTypeMismatch,
 };

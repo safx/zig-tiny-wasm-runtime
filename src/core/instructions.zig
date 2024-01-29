@@ -8,6 +8,11 @@ pub const Instruction = union(enum) {
         offset: u32,
     };
 
+    pub const CallIndirectArg = struct {
+        type_idx: TypeIdx,
+        table_idx: TableIdx,
+    };
+
     pub const TblArg = struct {
         elem_idx: ElemIdx,
         table_idx: TableIdx,
@@ -63,7 +68,7 @@ pub const Instruction = union(enum) {
     br_table: BrTableType,
     @"return",
     call: FuncIdx,
-    call_indirect: TypeIdx,
+    call_indirect: CallIndirectArg,
 
     // reference instructions
     ref_null: RefType,
