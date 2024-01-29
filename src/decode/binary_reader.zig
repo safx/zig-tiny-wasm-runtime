@@ -90,8 +90,7 @@ pub const BinaryReader = struct {
         }
 
         const BaseType = if (NumType == i32 or NumType == u32) u32 else u64;
-        const ShiftType = if (BaseType == u32) u5 else u6;
-        const arith_shift = NumType == i32 or NumType == i64;
+        const ShiftType = if (NumType == i32 or NumType == u32) u5 else u6;
 
         var result: BaseType = 0;
         var shift: ShiftType = 0;
@@ -103,12 +102,6 @@ pub const BinaryReader = struct {
                 break;
             shift += 7;
         }
-        if (arith_shift and shift > 0) {
-            // avoiding `error: type 'u5' cannot represent integer value '32'`
-            const ashift = (31 - shift) + 1;
-            return @bitCast((result << ashift) >> ashift);
-        } else {
-            return @bitCast(result);
-        }
+        return @bitCast(result);
     }
 };
