@@ -138,7 +138,15 @@ fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
                 .i32, .i64 => return exp_const.asI64() == result.asI64(),
                 .f32 => return exp_const.asI32() == result.asI32(),
                 .f64 => return exp_const.asI64() == result.asI64(),
-                else => unreachable,
+                .v128 => unreachable,
+                .func_ref => |r| switch (result) {
+                    .func_ref => |v| return r == v,
+                    else => return false,
+                },
+                .extern_ref => |r| switch (result) {
+                    .extern_ref => |v| return r == v,
+                    else => return false,
+                },
             }
         },
         else => unreachable,
