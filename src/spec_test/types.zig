@@ -1,3 +1,4 @@
+const std = @import("std");
 const decode = @import("wasm-decode");
 const runtime = @import("wasm-runtime");
 pub const Error = decode.Error || runtime.Error;
@@ -39,6 +40,10 @@ pub const Result = union(enum) {
 pub const ModuleCommandArg = struct {
     line: u32,
     file_name: []const u8,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = try writer.print("{s} (line:{})", .{ self.file_name, self.line });
+    }
 };
 
 pub const AssertReturnCommandArg = struct {
