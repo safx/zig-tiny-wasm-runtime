@@ -26,10 +26,8 @@ pub const Action = union(enum) {
     get,
 };
 
-pub const Const = runtime.Value;
-
 pub const Result = union(enum) {
-    @"const": Const,
+    @"const": runtime.Value,
     //
     f32_nan_canonical,
     f32_nan_arithmetic,
@@ -60,14 +58,9 @@ pub const AssertTrapCommandArg = struct {
 
 pub const InvokeCommandArg = struct {
     field: []const u8,
-    args: []const Const,
-};
+    args: []const runtime.Value,
 
-pub const ConstNumber = struct {
-    type: []const u8,
-    value: []const u8,
-};
-
-pub const ActionType = enum {
-    invoke,
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = try writer.print("{s} {any}", .{ self.field, self.args });
+    }
 };

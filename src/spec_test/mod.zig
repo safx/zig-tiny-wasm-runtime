@@ -135,10 +135,7 @@ fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
     switch (expected) {
         .@"const" => |exp_const| {
             switch (exp_const) {
-                .i32, .i64 => |ev| switch (result) {
-                    .i32, .i64 => |rv| return ev == rv,
-                    else => return false,
-                },
+                .i32, .i64 => return exp_const.asI64() == result.asI64(),
                 .f32 => return exp_const.asI32() == result.asI32(),
                 .f64 => return exp_const.asI64() == result.asI64(),
                 else => unreachable,

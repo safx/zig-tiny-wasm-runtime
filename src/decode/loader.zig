@@ -258,23 +258,13 @@ pub const ModuleLoader = struct {
 
     fn initExprValue(self: *Self, op: u8) Error!wa.InitExpression {
         const n = std.wasm.opcode;
-        switch (op) {
-            n(.i32_const) => {
-                return .{ .i32_const = try self.reader.readVarI32() };
-            },
-            n(.i64_const) => {
-                return .{ .i64_const = try self.reader.readVarI64() };
-            },
-            n(.f32_const) => {
-                return .{ .f32_const = try self.reader.readF32() };
-            },
-            n(.f64_const) => {
-                return .{ .f64_const = try self.reader.readF64() };
-            },
-            else => {
-                unreachable;
-            },
-        }
+        return switch (op) {
+            n(.i32_const) => .{ .i32_const = try self.reader.readVarI32() },
+            n(.i64_const) => .{ .i64_const = try self.reader.readVarI64() },
+            n(.f32_const) => .{ .f32_const = try self.reader.readF32() },
+            n(.f64_const) => .{ .f64_const = try self.reader.readF64() },
+            else => unreachable,
+        };
     }
 
     fn mut(self: *Self) Error!wa.Mutability {
@@ -302,9 +292,7 @@ pub const ModuleLoader = struct {
 
     fn createLocals(self: *Self, vec: []const Locals) (Error || error{OutOfMemory})![]const wa.ValueType {
         var total: u32 = 0;
-        for (vec) |v| {
-            total += v.size;
-        }
+        for (vec) |v| total += v.size;
         if (total == 0) {
             return &.{};
         }
@@ -354,8 +342,8 @@ pub const ModuleLoader = struct {
         const kind = try self.reader.readU8();
         const min = try self.reader.readVarU32();
         const max = switch (kind) {
-            0x00 => null,
-            0x01 => try self.reader.readVarU32(),
+            0 => null,
+            1 => try self.reader.readVarU32(),
             else => return Error.MalformedLimitId,
         };
         return .{ .min = min, .max = max };

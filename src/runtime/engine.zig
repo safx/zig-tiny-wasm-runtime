@@ -114,7 +114,7 @@ pub const Engine = struct {
         std.debug.print("---------------\n", .{});
 
         var ip: wa.InstractionAddr = 0;
-        while (ip < instrs.len) : (ip += 1) {
+        while (ip < instrs.len) {
             const instr = instrs[ip];
             const flow_ctrl = try self.execOneInstruction(ip, instr);
 
@@ -123,9 +123,9 @@ pub const Engine = struct {
             }
 
             switch (flow_ctrl) {
-                .none => continue,
+                .none => ip += 1,
+                .jump => |new_ip| ip = new_ip,
                 .exit => return,
-                .jump => |new_ip| ip = new_ip - 1,
             }
         }
         unreachable;

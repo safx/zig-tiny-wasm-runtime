@@ -4,7 +4,7 @@ const types = @import("./types.zig");
 const Action = types.Action;
 const Command = types.Command;
 const Result = types.Result;
-const Const = types.Const;
+const Value = wa.Value;
 const Failure = types.Failure;
 
 pub fn readJsonFromFile(file: std.fs.File, allocator: std.mem.Allocator) ![]const types.Command {
@@ -54,8 +54,8 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
     }
 }
 
-fn argArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]const Const {
-    var array = std.ArrayList(Const).init(allocator);
+fn argArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]const Value {
+    var array = std.ArrayList(Value).init(allocator);
     for (json.array.items) |arg_json| {
         const arg = try argFromJson(arg_json);
         try array.append(arg);
@@ -63,27 +63,27 @@ fn argArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]const
     return try array.toOwnedSlice();
 }
 
-fn argFromJson(json: std.json.Value) !Const {
+fn argFromJson(json: std.json.Value) !Value {
     const type_ = json.object.get("type").?.string;
     const value = json.object.get("value").?.string;
     if (strcmp(type_, "i32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
-        return Const{ .i32 = @bitCast(num) };
+        return Value{ .i32 = @bitCast(num) };
     } else if (strcmp(type_, "i64")) {
         const num = try std.fmt.parseInt(u64, value, 10);
-        return Const{ .i64 = @bitCast(num) };
+        return Value{ .i64 = @bitCast(num) };
     } else if (strcmp(type_, "f32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
-        return Const{ .f32 = num };
+        return Value{ .f32 = num };
     } else if (strcmp(type_, "f64")) {
         const num = try std.fmt.parseInt(u64, value, 10);
-        return Const{ .f64 = num };
+        return Value{ .f64 = num };
     } else if (strcmp(type_, "externref")) {
         var num: ?wa.ExternAddr = null;
         if (!strcmp(value, "null")) {
             num = try std.fmt.parseInt(wa.ExternAddr, value, 10);
         }
-        return Const{ .extern_ref = num };
+        return Value{ .extern_ref = num };
     } else {
         std.debug.print("+++ {s}\n", .{type_});
         unreachable;
@@ -130,7 +130,7 @@ fn actionFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Action {
     const cmd_type: []const u8 = json.object.get("type").?.string;
     if (strcmp(cmd_type, "invoke")) {
         const field = json.object.get("field").?.string;
-        const args: []const Const = try argArrayFromJson(json.object.get("args").?, allocator);
+        const args: []const Value = try argArrayFromJson(json.object.get("args").?, allocator);
         return .{ .invoke = .{ .field = field, .args = args } };
     } else if (strcmp(cmd_type, "get")) {
         return Action.get;
