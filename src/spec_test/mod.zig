@@ -139,28 +139,8 @@ fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
                     .i32, .i64 => |rv| return ev == rv,
                     else => return false,
                 },
-                .f32 => |ev| switch (result) {
-                    .i32, .i64 => |rv| {
-                        const r: i32 = @intCast(rv);
-                        return ev == r;
-                    },
-                    .f32 => |rv| {
-                        const r: i32 = @bitCast(rv);
-                        return ev == r;
-                    },
-                    else => return false,
-                },
-                .f64 => |ev| switch (result) {
-                    .i32, .i64 => |rv| {
-                        const r: i64 = @intCast(rv);
-                        return ev == r;
-                    },
-                    .f64 => |rv| {
-                        const r: i64 = @bitCast(rv);
-                        return ev == r;
-                    },
-                    else => return false,
-                },
+                .f32 => return exp_const.asI32() == result.asI32(),
+                .f64 => return exp_const.asI64() == result.asI64(),
                 else => unreachable,
             }
         },
