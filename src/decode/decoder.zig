@@ -100,7 +100,7 @@ pub const Decoder = struct {
             // parametric instructions
             n(.drop) => .drop,
             n(.select) => .select,
-            //0x1C => .{ .selectv = try createArray(types.ValueType, valtype) },
+            0x1C => .{ .selectv = try selectv(reader, allocator) },
 
             // variable instructions
             n(.local_get) => .{ .local_get = try reader.readVarU32() },
@@ -294,7 +294,10 @@ pub const Decoder = struct {
             n(.i64_extend16_s) => .i64_extend16_s,
             n(.i64_extend32_s) => .i64_extend32_s,
 
-            else => unreachable,
+            else => {
+                std.debug.print("?? {x}\n", .{op_code});
+                unreachable;
+            },
         };
 
         return inst;
@@ -311,8 +314,22 @@ pub const Decoder = struct {
         return utils.refTypeFromNum(byte) orelse return Error.MalformedRefType;
     }
 
+    fn valueType(reader: *BinaryReader) Error!wa.ValueType {
+        const byte = try reader.readU8();
+        return utils.valueTypeFromNum(byte) orelse return Error.MalformedValueType;
+    }
+
     fn block(reader: *BinaryReader) Error!Instruction.BlockInfo {
         return .{ .type = try blockType(reader) }; // `end` is set at the end of block
+    }
+
+    fn selectv(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]wa.ValueType {
+        const len = try reader.readVarU32();
+        var array = try allocator.alloc(wa.ValueType, len);
+        for (0..len) |i| {
+            array[i] = try valueType(reader);
+        }
+        return array;
     }
 
     fn ifBlock(reader: *BinaryReader) Error!Instruction.IfBlockInfo {
