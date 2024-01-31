@@ -138,12 +138,14 @@ pub const Engine = struct {
         // 2: assert
         // 3: check length
         // 4: verify external value
-        // 5, 6: ????
-        // 7: push init frame to stack
+        // 5: ????
 
-        // 8: init global
-        // 9: init element segment
+        // Step 6 - 10 are done in `allocateModule`. Just skip in this function.
+        // 6, 7: push init frame to stack
+        // 8: Get `val*`
+        // 9: Get `ref*`
         // 10: pop init frame from stack
+
         // 11: alloc module
         const mod_inst = try self.allocateModule(module);
         //std.debug.print("\n---ModInst\n{}\n", .{std.json.fmt(mod_inst, .{})});
@@ -152,9 +154,9 @@ pub const Engine = struct {
         const aux_frame = types.ActivationFrame{
             .module = mod_inst,
         };
+        // 13: push aux frame
         try self.stack.push(.{ .frame = aux_frame });
 
-        // 13: push aux frame
         // 14, 15: element segment
         for (module.elements, 0..) |elem, i| {
             switch (elem.mode) {
@@ -201,7 +203,7 @@ pub const Engine = struct {
 
     /// `allocmodule` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/modules.html#alloc-module
-    fn allocateModule(self: *Self, module: wa.Module) error{OutOfMemory}!*types.ModuleInst {
+    fn allocateModule(self: *Self, module: wa.Module) (Error || error{OutOfMemory})!*types.ModuleInst {
         // 1: resolve extern
         const extern_values = resolveImports(self.store, module);
         _ = extern_values;
@@ -236,12 +238,38 @@ pub const Engine = struct {
             mod_inst.mem_addrs[i] = try allocMemory(&self.store, mem, self.allocator);
         }
 
+        // push the auxiliary frame (Step 6 and 7 in Instantiation)
+        const aux_frame = types.ActivationFrame{
+            .module = mod_inst_p,
+        };
+        try self.stack.push(.{ .frame = aux_frame });
+
         // 5, 11, 17: global
+        for (module.globals, 0..) |global, i| {
+            try self.execInitExpr(global.init);
+            const value = self.stack.pop().value;
+            mod_inst.global_addrs[i] = try allocGlobal(&self.store, global, value);
+        }
 
         // 6, 12: element segment
-        for (module.elements, 0..) |elem, i| {
-            mod_inst.elem_addrs[i] = try allocElement(&self.store, elem, self.allocator);
+        for (module.elements, 0..) |element, i| {
+            var refs = try self.allocator.alloc(types.RefValue, element.init.len);
+            for (element.init, 0..) |e, j| {
+                try self.execInitExpr(e);
+                const value = self.stack.pop().value;
+
+                const val: types.RefValue = switch (value) {
+                    .func_ref => |v| .{ .func_ref = v.? },
+                    .extern_ref => |v| .{ .extern_ref = v.? },
+                    else => unreachable,
+                };
+                refs[j] = val;
+            }
+            mod_inst.elem_addrs[i] = try allocElement(&self.store, element, refs);
         }
+
+        // pop the auxiliary frame (Step 10 in Instantiation)
+        _ = self.stack.pop();
 
         // 7, 13: data segment
         for (module.datas, 0..) |data, i| {
@@ -335,9 +363,19 @@ pub const Engine = struct {
             },
 
             // reference instructions
-            // .ref_null: types.RefType,
+            .ref_null => |ref_type| {
+                const val: types.Value = switch (ref_type) {
+                    .funcref => .{ .func_ref = null },
+                    .externref => .{ .extern_ref = null },
+                };
+                try self.stack.push(.{ .value = val });
+            },
             // .ref_is_null,
-            // .ref_func: types.FuncIdx,
+            .ref_func => |func_idx| {
+                const module = self.stack.topFrame().module;
+                const a = module.func_addrs[func_idx];
+                try self.stack.push(.{ .value = .{ .func_ref = a } });
+            },
 
             // parametric instructions
             .drop => _ = self.stack.pop(),
@@ -348,7 +386,12 @@ pub const Engine = struct {
             .local_get => |local_idx| try self.opLocalGet(local_idx),
             .local_set => |local_idx| try self.opLocalSet(local_idx),
             // .local_tee: types.LocalIdx,
-            // .global_get: types.GlobalIdx,
+            .global_get => |global_idx| {
+                const module = self.stack.topFrame().module;
+                const a = module.global_addrs[global_idx];
+                const glob = self.store.globals.items[a];
+                try self.stack.push(.{ .value = glob.value });
+            },
             // .global_set: types.GlobalIdx,
 
             // table instructions
@@ -1141,16 +1184,22 @@ pub const Engine = struct {
         return try appendElement(types.MemInst, &store.mems, inst);
     }
 
+    /// `allocglobal` in wasm spec
+    /// https://webassembly.github.io/spec/core/exec/modules.html#globals
+    fn allocGlobal(store: *types.Store, global: wa.Global, value: types.Value) error{OutOfMemory}!types.MemAddr {
+        const inst = types.GlobalInst{
+            .type = global.type,
+            .value = value,
+        };
+        return try appendElement(types.GlobalInst, &store.globals, inst);
+    }
+
     /// `allocelem` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/modules.html#element-segments
-    fn allocElement(store: *types.Store, elememt: wa.Element, allocator: std.mem.Allocator) error{OutOfMemory}!types.ElemAddr {
-        var elem = try allocator.alloc(types.RefValue, elememt.init.len);
-        for (0..elem.len) |i| {
-            elem[i] = .{ .func_ref = elememt.init[i].ref_func };
-        }
+    fn allocElement(store: *types.Store, elememt: wa.Element, refs: []types.RefValue) error{OutOfMemory}!types.ElemAddr {
         const inst = types.ElemInst{
             .type = elememt.type,
-            .elem = elem,
+            .elem = refs,
         };
         return try appendElement(types.ElemInst, &store.elems, inst);
     }
@@ -1187,7 +1236,10 @@ pub fn instractionFromInitExpr(init_expr: wa.InitExpression) Instruction {
         .i64_const => |val| .{ .i64_const = val },
         .f32_const => |val| .{ .f32_const = val },
         .f64_const => |val| .{ .f64_const = val },
-        else => unreachable,
+        .v128_const => unreachable,
+        .ref_null => |ref_type| .{ .ref_null = ref_type },
+        .ref_func => |func_idx| .{ .ref_func = func_idx },
+        .global_get => |global_idx| .{ .global_get = global_idx },
     };
 }
 

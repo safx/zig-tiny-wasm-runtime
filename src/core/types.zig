@@ -61,6 +61,8 @@ pub const InitExpression = union(enum) {
     ref_null: RefType,
     ref_func: FuncIdx,
 
+    global_get: GlobalIdx,
+
     // pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
     //     switch (self) {
     //         inline else => |val| try writer.print("{}", .{val}),

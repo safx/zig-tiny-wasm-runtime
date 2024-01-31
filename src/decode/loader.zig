@@ -291,6 +291,9 @@ pub const ModuleLoader = struct {
             n(.i64_const) => .{ .i64_const = try self.reader.readVarI64() },
             n(.f32_const) => .{ .f32_const = try self.reader.readF32() },
             n(.f64_const) => .{ .f64_const = try self.reader.readF64() },
+            n(.global_get) => .{ .global_get = try self.reader.readVarU32() },
+            // ref.null
+            0xd0 => .{ .ref_null = @enumFromInt(try self.reader.readU8()) },
             else => unreachable,
         };
     }
