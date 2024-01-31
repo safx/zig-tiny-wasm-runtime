@@ -379,8 +379,8 @@ pub const Engine = struct {
 
             // parametric instructions
             .drop => _ = self.stack.pop(),
-            .select => try self.select(),
-            .selectv => try self.select(),
+            .select => try self.opSelect(),
+            .selectv => try self.opSelect(),
 
             // variable instructions
             .local_get => |local_idx| try self.opLocalGet(local_idx),
@@ -664,7 +664,7 @@ pub const Engine = struct {
     }
 
     // contronl instructions
-    fn opEnd(self: *Self) error{OutOfMemory}!FlowControl {
+    inline fn opEnd(self: *Self) error{OutOfMemory}!FlowControl {
         defer {
             std.debug.print("==\n", .{});
             self.printStack();
@@ -673,26 +673,26 @@ pub const Engine = struct {
         return FlowControl.newAtOpEnd(label);
     }
 
-    fn opElse(self: *Self) error{OutOfMemory}!FlowControl {
+    inline fn opElse(self: *Self) error{OutOfMemory}!FlowControl {
         const label = self.stack.getNthLabelFromTop(0);
         return FlowControl.newAtOpElse(label);
     }
 
-    fn opBlock(self: *Self, block_info: Instruction.BlockInfo) error{OutOfMemory}!void {
+    inline fn opBlock(self: *Self, block_info: Instruction.BlockInfo) error{OutOfMemory}!void {
         try self.insertLabel(block_info.type, .{ .block = block_info.end });
     }
 
-    fn opLoop(self: *Self, block_info: Instruction.BlockInfo, ip: wa.InstractionAddr) error{OutOfMemory}!void {
+    inline fn opLoop(self: *Self, block_info: Instruction.BlockInfo, ip: wa.InstractionAddr) error{OutOfMemory}!void {
         try self.insertLabel(block_info.type, .{ .loop = ip });
     }
 
-    fn opIf(self: *Self, block_info: Instruction.IfBlockInfo) error{OutOfMemory}!FlowControl {
+    inline fn opIf(self: *Self, block_info: Instruction.IfBlockInfo) error{OutOfMemory}!FlowControl {
         const value = self.stack.pop().value.i32;
         try self.insertLabel(block_info.type, .{ .@"if" = block_info.end });
         return FlowControl.newAtOpIf(block_info, value);
     }
 
-    fn insertLabel(self: *Self, block_type: Instruction.BlockType, label_type: types.LabelType) error{OutOfMemory}!void {
+    inline fn insertLabel(self: *Self, block_type: Instruction.BlockType, label_type: types.LabelType) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const func_type = expandToFuncType(module, block_type);
         const label = types.StackItem{ .label = .{
@@ -702,7 +702,7 @@ pub const Engine = struct {
         try self.stack.insertAt(func_type.parameter_types.len, label);
     }
 
-    fn opBr(self: *Self, label_idx: wa.LabelIdx) error{OutOfMemory}!FlowControl {
+    inline fn opBr(self: *Self, label_idx: wa.LabelIdx) error{OutOfMemory}!FlowControl {
         const label = self.stack.getNthLabelFromTop(label_idx);
         const vals = try self.stack.popValues(label.arity);
 
@@ -721,12 +721,12 @@ pub const Engine = struct {
         return FlowControl.newAtOpBr(label);
     }
 
-    fn opBrIf(self: *Self, label_idx: wa.LabelIdx) error{OutOfMemory}!FlowControl {
+    inline fn opBrIf(self: *Self, label_idx: wa.LabelIdx) error{OutOfMemory}!FlowControl {
         const value = self.stack.pop().value;
         return if (value.i32 == 0) FlowControl.none else self.opBr(label_idx);
     }
 
-    fn opBrTable(self: *Self, table_info: Instruction.BrTableType) error{OutOfMemory}!FlowControl {
+    inline fn opBrTable(self: *Self, table_info: Instruction.BrTableType) error{OutOfMemory}!FlowControl {
         const value = self.stack.pop().value.i32;
         const pos: u32 = @bitCast(value);
         const label_idx = if (pos < table_info.label_idxs.len) table_info.label_idxs[pos] else table_info.default_label_idx;
@@ -734,7 +734,7 @@ pub const Engine = struct {
     }
 
     // parametric instructions
-    fn select(self: *Self) error{OutOfMemory}!void {
+    inline fn opSelect(self: *Self) error{OutOfMemory}!void {
         const c = self.stack.pop().value.asI32();
         const val2 = self.stack.pop();
         const val1 = self.stack.pop();
@@ -745,19 +745,19 @@ pub const Engine = struct {
         }
     }
 
-    fn opLocalGet(self: *Self, local_idx: wa.LocalIdx) (Error || error{OutOfMemory})!void {
+    inline fn opLocalGet(self: *Self, local_idx: wa.LocalIdx) (Error || error{OutOfMemory})!void {
         const frame = self.stack.topFrame();
         const val = frame.locals[local_idx];
         try self.stack.push(.{ .value = val });
     }
 
-    fn opLocalSet(self: *Self, local_idx: wa.LocalIdx) (Error || error{OutOfMemory})!void {
+    inline fn opLocalSet(self: *Self, local_idx: wa.LocalIdx) (Error || error{OutOfMemory})!void {
         const frame = self.stack.topFrame();
         const val = self.stack.pop().value;
         frame.locals[local_idx] = val;
     }
 
-    fn opLoad(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!T {
+    inline fn opLoad(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!T {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
@@ -793,27 +793,27 @@ pub const Engine = struct {
         return val;
     }
 
-    fn opI64Load(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
+    inline fn opI64Load(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
         const val = try self.opLoad(T, mem_arg);
         try self.stack.push(.{ .value = .{ .i64 = val } });
     }
 
-    fn opI32Load(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
+    inline fn opI32Load(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
         const val = try self.opLoad(T, mem_arg);
         try self.stack.push(.{ .value = .{ .i32 = val } });
     }
 
-    fn opF32Load(self: *Self, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
+    inline fn opF32Load(self: *Self, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
         const val = try self.opLoad(f32, mem_arg);
         try self.stack.pushValue(val);
     }
 
-    fn opF64Load(self: *Self, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
+    inline fn opF64Load(self: *Self, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
         const val = try self.opLoad(f64, mem_arg);
         try self.stack.pushValue(val);
     }
 
-    fn opI32Store8(self: *Self, mem_arg: Instruction.MemArg) error{OutOfMemory}!void {
+    inline fn opI32Store8(self: *Self, mem_arg: Instruction.MemArg) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
@@ -827,7 +827,7 @@ pub const Engine = struct {
         std.debug.print("mem.data=[{s}]\n", .{mem.data[0..30]});
     }
 
-    fn opDataDrop(self: *Self, data_idx: wa.DataIdx) error{OutOfMemory}!void {
+    inline fn opDataDrop(self: *Self, data_idx: wa.DataIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const a = module.data_addrs[data_idx];
         const data = &self.store.datas.items[a];
@@ -836,7 +836,7 @@ pub const Engine = struct {
 
     /// `memory.init x` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-init-x
-    fn opMemoryInit(self: *Self, data_idx: wa.DataIdx) (Error || error{OutOfMemory})!void {
+    inline fn opMemoryInit(self: *Self, data_idx: wa.DataIdx) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
         const mem = self.store.mems.items[mem_addr];
@@ -863,13 +863,13 @@ pub const Engine = struct {
         }
     }
 
-    fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) Error!T) (Error || error{OutOfMemory})!void {
+    inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) Error!T) (Error || error{OutOfMemory})!void {
         const value = self.stack.pop().value.as(T);
         const result = try f(T, value);
         try self.stack.pushValue(result);
     }
 
-    fn binOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) (Error || error{OutOfMemory})!void {
+    inline fn binOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) (Error || error{OutOfMemory})!void {
         const rhs = self.stack.pop().value.as(T);
         const lhs = self.stack.pop().value.as(T);
         const result = try f(T, lhs, rhs);
