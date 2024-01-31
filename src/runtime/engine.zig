@@ -116,7 +116,7 @@ pub const Engine = struct {
         var ip: wa.InstractionAddr = 0;
         while (ip < instrs.len) {
             const instr = instrs[ip];
-            const flow_ctrl = try self.execOneInstruction(ip, instr);
+            const flow_ctrl = try self.execInstruction(ip, instr);
 
             if (flow_ctrl != .none) {
                 std.debug.print("\t===> {}\n", .{flow_ctrl});
@@ -160,16 +160,16 @@ pub const Engine = struct {
             switch (elem.mode) {
                 .active => |active_type| {
                     const n = elem.init.len;
-                    try self.execInitExpr(active_type.offset);
-                    _ = try self.execOneInstruction(0, .{ .i32_const = 0 });
-                    _ = try self.execOneInstruction(0, .{ .i32_const = @intCast(n) });
-                    _ = try self.execOneInstruction(0, .{
+                    try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
+                    try self.execOneInstruction(.{ .i32_const = 0 });
+                    try self.execOneInstruction(.{ .i32_const = @intCast(n) });
+                    try self.execOneInstruction(.{
                         .table_init = .{
                             .elem_idx = @intCast(i),
                             .table_idx = 0, // FIXME: elem.mode,
                         },
                     });
-                    _ = try self.execOneInstruction(0, .{ .elem_drop = @intCast(i) });
+                    try self.execOneInstruction(.{ .elem_drop = @intCast(i) });
                 },
                 else => continue,
             }
@@ -181,11 +181,11 @@ pub const Engine = struct {
                 .active => |active_type| {
                     assert(active_type.mem_idx == 0);
                     const n = data.init.len;
-                    try self.execInitExpr(active_type.offset);
-                    _ = try self.execOneInstruction(0, .{ .i32_const = 0 });
-                    _ = try self.execOneInstruction(0, .{ .i32_const = @intCast(n) });
-                    _ = try self.execOneInstruction(0, .{ .memory_init = @intCast(i) });
-                    _ = try self.execOneInstruction(0, .{ .data_drop = @intCast(i) });
+                    try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
+                    try self.execOneInstruction(.{ .i32_const = 0 });
+                    try self.execOneInstruction(.{ .i32_const = @intCast(n) });
+                    try self.execOneInstruction(.{ .memory_init = @intCast(i) });
+                    try self.execOneInstruction(.{ .data_drop = @intCast(i) });
                 },
                 else => continue,
             }
@@ -244,7 +244,7 @@ pub const Engine = struct {
 
         // 5, 11, 17: global
         for (module.globals, 0..) |global, i| {
-            try self.execInitExpr(global.init);
+            try self.execOneInstruction(instractionFromInitExpr(global.init));
             const value = self.stack.pop().value;
             mod_inst.global_addrs[i] = try allocGlobal(&self.store, global, value);
         }
@@ -253,7 +253,7 @@ pub const Engine = struct {
         for (module.elements, 0..) |element, i| {
             var refs = try self.allocator.alloc(types.RefValue, element.init.len);
             for (element.init, 0..) |e, j| {
-                try self.execInitExpr(e);
+                try self.execOneInstruction(instractionFromInitExpr(e));
                 const value = self.stack.pop().value;
 
                 const val: types.RefValue = switch (value) {
@@ -293,11 +293,6 @@ pub const Engine = struct {
         return mod_inst_p;
     }
 
-    fn execInitExpr(self: *Self, init_expr: wa.InitExpression) (Error || error{OutOfMemory})!void {
-        const instr = instractionFromInitExpr(init_expr);
-        _ = try self.execOneInstruction(0, instr);
-    }
-
     fn printStack(self: *Self) void {
         for (self.stack.array.items) |i| {
             switch (i) {
@@ -308,12 +303,18 @@ pub const Engine = struct {
         }
     }
 
-    fn execOneInstruction(self: *Self, ip: wa.InstractionAddr, instr: Instruction) (Error || error{OutOfMemory})!FlowControl {
+    /// executes an instruction without control flow
+    inline fn execOneInstruction(self: *Self, instr: Instruction) (Error || error{OutOfMemory})!void {
+        _ = try self.execInstruction(0, instr);
+    }
+
+    /// executes an instruction and returns control flow
+    fn execInstruction(self: *Self, ip: wa.InstractionAddr, instr: Instruction) (Error || error{OutOfMemory})!FlowControl {
         self.printStack();
         std.debug.print("== [{}]: {}\n", .{ ip, instr });
         switch (instr) {
-            .end => return try self.opEnd(),
-            .@"else" => return try self.opElse(),
+            .end => return self.opEnd(),
+            .@"else" => return self.opElse(),
 
             // contronl instructions
             .nop => {},
@@ -434,7 +435,7 @@ pub const Engine = struct {
                     try self.stack.pushValueAs(i32, d);
                     try self.stack.push(.{ .value = .{ .func_ref = ref.func_ref } }); // FIXME
                     const inst = Instruction{ .table_set = arg.elem_idx };
-                    _ = try self.execOneInstruction(0, inst);
+                    try self.execOneInstruction(inst);
                     try self.stack.pushValueAs(i32, d + 1);
                     try self.stack.pushValueAs(i32, s + 1);
                     try self.stack.pushValueAs(i32, n - 1);
@@ -662,15 +663,11 @@ pub const Engine = struct {
     }
 
     // contronl instructions
-    inline fn opEnd(self: *Self) error{OutOfMemory}!FlowControl {
-        defer {
-            std.debug.print("==\n", .{});
-            self.printStack();
-        }
+    inline fn opEnd(_: *Self) FlowControl {
         return .none;
     }
 
-    inline fn opElse(self: *Self) error{OutOfMemory}!FlowControl {
+    inline fn opElse(self: *Self) FlowControl {
         const label = self.stack.getNthLabelFromTop(0);
         return FlowControl.newAtOpElse(label);
     }
@@ -854,7 +851,7 @@ pub const Engine = struct {
             try self.stack.push(.{ .value = .{ .i32 = @intCast(b) } });
 
             const ins: Instruction = .{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } };
-            _ = try self.execOneInstruction(0, ins);
+            try self.execOneInstruction(ins);
             s += 1;
             d += 1;
         }
