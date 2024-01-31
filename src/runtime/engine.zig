@@ -128,7 +128,7 @@ pub const Engine = struct {
                 .exit => return,
             }
         }
-        unreachable;
+        return;
     }
 
     /// `instantiate` in wasm spec
@@ -669,8 +669,7 @@ pub const Engine = struct {
             std.debug.print("==\n", .{});
             self.printStack();
         }
-        const label = self.stack.popUppermostLabel().?;
-        return FlowControl.newAtOpEnd(label);
+        return .none;
     }
 
     inline fn opElse(self: *Self) error{OutOfMemory}!FlowControl {
@@ -1221,7 +1220,7 @@ pub const Engine = struct {
 
     /// `expand_F` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/runtime.html#exec-expand
-    fn expandToFuncType(module: *types.ModuleInst, block_type: Instruction.BlockType) wa.FuncType {
+    inline fn expandToFuncType(module: *types.ModuleInst, block_type: Instruction.BlockType) wa.FuncType {
         return switch (block_type) {
             .empty => .{ .parameter_types = &.{}, .result_types = &.{} },
             .value_type => |vt| .{ .parameter_types = &.{}, .result_types = &.{vt} },
@@ -1236,7 +1235,7 @@ pub fn instractionFromInitExpr(init_expr: wa.InitExpression) Instruction {
         .i64_const => |val| .{ .i64_const = val },
         .f32_const => |val| .{ .f32_const = val },
         .f64_const => |val| .{ .f64_const = val },
-        .v128_const => unreachable,
+        .v128_const => unreachable, // FIXME
         .ref_null => |ref_type| .{ .ref_null = ref_type },
         .ref_func => |func_idx| .{ .ref_func = func_idx },
         .global_get => |global_idx| .{ .global_get = global_idx },
@@ -1248,13 +1247,6 @@ const FlowControl = union(enum) {
     jump: wa.InstractionAddr,
     exit,
 
-    pub fn newAtOpEnd(label: types.Label) FlowControl {
-        return switch (label.type) {
-            .root => .exit,
-            else => .none,
-        };
-    }
-
     pub fn newAtOpElse(label: types.Label) FlowControl {
         return switch (label.type) {
             .@"if" => |idx| .{ .jump = idx },
@@ -1265,10 +1257,7 @@ const FlowControl = union(enum) {
     pub fn newAtOpBr(label: types.Label) FlowControl {
         return switch (label.type) {
             .root => .exit,
-            .func => |idx| .{ .jump = idx },
-            .block => |idx| .{ .jump = idx },
-            .@"if" => |idx| .{ .jump = idx },
-            .loop => |idx| .{ .jump = idx },
+            inline else => |idx| .{ .jump = idx },
         };
     }
 
@@ -1278,7 +1267,7 @@ const FlowControl = union(enum) {
         } else if (info.@"else" != null) {
             return .{ .jump = info.@"else".? };
         } else {
-            return .exit;
+            return .exit; // FIXME: should be unreachable?
         }
     }
 };
