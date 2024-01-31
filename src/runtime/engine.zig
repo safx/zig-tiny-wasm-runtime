@@ -128,7 +128,6 @@ pub const Engine = struct {
                 .exit => return,
             }
         }
-        return;
     }
 
     /// `instantiate` in wasm spec
@@ -150,11 +149,10 @@ pub const Engine = struct {
         const mod_inst = try self.allocateModule(module);
         //std.debug.print("\n---ModInst\n{}\n", .{std.json.fmt(mod_inst, .{})});
 
-        // 12: aux frame
+        // 12, 13: push aux frame
         const aux_frame = types.ActivationFrame{
             .module = mod_inst,
         };
-        // 13: push aux frame
         try self.stack.push(.{ .frame = aux_frame });
 
         // 14, 15: element segment

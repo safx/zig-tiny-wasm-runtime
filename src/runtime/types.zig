@@ -13,6 +13,7 @@ pub const ModuleInst = struct {
 };
 
 pub const Store = struct {
+    // FIXME: should be SinglyLinkedList for avoiding memory reallocation
     funcs: std.ArrayList(FuncInst),
     tables: std.ArrayList(TableInst),
     mems: std.ArrayList(MemInst),
