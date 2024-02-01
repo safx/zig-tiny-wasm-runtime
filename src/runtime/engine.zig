@@ -87,8 +87,6 @@ pub const Engine = struct {
             .module = func_inst.module,
         };
         try self.stack.push(.{ .frame = frame });
-        defer self.stack.popValuesAndLabelsUntilFrame();
-
         try self.stack.push(.{ .label = .{ .arity = @intCast(num_returns), .type = .root } });
 
         try self.execExpr(func_inst.code.body);
@@ -100,8 +98,11 @@ pub const Engine = struct {
             ret[i - 1] = self.stack.pop().value;
         }
 
-        std.debug.print("== FUNC_END: ret={any}\n", .{ret});
-        self.printStack();
+        self.stack.popValuesAndLabelsUntilFrame();
+
+        for (ret) |v| {
+            try self.stack.push(.{ .value = v });
+        }
 
         return ret;
     }
