@@ -7,11 +7,22 @@ test "fixture for BinaryReader" {
     const std = @import("std");
     const expectEqual = std.testing.expectEqual;
 
-    // i32.const 77
     {
         const data: []const u8 = &.{ 0xcd, 0x00 };
         var b = BinaryReader.new(data);
         try expectEqual(@as(i32, 77), try b.readVarI32());
+    }
+
+    {
+        const data: []const u8 = &.{0x7f};
+        var b = BinaryReader.new(data);
+        try expectEqual(@as(i32, -1), try b.readVarI32());
+    }
+
+    {
+        const data: []const u8 = &.{ 0xff, 0xff, 0xff, 0xff, 0x0f };
+        var b = BinaryReader.new(data);
+        try expectEqual(@as(i32, -1), try b.readVarI32());
     }
 
     {

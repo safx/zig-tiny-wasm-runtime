@@ -1,4 +1,3 @@
-const std = @import("std");
 const utils = @import("./utils.zig");
 const EOF = @import("./errors.zig").Error.EOF;
 
@@ -89,8 +88,8 @@ pub const BinaryReader = struct {
             @compileLog("Unknown Number Type");
         }
 
-        const BaseType = if (NumType == i32 or NumType == u32) u32 else u64;
-        const ShiftType = if (NumType == i32 or NumType == u32) u5 else u6;
+        const BaseType = if (@bitSizeOf(NumType) == 32) u32 else u64;
+        const ShiftType = if (@bitSizeOf(NumType) == 32) u5 else u6;
 
         var result: BaseType = 0;
         var shift: ShiftType = 0;
@@ -102,6 +101,17 @@ pub const BinaryReader = struct {
                 break;
             shift += 7;
         }
-        return @bitCast(result);
+
+        const integer_type = NumType == i32 or NumType == i64;
+        if (integer_type) {
+            const value: NumType = @bitCast(result);
+            if (NumType == i32 and shift == 28 or NumType == i64 and shift == 63) {
+                return value;
+            }
+            const top_bit = value & @as(NumType, 1) << (shift + 6);
+            return (value ^ top_bit) - top_bit;
+        } else {
+            return result;
+        }
     }
 };
