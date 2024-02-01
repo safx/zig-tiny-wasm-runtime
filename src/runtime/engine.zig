@@ -674,8 +674,9 @@ pub const Engine = struct {
     }
 
     // contronl instructions
-    inline fn opEnd(_: *Self) FlowControl {
-        return .none;
+    inline fn opEnd(self: *Self) FlowControl {
+        const label = self.stack.popUppermostLabel().?;
+        return FlowControl.newAtOpEnd(label);
     }
 
     inline fn opElse(self: *Self) FlowControl {
@@ -1253,6 +1254,13 @@ const FlowControl = union(enum) {
     jump: wa.InstractionAddr,
     exit,
 
+    pub fn newAtOpEnd(label: types.Label) FlowControl {
+        return switch (label.type) {
+            .root => .exit,
+            else => .none,
+        };
+    }
+
     pub fn newAtOpElse(label: types.Label) FlowControl {
         return switch (label.type) {
             .@"if" => |idx| .{ .jump = idx },
@@ -1263,7 +1271,7 @@ const FlowControl = union(enum) {
     pub fn newAtOpBr(label: types.Label) FlowControl {
         return switch (label.type) {
             .root => .exit,
-            inline else => |idx| .{ .jump = idx },
+            inline else => |idx| .{ .jump = idx + 1 }, // jump next to `end`
         };
     }
 
