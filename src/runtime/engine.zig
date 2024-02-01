@@ -384,14 +384,25 @@ pub const Engine = struct {
             // variable instructions
             .local_get => |local_idx| try self.opLocalGet(local_idx),
             .local_set => |local_idx| try self.opLocalSet(local_idx),
-            // .local_tee: types.LocalIdx,
+            .local_tee => |local_idx| {
+                _ = local_idx;
+                const value = self.stack.pop();
+                try self.stack.push(value);
+                try self.stack.push(value);
+            },
             .global_get => |global_idx| {
                 const module = self.stack.topFrame().module;
                 const a = module.global_addrs[global_idx];
                 const glob = self.store.globals.items[a];
                 try self.stack.push(.{ .value = glob.value });
             },
-            // .global_set: types.GlobalIdx,
+            .global_set => |global_idx| {
+                const module = self.stack.topFrame().module;
+                const a = module.global_addrs[global_idx];
+                var glob = self.store.globals.items[a];
+                const value = self.stack.pop().value;
+                glob.value = value;
+            },
 
             // table instructions
             // .table_get: types.TableIdx,
