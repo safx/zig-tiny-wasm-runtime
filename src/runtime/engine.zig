@@ -43,24 +43,32 @@ pub const Engine = struct {
         return ret;
     }
 
-    /// `invoke a` in wasm spec
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#exec-invoke
+    /// `Invocation of function address` and `Returning from a function`
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#function-calls
     fn invokeFunction(self: *Self, func_addr: types.FuncAddr) (Error || error{OutOfMemory})![]const types.Value {
         self.printStack();
 
+        // 1:
+
+        // 2, 3:
         const func_inst = self.store.funcs.items[func_addr];
         const func_type = func_inst.type;
 
+        // 4:
         const p_len = func_type.parameter_types.len;
         const num_locals = p_len + func_inst.code.locals.len;
         const locals = try self.allocator.alloc(types.Value, num_locals);
         @memset(locals[p_len..num_locals], .{ .i64 = 0 }); // TODO: should be assign actual type?
 
+        // 6: assert
+
+        // 7:
         var i = p_len;
         while (i > 0) : (i -= 1) {
             locals[i - 1] = self.stack.pop().value;
         }
 
+        // 8, 9, 10:
         const num_returns = func_type.result_types.len;
         const frame = types.ActivationFrame{
             .locals = locals,
@@ -70,17 +78,24 @@ pub const Engine = struct {
         try self.stack.push(.{ .frame = frame });
         try self.stack.push(.{ .label = .{ .arity = @intCast(num_returns), .type = .root } });
 
+        // 5, 11
         try self.execExpr(func_inst.code.body);
 
-        // pop frames etc
+        // 1, 2, 3: assert
+
+        // 4: pop frames etc
         const ret = try self.allocator.alloc(types.Value, num_returns);
         i = num_returns;
         while (i > 0) : (i -= 1) {
             ret[i - 1] = self.stack.pop().value;
         }
 
+        // 5:
+
+        // 6:
         self.stack.popValuesAndLabelsUntilFrame();
 
+        // 7: push vals
         for (ret) |v| {
             try self.stack.push(.{ .value = v });
         }
