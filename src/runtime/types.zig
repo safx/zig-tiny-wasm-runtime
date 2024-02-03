@@ -1,16 +1,6 @@
 const std = @import("std");
 const wa = @import("wasm-core");
-
-pub const ModuleInst = struct {
-    types: []const wa.FuncType,
-    func_addrs: []FuncAddr,
-    table_addrs: []TableAddr,
-    mem_addrs: []MemAddr,
-    global_addrs: []GlobalAddr,
-    elem_addrs: []ElemAddr,
-    data_addrs: []DataAddr,
-    exports: []ExportInst,
-};
+pub const ModuleInst = @import("./module_instance.zig").ModuleInst;
 
 pub const Store = struct {
     // FIXME: should be SinglyLinkedList for avoiding memory reallocation

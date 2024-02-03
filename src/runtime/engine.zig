@@ -121,16 +121,52 @@ pub const Engine = struct {
         // 4: verify external value
         // 5: ????
 
-        // Step 6 - 10 are done in `allocateModule`. Just skip in this function.
         // 6, 7: push init frame to stack
+        var aux_module = try types.ModuleInst.auxiliaryInstance(&self.store, module, self.allocator);
+        const aux_frame_init = types.ActivationFrame{
+            .module = &aux_module,
+        };
+        try self.stack.push(.{ .frame = aux_frame_init });
+
         // 8: Get `val*`
+        var vals = try self.allocator.alloc(types.Value, module.globals.len);
+        for (module.globals, 0..) |global, i| {
+            try self.execOneInstruction(instractionFromInitExpr(global.init));
+            vals[i] = self.stack.pop().value;
+        }
+        defer self.allocator.free(vals);
+
         // 9: Get `ref*`
+        var refs = try self.allocator.alloc([]types.RefValue, module.elements.len);
+        for (module.elements, 0..) |element, i| {
+            var refs_i = try self.allocator.alloc(types.RefValue, element.init.len);
+            refs[i] = refs_i;
+            for (element.init, 0..) |e, j| {
+                try self.execOneInstruction(instractionFromInitExpr(e));
+                const value = self.stack.pop().value;
+
+                const val: types.RefValue = switch (value) {
+                    .func_ref => |v| .{ .func_ref = v.? },
+                    .extern_ref => |v| .{ .extern_ref = v.? },
+                    else => unreachable,
+                };
+                refs[i][j] = val;
+            }
+        }
+        defer {
+            for (refs) |ref|
+                self.allocator.free(ref);
+            self.allocator.free(refs);
+        }
+
         // 10: pop init frame from stack
+        _ = self.stack.pop();
 
         // 11: alloc module
-        const mod_inst = try self.allocateModule(module, extern_vals);
+        const mod_inst = try types.ModuleInst.allocateModule(&self.store, module, extern_vals, vals, refs, self.allocator);
+        var node = ModInstList.Node{ .data = mod_inst.* };
+        self.modules.prepend(&node);
         //std.debug.print("\n---ModInst\n{}\n", .{std.json.fmt(mod_inst, .{})});
-        std.debug.print("\n---ModInst\n{any}\n", .{mod_inst});
 
         // 12, 13: push aux frame
         const aux_frame = types.ActivationFrame{
@@ -181,133 +217,6 @@ pub const Engine = struct {
         // 19: pop aux frame
         _ = self.stack.pop();
 
-        return mod_inst;
-    }
-
-    /// `allocmodule` in wasm spec
-    /// https://webassembly.github.io/spec/core/exec/modules.html#alloc-module
-    fn allocateModule(self: *Self, module: wa.Module, extern_vals: []const types.ExternalValue) (Error || error{OutOfMemory})!*types.ModuleInst {
-        // 1: resolve imports
-        var num_import_funcs: u32 = 0;
-        var num_import_tables: u32 = 0;
-        var num_import_mems: u32 = 0;
-        var num_import_globals: u32 = 0;
-        for (extern_vals) |imp|
-            switch (imp) {
-                .function => num_import_funcs += 1,
-                .table => num_import_tables += 1,
-                .memory => num_import_mems += 1,
-                .global => num_import_globals += 1,
-            };
-
-        // 20: module instance
-        var mod_inst = try self.allocator.create(types.ModuleInst);
-        mod_inst.types = module.types;
-        mod_inst.func_addrs = try self.allocator.alloc(types.FuncAddr, num_import_funcs + module.funcs.len);
-        mod_inst.table_addrs = try self.allocator.alloc(types.TableAddr, num_import_tables + module.tables.len);
-        mod_inst.mem_addrs = try self.allocator.alloc(types.MemAddr, num_import_mems + module.memories.len);
-        mod_inst.global_addrs = try self.allocator.alloc(types.GlobalAddr, num_import_globals + module.globals.len);
-        mod_inst.elem_addrs = try self.allocator.alloc(types.ElemAddr, module.elements.len);
-        mod_inst.data_addrs = try self.allocator.alloc(types.DataAddr, module.datas.len);
-        mod_inst.exports = try self.allocator.alloc(types.ExportInst, module.exports.len);
-
-        var node = ModInstList.Node{ .data = mod_inst.* };
-        self.modules.prepend(&node);
-
-        // 14, 15, 16, 17: imports
-        var num_funcs: u32 = 0;
-        var num_tables: u32 = 0;
-        var num_mems: u32 = 0;
-        var num_globals: u32 = 0;
-        for (extern_vals) |imp|
-            switch (imp) {
-                .function => |idx| {
-                    mod_inst.func_addrs[num_funcs] = idx;
-                    num_funcs += 1;
-                },
-                .table => |idx| {
-                    mod_inst.table_addrs[num_tables] = idx;
-                    num_tables += 1;
-                },
-                .memory => |idx| {
-                    mod_inst.mem_addrs[num_mems] = idx;
-                    num_mems += 1;
-                },
-                .global => |idx| {
-                    mod_inst.global_addrs[num_globals] = idx;
-                    num_globals += 1;
-                },
-            };
-
-        // 2, 8, 14: function
-        for (module.funcs, num_import_funcs..) |func, i| {
-            mod_inst.func_addrs[i] = try allocFunc(&self.store, func, mod_inst);
-        }
-
-        // 3, 9, 15: table
-        for (module.tables, num_import_tables..) |table, i| {
-            mod_inst.table_addrs[i] = try allocTable(&self.store, table, self.allocator);
-        }
-
-        // 4, 10, 16: memory
-        for (module.memories, num_import_mems..) |mem, i| {
-            mod_inst.mem_addrs[i] = try allocMemory(&self.store, mem, self.allocator);
-        }
-
-        // push the auxiliary frame (Step 6 and 7 in Instantiation)
-        const aux_frame = types.ActivationFrame{
-            .module = mod_inst,
-        };
-        try self.stack.push(.{ .frame = aux_frame });
-
-        // 5, 11, 17: global
-        for (module.globals, num_import_globals..) |global, i| {
-            try self.execOneInstruction(instractionFromInitExpr(global.init));
-            const value = self.stack.pop().value;
-            mod_inst.global_addrs[i] = try allocGlobal(&self.store, global, value);
-        }
-
-        // 6, 12: element segment
-        for (module.elements, 0..) |element, i| {
-            var refs = try self.allocator.alloc(types.RefValue, element.init.len);
-            for (element.init, 0..) |e, j| {
-                try self.execOneInstruction(instractionFromInitExpr(e));
-                const value = self.stack.pop().value;
-
-                const val: types.RefValue = switch (value) {
-                    .func_ref => |v| .{ .func_ref = v.? },
-                    .extern_ref => |v| .{ .extern_ref = v.? },
-                    else => unreachable,
-                };
-                refs[j] = val;
-            }
-            mod_inst.elem_addrs[i] = try allocElement(&self.store, element, refs);
-        }
-
-        // pop the auxiliary frame (Step 10 in Instantiation)
-        _ = self.stack.pop();
-
-        // 7, 13: data segment
-        for (module.datas, 0..) |data, i| {
-            mod_inst.data_addrs[i] = try allocData(&self.store, data);
-        }
-
-        // 18, 19: export
-        for (module.exports, 0..) |exp, i| {
-            const ext_value: types.ExternalValue = switch (exp.desc) {
-                .func => |idx| .{ .function = mod_inst.func_addrs[idx] },
-                .table => |idx| .{ .table = mod_inst.table_addrs[idx] },
-                .memory => |idx| .{ .memory = mod_inst.mem_addrs[idx] },
-                .global => |idx| .{ .global = mod_inst.global_addrs[idx] },
-            };
-            const exp_inst = types.ExportInst{
-                .name = exp.name,
-                .value = ext_value,
-            };
-            mod_inst.exports[i] = exp_inst;
-        }
-
-        // 21: return
         return mod_inst;
     }
 
@@ -1183,75 +1092,6 @@ pub const Engine = struct {
         //     };
         // }
         return &.{};
-    }
-
-    /// `allocfunc` in wasm spec
-    /// https://webassembly.github.io/spec/core/exec/modules.html#functions
-    fn allocFunc(store: *types.Store, func: wa.Func, mod_inst: *types.ModuleInst) error{OutOfMemory}!types.FuncAddr {
-        const inst = types.FuncInst{
-            .type = mod_inst.types[func.type],
-            .module = mod_inst,
-            .code = func,
-        };
-        return try appendElement(types.FuncInst, &store.funcs, inst);
-    }
-
-    /// `alloctable` in wasm spec
-    /// https://webassembly.github.io/spec/core/exec/modules.html#tables
-    fn allocTable(store: *types.Store, table: wa.TableType, allocator: std.mem.Allocator) error{OutOfMemory}!types.TableAddr {
-        var elem = try allocator.alloc(?types.RefValue, table.limit.min);
-        @memset(elem, null);
-        const inst = types.TableInst{
-            .type = table,
-            .elem = elem,
-        };
-        return try appendElement(types.TableInst, &store.tables, inst);
-    }
-
-    /// `allocmemory` in wasm spec
-    /// https://webassembly.github.io/spec/core/exec/modules.html#memories
-    fn allocMemory(store: *types.Store, mem: wa.MemoryType, allocator: std.mem.Allocator) error{OutOfMemory}!types.MemAddr {
-        const inst = types.MemInst{
-            .type = mem,
-            .data = try allocator.alloc(u8, mem.limits.min * 65_536),
-        };
-        @memset(inst.data, 0);
-        return try appendElement(types.MemInst, &store.mems, inst);
-    }
-
-    /// `allocglobal` in wasm spec
-    /// https://webassembly.github.io/spec/core/exec/modules.html#globals
-    fn allocGlobal(store: *types.Store, global: wa.Global, value: types.Value) error{OutOfMemory}!types.MemAddr {
-        const inst = types.GlobalInst{
-            .type = global.type,
-            .value = value,
-        };
-        return try appendElement(types.GlobalInst, &store.globals, inst);
-    }
-
-    /// `allocelem` in wasm spec
-    /// https://webassembly.github.io/spec/core/exec/modules.html#element-segments
-    fn allocElement(store: *types.Store, elememt: wa.Element, refs: []types.RefValue) error{OutOfMemory}!types.ElemAddr {
-        const inst = types.ElemInst{
-            .type = elememt.type,
-            .elem = refs,
-        };
-        return try appendElement(types.ElemInst, &store.elems, inst);
-    }
-
-    /// `allocdata` in wasm spec
-    /// https://webassembly.github.io/spec/core/exec/modules.html#alloc-data
-    fn allocData(store: *types.Store, data: wa.Data) error{OutOfMemory}!types.DataAddr {
-        const inst = types.DataInst{
-            .data = data.init,
-        };
-        return try appendElement(types.DataInst, &store.datas, inst);
-    }
-
-    fn appendElement(comptime T: type, array: *std.ArrayList(T), elem: T) error{OutOfMemory}!u32 {
-        const addr: u32 = @intCast(array.items.len);
-        try array.append(elem);
-        return addr;
     }
 
     /// `expand_F` in wasm spec
