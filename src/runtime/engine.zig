@@ -8,32 +8,28 @@ pub const Error = @import("./errors.zig").Error;
 pub const Engine = struct {
     const Self = @This();
     const assert = std.debug.assert;
+    const ModInstList = std.SinglyLinkedList(types.ModuleInst);
 
     allocator: std.mem.Allocator,
-    modules: std.ArrayList(types.ModuleInst),
+    modules: ModInstList,
     store: types.Store,
     stack: types.Stack,
 
     pub fn new(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .modules = std.ArrayList(types.ModuleInst).init(allocator),
+            .modules = .{},
             .store = types.Store.new(allocator),
             .stack = types.Stack.new(allocator),
         };
     }
 
-    pub fn load(self: *Self, module: wa.Module) (Error || error{OutOfMemory})!void {
-        try self.instantiate(module);
-        return;
+    pub fn load(self: *Self, module: wa.Module) (Error || error{OutOfMemory})!*types.ModuleInst {
+        const extern_vals = try resolveImports(self.store, module, self.allocator);
+        return try self.instantiate(module, extern_vals);
     }
 
-    pub fn invokeFunctionByName(self: *Self, func_name: []const u8, args: []const types.Value) (Error || error{OutOfMemory})![]const types.Value {
-        const func = try self.getFunctionByName(func_name);
-        const func_addr = func.value.func;
-        const func_inst = self.store.funcs.items[func_addr];
-        _ = func_inst;
-
+    pub fn invokeFunctionByAddr(self: *Self, func_addr: types.FuncAddr, args: []const types.Value) (Error || error{OutOfMemory})![]const types.Value {
         // TODO: args check
 
         // TODO: push args
@@ -45,21 +41,6 @@ pub const Engine = struct {
 
         // TODO: handle return
         return ret;
-    }
-
-    /// Returns function name by searching from the latest instaitiated modules.
-    fn getFunctionByName(self: *Self, func_name: []const u8) error{ExportItemNotFound}!types.ExportInst {
-        const len = self.modules.items.len;
-        var i = len;
-        while (i > 0) : (i -= 1) {
-            const mod = self.modules.items[i - 1];
-            for (mod.exports) |exp| {
-                if (std.mem.eql(u8, exp.name, func_name)) {
-                    return exp;
-                }
-            }
-        }
-        return Error.ExportItemNotFound;
     }
 
     /// `invoke a` in wasm spec
@@ -133,7 +114,7 @@ pub const Engine = struct {
 
     /// `instantiate` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/modules.html#instantiation
-    fn instantiate(self: *Self, module: wa.Module) (Error || error{OutOfMemory})!void {
+    fn instantiate(self: *Self, module: wa.Module, extern_vals: []const types.ExternalValue) (Error || error{OutOfMemory})!*types.ModuleInst {
         // 1: validate
         // 2: assert
         // 3: check length
@@ -147,8 +128,9 @@ pub const Engine = struct {
         // 10: pop init frame from stack
 
         // 11: alloc module
-        const mod_inst = try self.allocateModule(module);
+        const mod_inst = try self.allocateModule(module, extern_vals);
         //std.debug.print("\n---ModInst\n{}\n", .{std.json.fmt(mod_inst, .{})});
+        std.debug.print("\n---ModInst\n{any}\n", .{mod_inst});
 
         // 12, 13: push aux frame
         const aux_frame = types.ActivationFrame{
@@ -198,53 +180,88 @@ pub const Engine = struct {
 
         // 19: pop aux frame
         _ = self.stack.pop();
+
+        return mod_inst;
     }
 
     /// `allocmodule` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/modules.html#alloc-module
-    fn allocateModule(self: *Self, module: wa.Module) (Error || error{OutOfMemory})!*types.ModuleInst {
-        // 1: resolve extern
-        const extern_values = resolveImports(self.store, module);
-        _ = extern_values;
+    fn allocateModule(self: *Self, module: wa.Module, extern_vals: []const types.ExternalValue) (Error || error{OutOfMemory})!*types.ModuleInst {
+        // 1: resolve imports
+        var num_import_funcs: u32 = 0;
+        var num_import_tables: u32 = 0;
+        var num_import_mems: u32 = 0;
+        var num_import_globals: u32 = 0;
+        for (extern_vals) |imp|
+            switch (imp) {
+                .function => num_import_funcs += 1,
+                .table => num_import_tables += 1,
+                .memory => num_import_mems += 1,
+                .global => num_import_globals += 1,
+            };
 
         // 20: module instance
-        var mod_inst = types.ModuleInst{
-            .types = module.types,
-            .func_addrs = try self.allocator.alloc(types.FuncAddr, module.funcs.len),
-            .table_addrs = try self.allocator.alloc(types.TableAddr, module.tables.len), // TODO
-            .mem_addrs = try self.allocator.alloc(types.MemAddr, module.memories.len),
-            .global_addrs = try self.allocator.alloc(types.GlobalAddr, module.globals.len), // TODO
-            .elem_addrs = try self.allocator.alloc(types.ElemAddr, module.elements.len),
-            .data_addrs = try self.allocator.alloc(types.DataAddr, module.datas.len),
-            .exports = try self.allocator.alloc(types.ExportInst, module.exports.len),
-        };
+        var mod_inst = try self.allocator.create(types.ModuleInst);
+        mod_inst.types = module.types;
+        mod_inst.func_addrs = try self.allocator.alloc(types.FuncAddr, num_import_funcs + module.funcs.len);
+        mod_inst.table_addrs = try self.allocator.alloc(types.TableAddr, num_import_tables + module.tables.len);
+        mod_inst.mem_addrs = try self.allocator.alloc(types.MemAddr, num_import_mems + module.memories.len);
+        mod_inst.global_addrs = try self.allocator.alloc(types.GlobalAddr, num_import_globals + module.globals.len);
+        mod_inst.elem_addrs = try self.allocator.alloc(types.ElemAddr, module.elements.len);
+        mod_inst.data_addrs = try self.allocator.alloc(types.DataAddr, module.datas.len);
+        mod_inst.exports = try self.allocator.alloc(types.ExportInst, module.exports.len);
 
-        try self.modules.append(mod_inst);
-        const mod_inst_p = &self.modules.items[self.modules.items.len - 1];
+        var node = ModInstList.Node{ .data = mod_inst.* };
+        self.modules.prepend(&node);
+
+        // 14, 15, 16, 17: imports
+        var num_funcs: u32 = 0;
+        var num_tables: u32 = 0;
+        var num_mems: u32 = 0;
+        var num_globals: u32 = 0;
+        for (extern_vals) |imp|
+            switch (imp) {
+                .function => |idx| {
+                    mod_inst.func_addrs[num_funcs] = idx;
+                    num_funcs += 1;
+                },
+                .table => |idx| {
+                    mod_inst.table_addrs[num_tables] = idx;
+                    num_tables += 1;
+                },
+                .memory => |idx| {
+                    mod_inst.mem_addrs[num_mems] = idx;
+                    num_mems += 1;
+                },
+                .global => |idx| {
+                    mod_inst.global_addrs[num_globals] = idx;
+                    num_globals += 1;
+                },
+            };
 
         // 2, 8, 14: function
-        for (module.funcs, 0..) |func, i| {
-            mod_inst.func_addrs[i] = try allocFunc(&self.store, func, mod_inst_p);
+        for (module.funcs, num_import_funcs..) |func, i| {
+            mod_inst.func_addrs[i] = try allocFunc(&self.store, func, mod_inst);
         }
 
         // 3, 9, 15: table
-        for (module.tables, 0..) |table, i| {
+        for (module.tables, num_import_tables..) |table, i| {
             mod_inst.table_addrs[i] = try allocTable(&self.store, table, self.allocator);
         }
 
         // 4, 10, 16: memory
-        for (module.memories, 0..) |mem, i| {
+        for (module.memories, num_import_mems..) |mem, i| {
             mod_inst.mem_addrs[i] = try allocMemory(&self.store, mem, self.allocator);
         }
 
         // push the auxiliary frame (Step 6 and 7 in Instantiation)
         const aux_frame = types.ActivationFrame{
-            .module = mod_inst_p,
+            .module = mod_inst,
         };
         try self.stack.push(.{ .frame = aux_frame });
 
         // 5, 11, 17: global
-        for (module.globals, 0..) |global, i| {
+        for (module.globals, num_import_globals..) |global, i| {
             try self.execOneInstruction(instractionFromInitExpr(global.init));
             const value = self.stack.pop().value;
             mod_inst.global_addrs[i] = try allocGlobal(&self.store, global, value);
@@ -278,7 +295,7 @@ pub const Engine = struct {
         // 18, 19: export
         for (module.exports, 0..) |exp, i| {
             const ext_value: types.ExternalValue = switch (exp.desc) {
-                .func => |idx| .{ .func = mod_inst.func_addrs[idx] },
+                .func => |idx| .{ .function = mod_inst.func_addrs[idx] },
                 .table => |idx| .{ .table = mod_inst.table_addrs[idx] },
                 .memory => |idx| .{ .memory = mod_inst.mem_addrs[idx] },
                 .global => |idx| .{ .global = mod_inst.global_addrs[idx] },
@@ -291,7 +308,7 @@ pub const Engine = struct {
         }
 
         // 21: return
-        return mod_inst_p;
+        return mod_inst;
     }
 
     fn printStack(self: *Self) void {
@@ -1151,9 +1168,20 @@ pub const Engine = struct {
         return lhs + rhs;
     }
 
-    fn resolveImports(store: types.Store, module: wa.Module) []const types.ExternalValue {
+    fn resolveImports(store: types.Store, module: wa.Module, allocator: std.mem.Allocator) error{OutOfMemory}![]const types.ExternalValue {
+        _ = allocator;
         _ = module;
         _ = store;
+        // var external_imports = try allocator.alloc(types.ExternalValue, module.imports.len);
+
+        // for (module.imports, 0..) |imp, i| {
+        //     external_imports[i] = switch (imp.desc) {
+        //         .func => |idx| .{ .function = idx },
+        //         .table => |idx| .{ .table = idx },
+        //         .memory => |idx| .{ .memory = idx },
+        //         .global => |idx| .{ .global = idx },
+        //     };
+        // }
         return &.{};
     }
 

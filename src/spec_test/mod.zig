@@ -56,11 +56,13 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
 
     var engine = runtime.Engine.new(allocator);
     var loader = decode.Loader.new(allocator);
+    var current_module: runtime.ModuleInst = undefined;
 
     for (commands) |cmd| {
         std.debug.print("---------------------------------------------------------------\n", .{});
         std.debug.print("{any}\n", .{cmd});
         //std.debug.print("{}\n", .{std.json.fmt(cmd, .{})});
+
         switch (cmd) {
             .module => |arg| {
                 const file = try std.fs.cwd().openFile(arg.file_name, .{ .mode = .read_only });
@@ -68,7 +70,7 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
                 const data = try file.readToEndAlloc(allocator, 10_000_000);
                 const module = try loader.parseAll(data);
                 defer module.deinit();
-                try engine.load(module);
+                current_module = (try engine.load(module)).*;
             },
             .assert_return => |arg| {
                 switch (arg.action) {
@@ -77,7 +79,8 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
                         for (iarg.args, 0..) |a, i| {
                             func_args[i] = a;
                         }
-                        const ret = try engine.invokeFunctionByName(iarg.field, func_args);
+                        const func_addr = try getFunctionByName(current_module, iarg.field);
+                        const ret = try engine.invokeFunctionByAddr(func_addr.value.function, func_args);
                         defer allocator.free(ret);
                         if (ret.len != arg.expected.len) {
                             @panic("Test failed (length not match).");
@@ -106,7 +109,8 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
                         for (iarg.args, 0..) |a, i| {
                             func_args[i] = a;
                         }
-                        _ = engine.invokeFunctionByName(iarg.field, func_args) catch |err| {
+                        const func_addr = try getFunctionByName(current_module, iarg.field);
+                        _ = engine.invokeFunctionByAddr(func_addr.value.function, func_args) catch |err| {
                             const match_error = err == arg.trap;
                             if (match_error) {
                                 std.debug.print("test pass (expected failure: {any})\n", .{arg.trap});
@@ -151,4 +155,15 @@ fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
         },
         else => unreachable,
     }
+}
+
+/// Returns function name by searching from the latest instaitiated modules.
+fn getFunctionByName(module: runtime.ModuleInst, func_name: []const u8) error{ExportItemNotFound}!runtime.ExportInst {
+    for (module.exports) |exp| {
+        if (std.mem.eql(u8, exp.name, func_name)) {
+            return exp;
+        }
+    }
+
+    return runtime.Error.ExportItemNotFound;
 }

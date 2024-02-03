@@ -338,8 +338,8 @@ pub const RefValue = union(enum) {
     extern_ref: ExternAddr,
 };
 
-pub const ExternalValue = union(enum) {
-    func: FuncAddr,
+pub const ExternalValue = union(std.wasm.ExternalKind) {
+    function: FuncAddr,
     table: TableAddr,
     memory: MemAddr,
     global: GlobalAddr,
