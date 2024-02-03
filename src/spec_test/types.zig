@@ -38,6 +38,7 @@ pub const Result = union(enum) {
 pub const ModuleCommandArg = struct {
     line: u32,
     file_name: []const u8,
+    name: ?[]const u8,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         _ = try writer.print("{s} (line:{})", .{ self.file_name, self.line });
@@ -59,6 +60,7 @@ pub const AssertTrapCommandArg = struct {
 pub const InvokeCommandArg = struct {
     field: []const u8,
     args: []const runtime.Value,
+    module: ?[]const u8,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         _ = try writer.print("{s} {any}", .{ self.field, self.args });

@@ -28,7 +28,8 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
     const line: u32 = @intCast(json.object.get("line").?.integer);
     if (strcmp(cmd_type, "module")) {
         const file_name = json.object.get("filename").?.string;
-        return Command{ .module = .{ .line = line, .file_name = file_name } };
+        const name = getStringOrNull(json.object, "name");
+        return Command{ .module = .{ .line = line, .file_name = file_name, .name = name } };
     } else if (strcmp(cmd_type, "module_quote")) {
         return Command.module_quote;
     } else if (strcmp(cmd_type, "register")) {
@@ -141,9 +142,10 @@ fn resultFromJson(json: std.json.Value) !Result {
 fn actionFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Action {
     const cmd_type: []const u8 = json.object.get("type").?.string;
     if (strcmp(cmd_type, "invoke")) {
+        const module = getStringOrNull(json.object, "module");
         const field = json.object.get("field").?.string;
         const args: []const Value = try argArrayFromJson(json.object.get("args").?, allocator);
-        return .{ .invoke = .{ .field = field, .args = args } };
+        return .{ .invoke = .{ .field = field, .args = args, .module = module } };
     } else if (strcmp(cmd_type, "get")) {
         return Action.get;
     } else {
@@ -170,4 +172,8 @@ fn errorFromString(str: []const u8) types.Error {
 
 fn strcmp(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
+}
+
+fn getStringOrNull(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
+    return if (obj.get(key)) |v| v.string else null;
 }

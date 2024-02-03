@@ -56,7 +56,9 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
 
     var engine = runtime.Engine.new(allocator);
     var loader = decode.Loader.new(allocator);
-    var current_module: runtime.ModuleInst = undefined;
+
+    var module_insts = std.StringHashMap(*runtime.ModuleInst).init(allocator);
+    var current_module: *runtime.ModuleInst = undefined;
 
     for (commands) |cmd| {
         std.debug.print("---------------------------------------------------------------\n", .{});
@@ -70,11 +72,19 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
                 const data = try file.readToEndAlloc(allocator, 10_000_000);
                 const module = try loader.parseAll(data);
                 defer module.deinit();
-                current_module = (try engine.load(module)).*;
+
+                current_module = (try engine.load(module));
+                if (arg.name) |name| {
+                    try module_insts.put(name, current_module);
+                }
             },
             .assert_return => |arg| {
                 switch (arg.action) {
                     .invoke => |iarg| {
+                        if (iarg.module) |name| {
+                            current_module = module_insts.get(name).?;
+                        }
+
                         const func_args = try allocator.alloc(runtime.Value, iarg.args.len);
                         for (iarg.args, 0..) |a, i| {
                             func_args[i] = a;
@@ -158,12 +168,13 @@ fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
 }
 
 /// Returns function name by searching from the latest instaitiated modules.
-fn getFunctionByName(module: runtime.ModuleInst, func_name: []const u8) error{ExportItemNotFound}!runtime.ExportInst {
+fn getFunctionByName(module: *runtime.ModuleInst, func_name: []const u8) error{ExportItemNotFound}!runtime.ExportInst {
     for (module.exports) |exp| {
         if (std.mem.eql(u8, exp.name, func_name)) {
             return exp;
         }
     }
 
+    std.debug.print("ExportItemNotFound: {s}\n", .{func_name});
     return runtime.Error.ExportItemNotFound;
 }
