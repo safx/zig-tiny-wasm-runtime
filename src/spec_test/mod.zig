@@ -145,9 +145,10 @@ fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
                 },
             }
         },
-        .f32_nan_arithmetic => return std.math.isNan(result.asF32()), // FIXME: strict check
-        .f32_nan_canonical => return std.math.isNan(result.asF32()), // FIXME: strict check
-        else => unreachable,
+        .f32_nan_arithmetic => return isArithmeticNanF32(result.f32),
+        .f32_nan_canonical => return isCanonicalNanF32(result.f32),
+        .f64_nan_arithmetic => return isArithmeticNanF64(result.f64),
+        .f64_nan_canonical => return isCanonicalNanF64(result.f64),
     }
 }
 
@@ -169,4 +170,20 @@ fn getExtention(filename: []const u8) []const u8 {
         elem = p;
     }
     return elem;
+}
+
+fn isCanonicalNanF32(num: u32) bool {
+    return (num & 0x7fffffff) == 0x7fc00000;
+}
+
+fn isCanonicalNanF64(num: u64) bool {
+    return (num & 0x7fffffffffffffff) == 0x7ff8000000000000;
+}
+
+fn isArithmeticNanF32(num: u64) bool {
+    return (num & 0x00400000) == 0x00400000;
+}
+
+fn isArithmeticNanF64(num: u64) bool {
+    return (num & 0x0008000000000000) == 0x0008000000000000;
 }
