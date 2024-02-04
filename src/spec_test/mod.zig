@@ -27,15 +27,6 @@ pub fn doWasmSpecTest() !void {
     }
 }
 
-fn getExtention(filename: []const u8) []const u8 {
-    var parts = std.mem.split(u8, filename, ".");
-    var elem: []const u8 = "";
-    while (parts.next()) |p| {
-        elem = p;
-    }
-    return elem;
-}
-
 pub fn execSpecTestsFromFile(file_name: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
@@ -52,13 +43,10 @@ pub fn execSpecTestsFromFile(file_name: []const u8) !void {
 }
 
 fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) !void {
-    const decode = @import("wasm-decode");
-
     var engine = runtime.Engine.new(allocator);
-    var loader = decode.Loader.new(allocator);
 
     var module_insts = std.StringHashMap(*runtime.ModuleInst).init(allocator);
-    var current_module: *runtime.ModuleInst = undefined;
+    var current_module: *runtime.ModuleInst = try loadWasmFromPath("spectest.wasm", &engine, allocator);
 
     for (commands) |cmd| {
         std.debug.print("---------------------------------------------------------------\n", .{});
@@ -67,13 +55,7 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
 
         switch (cmd) {
             .module => |arg| {
-                const file = try std.fs.cwd().openFile(arg.file_name, .{ .mode = .read_only });
-                defer file.close();
-                const data = try file.readToEndAlloc(allocator, 10_000_000);
-                const module = try loader.parseAll(data);
-                defer module.deinit();
-
-                current_module = (try engine.load(module));
+                current_module = try loadWasmFromPath(arg.file_name, &engine, allocator);
                 if (arg.name) |name| {
                     try module_insts.put(name, current_module);
                 }
@@ -145,6 +127,18 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
     }
 }
 
+fn loadWasmFromPath(file_name: []const u8, engine: *runtime.Engine, allocator: std.mem.Allocator) !*runtime.ModuleInst {
+    const decode = @import("wasm-decode");
+    var loader = decode.Loader.new(allocator);
+
+    const file = try std.fs.cwd().openFile(file_name, .{ .mode = .read_only });
+    defer file.close();
+    const data = try file.readToEndAlloc(allocator, 10_000_000);
+    const module = try loader.parseAll(data);
+    defer module.deinit();
+    return try engine.load(module, getBasename(file_name));
+}
+
 fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
     switch (expected) {
         .@"const" => |exp_const| {
@@ -174,7 +168,27 @@ fn getFunctionByName(module: *runtime.ModuleInst, func_name: []const u8) error{E
             return exp;
         }
     }
-
     std.debug.print("ExportItemNotFound: {s}\n", .{func_name});
     return runtime.Error.ExportItemNotFound;
+}
+
+fn getExtention(filename: []const u8) []const u8 {
+    var parts = std.mem.split(u8, filename, ".");
+    var elem: []const u8 = "";
+    while (parts.next()) |p| {
+        elem = p;
+    }
+    return elem;
+}
+
+fn getBasename(filename: []const u8) []const u8 {
+    // FIXME: assume that filename doesn't include path separator
+    var parts = std.mem.split(u8, filename, ".");
+    var prev_elem: []const u8 = "";
+    var elem: []const u8 = "";
+    while (parts.next()) |p| {
+        prev_elem = elem;
+        elem = p;
+    }
+    return prev_elem;
 }

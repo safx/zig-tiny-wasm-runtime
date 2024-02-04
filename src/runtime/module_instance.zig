@@ -45,7 +45,8 @@ pub const ModuleInst = struct {
         var num_tables: u32 = 0;
         var num_mems: u32 = 0;
         var num_globals: u32 = 0;
-        for (extern_vals) |imp|
+        for (extern_vals) |imp| {
+            std.debug.print("==== {any}\n", .{imp});
             switch (imp) {
                 .function => |idx| {
                     mod_inst.func_addrs[num_funcs] = idx;
@@ -63,7 +64,8 @@ pub const ModuleInst = struct {
                     mod_inst.global_addrs[num_globals] = idx;
                     num_globals += 1;
                 },
-            };
+            }
+        }
 
         // 2, 8: function
         for (module.funcs, num_import_funcs..) |func, i| {
@@ -81,8 +83,8 @@ pub const ModuleInst = struct {
         }
 
         // 5, 11: global
-        for (module.globals, num_import_globals..) |global, i| {
-            mod_inst.global_addrs[i] = try allocGlobal(store, global, values[i]);
+        for (module.globals, 0..) |global, i| {
+            mod_inst.global_addrs[num_import_globals + i] = try allocGlobal(store, global, values[i]);
         }
 
         // 6, 12: element segment
@@ -114,13 +116,30 @@ pub const ModuleInst = struct {
         return mod_inst;
     }
 
-    pub fn auxiliaryInstance(store: *types.Store, module: wa.Module, allocator: std.mem.Allocator) error{OutOfMemory}!ModuleInst {
+    pub fn auxiliaryInstance(store: *types.Store, module: wa.Module, extern_vals: []const types.ExternalValue, allocator: std.mem.Allocator) error{OutOfMemory}!ModuleInst {
+        var num_import_globals: u32 = 0;
+        for (extern_vals) |imp|
+            switch (imp) {
+                .global => num_import_globals += 1,
+                else => {},
+            };
+
         var mod_inst = ModuleInst{
             .types = module.types,
             .func_addrs = try allocator.alloc(types.FuncAddr, module.funcs.len),
+            .global_addrs = try allocator.alloc(types.GlobalAddr, num_import_globals),
         };
 
-        // 2, 8: function
+        var num_globals: u32 = 0;
+        for (extern_vals) |imp|
+            switch (imp) {
+                .global => |idx| {
+                    mod_inst.global_addrs[num_globals] = idx;
+                    num_globals += 1;
+                },
+                else => {},
+            };
+
         for (module.funcs, 0..) |func, i| {
             mod_inst.func_addrs[i] = try allocFunc(store, func, &mod_inst);
         }
