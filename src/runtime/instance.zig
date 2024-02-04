@@ -145,7 +145,6 @@ pub const Instance = struct {
             try self.execOneInstruction(instractionFromInitExpr(global.init));
             vals[i] = self.stack.pop().value;
         }
-        defer self.allocator.free(vals);
 
         // 9: Get `ref*`
         var refs = try self.allocator.alloc([]types.RefValue, module.elements.len);
@@ -164,11 +163,14 @@ pub const Instance = struct {
                 refs[i][j] = val;
             }
         }
+
         defer {
+            self.allocator.free(vals);
             for (refs) |ref|
                 self.allocator.free(ref);
             self.allocator.free(refs);
         }
+        try self.store.funcs.resize(self.store.funcs.items.len - module.funcs.len); // purge funcs of aux_module
 
         // 10: pop init frame from stack
         _ = self.stack.pop();
@@ -232,6 +234,11 @@ pub const Instance = struct {
     }
 
     fn printStack(self: *Self) void {
+        for (self.store.globals.items, 0..) |g, i| {
+            std.debug.print("{}={any}, ", .{ i, g.value });
+        }
+        std.debug.print("\n", .{});
+
         for (self.stack.array.items) |i| {
             switch (i) {
                 .value => |v| std.debug.print("  V {}\n", .{v}),
@@ -337,9 +344,8 @@ pub const Instance = struct {
             .global_set => |global_idx| {
                 const module = self.stack.topFrame().module;
                 const a = module.global_addrs[global_idx];
-                var glob = self.store.globals.items[a];
                 const value = self.stack.pop().value;
-                glob.value = value;
+                self.store.globals.items[a].value = value;
             },
 
             // table instructions
