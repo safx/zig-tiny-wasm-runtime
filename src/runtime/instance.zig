@@ -826,274 +826,6 @@ pub const Instance = struct {
         try self.stack.pushValue(result);
     }
 
-    fn opIntClz(comptime T: type, value: T) Error!T {
-        return @clz(value);
-    }
-
-    fn opIntCtz(comptime T: type, value: T) Error!T {
-        return @ctz(value);
-    }
-
-    fn opIntPopcnt(comptime T: type, value: T) Error!T {
-        return @popCount(value);
-    }
-
-    fn opIntEqz(comptime T: type, value: T) Error!T {
-        return if (value == 0) 1 else 0;
-    }
-
-    fn opExtend8(comptime T: type, value: T) Error!T {
-        const result: i8 = @truncate(value);
-        return result;
-    }
-
-    fn opExtend16(comptime T: type, value: T) Error!T {
-        const result: i16 = @truncate(value);
-        return result;
-    }
-
-    fn opExtend32(comptime T: type, value: T) Error!T {
-        const result: i32 = @truncate(value);
-        return result;
-    }
-
-    fn opIntEq(comptime T: type, lhs: T, rhs: T) Error!T {
-        return if (lhs == rhs) 1 else 0;
-    }
-
-    fn opIntNe(comptime T: type, lhs: T, rhs: T) Error!T {
-        return if (lhs != rhs) 1 else 0;
-    }
-
-    fn opIntLtS(comptime T: type, lhs: T, rhs: T) Error!T {
-        return if (lhs < rhs) 1 else 0;
-    }
-
-    fn opIntLtU(comptime T: type, lhs: T, rhs: T) Error!T {
-        if (T == i32) {
-            const l: u32 = @bitCast(lhs);
-            const r: u32 = @bitCast(rhs);
-            return if (l < r) 1 else 0;
-        } else {
-            const l: u64 = @bitCast(lhs);
-            const r: u64 = @bitCast(rhs);
-            return if (l < r) 1 else 0;
-        }
-    }
-
-    fn opIntGtS(comptime T: type, lhs: T, rhs: T) Error!T {
-        return if (lhs > rhs) 1 else 0;
-    }
-
-    fn opIntGtU(comptime T: type, lhs: T, rhs: T) Error!T {
-        if (T == i32) {
-            const l: u32 = @bitCast(lhs);
-            const r: u32 = @bitCast(rhs);
-            return if (l > r) 1 else 0;
-        } else {
-            const l: u64 = @bitCast(lhs);
-            const r: u64 = @bitCast(rhs);
-            return if (l > r) 1 else 0;
-        }
-    }
-
-    fn opIntLeS(comptime T: type, lhs: T, rhs: T) Error!T {
-        return if (lhs <= rhs) 1 else 0;
-    }
-
-    fn opIntLeU(comptime T: type, lhs: T, rhs: T) Error!T {
-        if (T == i32) {
-            const l: u32 = @bitCast(lhs);
-            const r: u32 = @bitCast(rhs);
-            return if (l <= r) 1 else 0;
-        } else {
-            const l: u64 = @bitCast(lhs);
-            const r: u64 = @bitCast(rhs);
-            return if (l <= r) 1 else 0;
-        }
-    }
-
-    fn opIntGeS(comptime T: type, lhs: T, rhs: T) Error!T {
-        return if (lhs >= rhs) 1 else 0;
-    }
-
-    fn opIntGeU(comptime T: type, lhs: T, rhs: T) Error!T {
-        if (T == i32) {
-            const l: u32 = @bitCast(lhs);
-            const r: u32 = @bitCast(rhs);
-            return if (l >= r) 1 else 0;
-        } else {
-            const l: u64 = @bitCast(lhs);
-            const r: u64 = @bitCast(rhs);
-            return if (l >= r) 1 else 0;
-        }
-    }
-
-    fn opIntAdd(comptime T: type, lhs: T, rhs: T) Error!T {
-        return lhs +% rhs;
-    }
-    fn opIntSub(comptime T: type, lhs: T, rhs: T) Error!T {
-        return lhs -% rhs;
-    }
-    fn opIntMul(comptime T: type, lhs: T, rhs: T) Error!T {
-        return lhs *% rhs;
-    }
-    fn opIntDivS(comptime T: type, lhs: T, rhs: T) Error!T {
-        if (T == i32 and lhs == -2147483648 and rhs == -1) return Error.IntegerOverflow;
-        if (T == i64 and lhs == -9223372036854775808 and rhs == -1) return Error.IntegerOverflow;
-        if (rhs == 0) return Error.IntegerDivideByZero;
-        return @divTrunc(lhs, rhs);
-    }
-    fn opIntDivU(comptime T: type, lhs: T, rhs: T) Error!T {
-        if (rhs == 0) return Error.IntegerDivideByZero;
-        if (T == i32) {
-            if (lhs == -2147483648 and rhs == -1) return 0;
-            const l: u32 = @bitCast(lhs);
-            const r: u32 = @bitCast(rhs);
-            const res = @divTrunc(l, r);
-            return @bitCast(res);
-        } else {
-            if (lhs == -9223372036854775808 and rhs == -1) return 0;
-            const l: u64 = @bitCast(lhs);
-            const r: u64 = @bitCast(rhs);
-            const res = @divTrunc(l, r);
-            return @bitCast(res);
-        }
-    }
-    fn opIntRemS(comptime T: type, lhs: T, rhs: T) Error!T {
-        if (rhs == 0) return Error.IntegerDivideByZero;
-        if (T == i32) {
-            if (lhs == -2147483648 and rhs == -1) return 0;
-            if (lhs >= 0 and rhs > 0) {
-                return @mod(lhs, rhs);
-            } else {
-                // note: @mod of negative number returns unintended result.
-                //  -  @mod(-2147483647,  1000) == 353 (not -647)
-                //  -  @mod(-2147483647, -1000) -> panic
-                const num: i33 = @intCast(lhs);
-                const den: i33 = @intCast(rhs);
-                const res_tmp = @mod(if (num > 0) num else -num, if (den > 0) den else -den);
-                const res: i32 = @intCast(if (lhs > 0) res_tmp else -res_tmp);
-                return res;
-            }
-        } else {
-            if (lhs == -9223372036854775808 and rhs == -1) return 0;
-            if (lhs >= 0 and rhs > 0) {
-                return @mod(lhs, rhs);
-            } else {
-                // note: @mod of negative number returns unintended result.
-                //  -  @mod(-2147483647,  1000) == 353 (not -647)
-                //  -  @mod(-2147483647, -1000) -> panic
-                const num: i65 = @intCast(lhs);
-                const den: i65 = @intCast(rhs);
-                const res_tmp = @mod(if (num > 0) num else -num, if (den > 0) den else -den);
-                const res: i64 = @intCast(if (lhs > 0) res_tmp else -res_tmp);
-                return res;
-            }
-        }
-    }
-
-    fn opIntRemU(comptime T: type, lhs: T, rhs: T) Error!T {
-        if (rhs == 0) return Error.IntegerDivideByZero;
-        if (T == i32) {
-            const num: u32 = @bitCast(lhs);
-            const den: u32 = @bitCast(rhs);
-            const res = @mod(num, den);
-            return @bitCast(res);
-        } else {
-            const num: u64 = @bitCast(lhs);
-            const den: u64 = @bitCast(rhs);
-            const res = @mod(num, den);
-            return @bitCast(res);
-        }
-    }
-
-    fn opIntAnd(comptime T: type, lhs: T, rhs: T) Error!T {
-        return lhs & rhs;
-    }
-
-    fn opIntOr(comptime T: type, lhs: T, rhs: T) Error!T {
-        return lhs | rhs;
-    }
-
-    fn opIntXor(comptime T: type, lhs: T, rhs: T) Error!T {
-        return lhs ^ rhs;
-    }
-
-    fn opIntShl(comptime T: type, lhs: T, rhs: T) Error!T {
-        return lhs << @intCast(@mod(rhs, @bitSizeOf(T)));
-    }
-
-    fn opIntShrS(comptime T: type, lhs: T, rhs: T) Error!T {
-        return lhs >> @intCast(@mod(rhs, @bitSizeOf(T)));
-    }
-
-    fn opIntShrU(comptime T: type, lhs: T, rhs: T) Error!T {
-        if (T == i32) {
-            const l: u32 = @bitCast(lhs);
-            const r: u32 = @bitCast(rhs);
-            const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
-            return @bitCast(res);
-        } else {
-            const l: u64 = @bitCast(lhs);
-            const r: u64 = @bitCast(rhs);
-            const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
-            return @bitCast(res);
-        }
-    }
-
-    fn opIntRotl(comptime T: type, lhs: T, rhs: T) Error!T {
-        if (T == i32) {
-            var num: u32 = @bitCast(lhs);
-            const b = @bitSizeOf(T);
-            const r = @mod(rhs, b);
-            const r1: u5 = @intCast(r);
-            const r2: u5 = @intCast(@mod(b - r, b));
-            const res = (num << r1) | (num >> r2);
-            const res2: i32 = @bitCast(res);
-            return res2;
-        } else {
-            var num: u64 = @bitCast(lhs);
-            const b = @bitSizeOf(T);
-            const r = @mod(rhs, b);
-            const r1: u6 = @intCast(r);
-            const r2: u6 = @intCast(@mod(b - r, b));
-            const res = (num << r1) | (num >> r2);
-            const res2: i64 = @bitCast(res);
-            return res2;
-        }
-    }
-
-    fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
-        if (T == i32) {
-            var num: u32 = @bitCast(lhs);
-            const b = @bitSizeOf(T);
-            const r = @mod(rhs, b);
-            const r1: u5 = @intCast(r);
-            const r2: u5 = @intCast(@mod(b - r, b));
-            const res = (num >> r1) | (num << r2);
-            const res2: i32 = @bitCast(res);
-            return res2;
-        } else {
-            var num: u64 = @bitCast(lhs);
-            const b = @bitSizeOf(T);
-            const r = @mod(rhs, b);
-            const r1: u6 = @intCast(r);
-            const r2: u6 = @intCast(@mod(b - r, b));
-            const res = (num >> r1) | (num << r2);
-            const res2: i64 = @bitCast(res);
-            return res2;
-        }
-    }
-
-    fn opFloatNeg(comptime T: type, value: T) Error!T {
-        return -value;
-    }
-
-    fn opFloatAdd(comptime T: type, lhs: T, rhs: T) Error!T {
-        return lhs + rhs;
-    }
-
     /// `expand_F` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/runtime.html#exec-expand
     inline fn expandToFuncType(module: *types.ModuleInst, block_type: Instruction.BlockType) wa.FuncType {
@@ -1154,3 +886,271 @@ const FlowControl = union(enum) {
         }
     }
 };
+
+fn opIntClz(comptime T: type, value: T) Error!T {
+    return @clz(value);
+}
+
+fn opIntCtz(comptime T: type, value: T) Error!T {
+    return @ctz(value);
+}
+
+fn opIntPopcnt(comptime T: type, value: T) Error!T {
+    return @popCount(value);
+}
+
+fn opIntEqz(comptime T: type, value: T) Error!T {
+    return if (value == 0) 1 else 0;
+}
+
+fn opExtend8(comptime T: type, value: T) Error!T {
+    const result: i8 = @truncate(value);
+    return result;
+}
+
+fn opExtend16(comptime T: type, value: T) Error!T {
+    const result: i16 = @truncate(value);
+    return result;
+}
+
+fn opExtend32(comptime T: type, value: T) Error!T {
+    const result: i32 = @truncate(value);
+    return result;
+}
+
+fn opIntEq(comptime T: type, lhs: T, rhs: T) Error!T {
+    return if (lhs == rhs) 1 else 0;
+}
+
+fn opIntNe(comptime T: type, lhs: T, rhs: T) Error!T {
+    return if (lhs != rhs) 1 else 0;
+}
+
+fn opIntLtS(comptime T: type, lhs: T, rhs: T) Error!T {
+    return if (lhs < rhs) 1 else 0;
+}
+
+fn opIntLtU(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (T == i32) {
+        const l: u32 = @bitCast(lhs);
+        const r: u32 = @bitCast(rhs);
+        return if (l < r) 1 else 0;
+    } else {
+        const l: u64 = @bitCast(lhs);
+        const r: u64 = @bitCast(rhs);
+        return if (l < r) 1 else 0;
+    }
+}
+
+fn opIntGtS(comptime T: type, lhs: T, rhs: T) Error!T {
+    return if (lhs > rhs) 1 else 0;
+}
+
+fn opIntGtU(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (T == i32) {
+        const l: u32 = @bitCast(lhs);
+        const r: u32 = @bitCast(rhs);
+        return if (l > r) 1 else 0;
+    } else {
+        const l: u64 = @bitCast(lhs);
+        const r: u64 = @bitCast(rhs);
+        return if (l > r) 1 else 0;
+    }
+}
+
+fn opIntLeS(comptime T: type, lhs: T, rhs: T) Error!T {
+    return if (lhs <= rhs) 1 else 0;
+}
+
+fn opIntLeU(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (T == i32) {
+        const l: u32 = @bitCast(lhs);
+        const r: u32 = @bitCast(rhs);
+        return if (l <= r) 1 else 0;
+    } else {
+        const l: u64 = @bitCast(lhs);
+        const r: u64 = @bitCast(rhs);
+        return if (l <= r) 1 else 0;
+    }
+}
+
+fn opIntGeS(comptime T: type, lhs: T, rhs: T) Error!T {
+    return if (lhs >= rhs) 1 else 0;
+}
+
+fn opIntGeU(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (T == i32) {
+        const l: u32 = @bitCast(lhs);
+        const r: u32 = @bitCast(rhs);
+        return if (l >= r) 1 else 0;
+    } else {
+        const l: u64 = @bitCast(lhs);
+        const r: u64 = @bitCast(rhs);
+        return if (l >= r) 1 else 0;
+    }
+}
+
+fn opIntAdd(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs +% rhs;
+}
+fn opIntSub(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs -% rhs;
+}
+fn opIntMul(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs *% rhs;
+}
+fn opIntDivS(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (T == i32 and lhs == -2147483648 and rhs == -1) return Error.IntegerOverflow;
+    if (T == i64 and lhs == -9223372036854775808 and rhs == -1) return Error.IntegerOverflow;
+    if (rhs == 0) return Error.IntegerDivideByZero;
+    return @divTrunc(lhs, rhs);
+}
+fn opIntDivU(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (rhs == 0) return Error.IntegerDivideByZero;
+    if (T == i32) {
+        if (lhs == -2147483648 and rhs == -1) return 0;
+        const l: u32 = @bitCast(lhs);
+        const r: u32 = @bitCast(rhs);
+        const res = @divTrunc(l, r);
+        return @bitCast(res);
+    } else {
+        if (lhs == -9223372036854775808 and rhs == -1) return 0;
+        const l: u64 = @bitCast(lhs);
+        const r: u64 = @bitCast(rhs);
+        const res = @divTrunc(l, r);
+        return @bitCast(res);
+    }
+}
+fn opIntRemS(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (rhs == 0) return Error.IntegerDivideByZero;
+    if (T == i32) {
+        if (lhs == -2147483648 and rhs == -1) return 0;
+        if (lhs >= 0 and rhs > 0) {
+            return @mod(lhs, rhs);
+        } else {
+            // note: @mod of negative number returns unintended result.
+            //  -  @mod(-2147483647,  1000) == 353 (not -647)
+            //  -  @mod(-2147483647, -1000) -> panic
+            const num: i33 = @intCast(lhs);
+            const den: i33 = @intCast(rhs);
+            const res_tmp = @mod(if (num > 0) num else -num, if (den > 0) den else -den);
+            const res: i32 = @intCast(if (lhs > 0) res_tmp else -res_tmp);
+            return res;
+        }
+    } else {
+        if (lhs == -9223372036854775808 and rhs == -1) return 0;
+        if (lhs >= 0 and rhs > 0) {
+            return @mod(lhs, rhs);
+        } else {
+            // note: @mod of negative number returns unintended result.
+            //  -  @mod(-2147483647,  1000) == 353 (not -647)
+            //  -  @mod(-2147483647, -1000) -> panic
+            const num: i65 = @intCast(lhs);
+            const den: i65 = @intCast(rhs);
+            const res_tmp = @mod(if (num > 0) num else -num, if (den > 0) den else -den);
+            const res: i64 = @intCast(if (lhs > 0) res_tmp else -res_tmp);
+            return res;
+        }
+    }
+}
+
+fn opIntRemU(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (rhs == 0) return Error.IntegerDivideByZero;
+    if (T == i32) {
+        const num: u32 = @bitCast(lhs);
+        const den: u32 = @bitCast(rhs);
+        const res = @mod(num, den);
+        return @bitCast(res);
+    } else {
+        const num: u64 = @bitCast(lhs);
+        const den: u64 = @bitCast(rhs);
+        const res = @mod(num, den);
+        return @bitCast(res);
+    }
+}
+
+fn opIntAnd(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs & rhs;
+}
+
+fn opIntOr(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs | rhs;
+}
+
+fn opIntXor(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs ^ rhs;
+}
+
+fn opIntShl(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs << @intCast(@mod(rhs, @bitSizeOf(T)));
+}
+
+fn opIntShrS(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs >> @intCast(@mod(rhs, @bitSizeOf(T)));
+}
+
+fn opIntShrU(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (T == i32) {
+        const l: u32 = @bitCast(lhs);
+        const r: u32 = @bitCast(rhs);
+        const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
+        return @bitCast(res);
+    } else {
+        const l: u64 = @bitCast(lhs);
+        const r: u64 = @bitCast(rhs);
+        const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
+        return @bitCast(res);
+    }
+}
+
+fn opIntRotl(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (T == i32) {
+        var num: u32 = @bitCast(lhs);
+        const b = @bitSizeOf(T);
+        const r = @mod(rhs, b);
+        const r1: u5 = @intCast(r);
+        const r2: u5 = @intCast(@mod(b - r, b));
+        const res = (num << r1) | (num >> r2);
+        const res2: i32 = @bitCast(res);
+        return res2;
+    } else {
+        var num: u64 = @bitCast(lhs);
+        const b = @bitSizeOf(T);
+        const r = @mod(rhs, b);
+        const r1: u6 = @intCast(r);
+        const r2: u6 = @intCast(@mod(b - r, b));
+        const res = (num << r1) | (num >> r2);
+        const res2: i64 = @bitCast(res);
+        return res2;
+    }
+}
+
+fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (T == i32) {
+        var num: u32 = @bitCast(lhs);
+        const b = @bitSizeOf(T);
+        const r = @mod(rhs, b);
+        const r1: u5 = @intCast(r);
+        const r2: u5 = @intCast(@mod(b - r, b));
+        const res = (num >> r1) | (num << r2);
+        const res2: i32 = @bitCast(res);
+        return res2;
+    } else {
+        var num: u64 = @bitCast(lhs);
+        const b = @bitSizeOf(T);
+        const r = @mod(rhs, b);
+        const r1: u6 = @intCast(r);
+        const r2: u6 = @intCast(@mod(b - r, b));
+        const res = (num >> r1) | (num << r2);
+        const res2: i64 = @bitCast(res);
+        return res2;
+    }
+}
+
+fn opFloatNeg(comptime T: type, value: T) Error!T {
+    return -value;
+}
+
+fn opFloatAdd(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs + rhs;
+}

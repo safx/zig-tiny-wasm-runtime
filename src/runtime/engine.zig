@@ -21,7 +21,19 @@ pub const Engine = struct {
         };
     }
 
-    pub fn load(self: *Self, module: wa.Module, module_name: []const u8) (Error || error{OutOfMemory})!*types.ModuleInst {
+    pub fn loadModuleFromPath(self: *Self, file_name: []const u8) !*types.ModuleInst {
+        const decode = @import("wasm-decode");
+        var loader = decode.Loader.new(self.allocator);
+
+        const file = try std.fs.cwd().openFile(file_name, .{ .mode = .read_only });
+        defer file.close();
+        const data = try file.readToEndAlloc(self.allocator, 10_000_000);
+        const module = try loader.parseAll(data);
+        defer module.deinit();
+        return try self.loadModule(module, getBasename(file_name));
+    }
+
+    fn loadModule(self: *Self, module: wa.Module, module_name: []const u8) (Error || error{OutOfMemory})!*types.ModuleInst {
         const extern_vals = try self.resolveImports(module, self.allocator);
         const mod_inst = try self.instance.instantiate(module, extern_vals);
         try self.mod_insts.put(module_name, mod_inst);
@@ -46,3 +58,15 @@ pub const Engine = struct {
         return external_imports;
     }
 };
+
+fn getBasename(filename: []const u8) []const u8 {
+    // FIXME: assume that filename doesn't include path separator
+    var parts = std.mem.split(u8, filename, ".");
+    var prev_elem: []const u8 = "";
+    var elem: []const u8 = "";
+    while (parts.next()) |p| {
+        prev_elem = elem;
+        elem = p;
+    }
+    return prev_elem;
+}
