@@ -84,7 +84,7 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
                                 std.debug.print("====================\n", .{});
                                 std.debug.print("\t  Test failed at line {}\n", .{arg.line});
                                 std.debug.print("\t  return =  {any}\n", .{ret});
-                                std.debug.print("\texpected = {any}\n", .{exp.@"const"});
+                                std.debug.print("\texpected = {any}\n", .{exp});
                                 std.debug.print("====================\n", .{});
                                 @panic("Test failed.");
                             }
@@ -145,6 +145,8 @@ fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
                 },
             }
         },
+        .f32_nan_arithmetic => return std.math.isNan(result.asF32()), // FIXME: strict check
+        .f32_nan_canonical => return std.math.isNan(result.asF32()), // FIXME: strict check
         else => unreachable,
     }
 }

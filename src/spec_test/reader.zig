@@ -116,9 +116,21 @@ fn resultFromJson(json: std.json.Value) !Result {
         const num = try std.fmt.parseInt(u64, value, 10);
         return .{ .@"const" = .{ .i64 = @bitCast(num) } };
     } else if (strcmp(type_, "f32")) {
+        if (std.mem.eql(u8, "nan:canonical", value)) {
+            return .f32_nan_canonical;
+        }
+        if (std.mem.eql(u8, "nan:arithmetic", value)) {
+            return .f32_nan_arithmetic;
+        }
         const num = try std.fmt.parseInt(u32, value, 10);
         return .{ .@"const" = .{ .f32 = num } };
     } else if (strcmp(type_, "f64")) {
+        if (std.mem.eql(u8, "nan:canonical", value)) {
+            return .f64_nan_canonical;
+        }
+        if (std.mem.eql(u8, "nan:arithmetic", value)) {
+            return .f64_nan_arithmetic;
+        }
         const num = try std.fmt.parseInt(u64, value, 10);
         return .{ .@"const" = .{ .f64 = num } };
     } else if (strcmp(type_, "externref")) {

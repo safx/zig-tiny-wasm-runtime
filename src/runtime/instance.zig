@@ -534,7 +534,7 @@ pub const Instance = struct {
             // .f32_trunc,
             // .f32_nearest,
             // .f32_sqrt,
-            // .f32_add,
+            .f32_add => try self.binOp(f32, opFloatAdd),
             // .f32_sub,
             // .f32_mul,
             // .f32_div,
