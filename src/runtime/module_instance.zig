@@ -117,22 +117,29 @@ pub const ModuleInst = struct {
     }
 
     pub fn auxiliaryInstance(store: *types.Store, module: wa.Module, extern_vals: []const types.ExternalValue, allocator: std.mem.Allocator) error{OutOfMemory}!ModuleInst {
+        var num_import_funcs: u32 = 0;
         var num_import_globals: u32 = 0;
         for (extern_vals) |imp|
             switch (imp) {
+                .function => num_import_funcs += 1,
                 .global => num_import_globals += 1,
                 else => {},
             };
 
         var mod_inst = ModuleInst{
             .types = module.types,
-            .func_addrs = try allocator.alloc(types.FuncAddr, module.funcs.len),
+            .func_addrs = try allocator.alloc(types.FuncAddr, num_import_funcs + module.funcs.len),
             .global_addrs = try allocator.alloc(types.GlobalAddr, num_import_globals),
         };
 
+        var num_funcs: u32 = 0;
         var num_globals: u32 = 0;
         for (extern_vals) |imp|
             switch (imp) {
+                .function => |idx| {
+                    mod_inst.func_addrs[num_funcs] = idx;
+                    num_funcs += 1;
+                },
                 .global => |idx| {
                     mod_inst.global_addrs[num_globals] = idx;
                     num_globals += 1;
@@ -143,7 +150,6 @@ pub const ModuleInst = struct {
         for (module.funcs, 0..) |func, i| {
             mod_inst.func_addrs[i] = try allocFunc(store, func, &mod_inst);
         }
-
         return mod_inst;
     }
 };
