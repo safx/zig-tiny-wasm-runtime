@@ -18,7 +18,12 @@ fn commandArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]c
     var array = std.ArrayList(Command).init(allocator);
     for (json.object.get("commands").?.array.items) |cmd_json| {
         const cmd = try commandFromJson(cmd_json, allocator);
-        try array.append(cmd);
+        if (cmd == .register) {
+            // we assume `register` follows `module`
+            array.items[array.items.len - 1].module.name = cmd.register.as_name;
+        } else {
+            try array.append(cmd);
+        }
     }
     return array.toOwnedSlice();
 }
@@ -33,7 +38,9 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
     } else if (strcmp(cmd_type, "module_quote")) {
         return Command.module_quote;
     } else if (strcmp(cmd_type, "register")) {
-        return Command.register;
+        const name = getStringOrNull(json.object, "name");
+        const as_name = json.object.get("as").?.string;
+        return Command{ .register = .{ .as_name = as_name, .name = name } };
     } else if (strcmp(cmd_type, "assert_return")) {
         const action = try actionFromJson(json.object.get("action").?, allocator);
         const expected = try resultArrayFromJson(json.object.get("expected").?, allocator);
@@ -176,6 +183,8 @@ fn errorFromString(str: []const u8) types.Error {
         return E.OutOfBoundsMemoryAccess;
     } else if (strcmp(str, "undefined element")) {
         return E.UndefinedElement;
+    } else if (strcmp(str, "uninitialized element")) {
+        return E.UninitializedElement;
     } else {
         std.debug.print("??? {s}\n", .{str});
         unreachable;

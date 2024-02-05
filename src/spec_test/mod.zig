@@ -46,7 +46,7 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
     var engine = runtime.Engine.new(allocator);
 
     var module_insts = std.StringHashMap(*runtime.ModuleInst).init(allocator);
-    var current_module: *runtime.ModuleInst = try engine.loadModuleFromPath("spectest.wasm");
+    var current_module: *runtime.ModuleInst = try engine.loadModuleFromPath("spectest.wasm", "spectest");
 
     for (commands) |cmd| {
         std.debug.print("---------------------------------------------------------------\n", .{});
@@ -55,7 +55,7 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
 
         switch (cmd) {
             .module => |arg| {
-                current_module = try engine.loadModuleFromPath(arg.file_name);
+                current_module = try engine.loadModuleFromPath(arg.file_name, arg.name);
                 if (arg.name) |name| {
                     try module_insts.put(name, current_module);
                 }

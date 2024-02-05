@@ -10,7 +10,7 @@ pub const Command = union(enum) {
     module: ModuleCommandArg,
     module_quote,
 
-    register,
+    register: RegisterCommandArg,
 
     // assertion
     assert_return: AssertReturnCommandArg,
@@ -41,8 +41,17 @@ pub const ModuleCommandArg = struct {
     name: ?[]const u8,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{s} (line:{})", .{ self.file_name, self.line });
+        if (self.name) |n| {
+            _ = try writer.print("{s} (-> {s}) (line:{})", .{ self.file_name, n, self.line });
+        } else {
+            _ = try writer.print("{s} (line:{})", .{ self.file_name, self.line });
+        }
     }
+};
+
+pub const RegisterCommandArg = struct {
+    as_name: []const u8,
+    name: ?[]const u8,
 };
 
 pub const AssertReturnCommandArg = struct {

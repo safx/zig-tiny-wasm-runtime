@@ -21,7 +21,7 @@ pub const Engine = struct {
         };
     }
 
-    pub fn loadModuleFromPath(self: *Self, file_name: []const u8) !*types.ModuleInst {
+    pub fn loadModuleFromPath(self: *Self, file_name: []const u8, module_name: ?[]const u8) !*types.ModuleInst {
         const decode = @import("wasm-decode");
         var loader = decode.Loader.new(self.allocator);
 
@@ -30,7 +30,8 @@ pub const Engine = struct {
         const data = try file.readToEndAlloc(self.allocator, 10_000_000);
         const module = try loader.parseAll(data);
         defer module.deinit();
-        return try self.loadModule(module, getBasename(file_name));
+
+        return try self.loadModule(module, if (module_name) |n| n else getBasename(file_name));
     }
 
     fn loadModule(self: *Self, module: wa.Module, module_name: []const u8) (Error || error{OutOfMemory})!*types.ModuleInst {
