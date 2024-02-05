@@ -212,7 +212,7 @@ pub const ModuleLoader = struct {
                 const mode = wa.ElementMode{ .active = .{ .table_idx = x, .offset = expr } };
                 return .{ .type = .funcref, .init = init_array, .mode = mode };
             },
-            3...7 => std.debug.print("** {}\n", .{kind}), // TODO
+            3...7 => unreachable,
             else => unreachable,
         }
         unreachable;

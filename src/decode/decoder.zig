@@ -359,8 +359,8 @@ pub const Decoder = struct {
     }
 
     fn callIndirect(reader: *BinaryReader) Error!Instruction.CallIndirectArg {
-        const x = try reader.readVarU32();
         const y = try reader.readVarU32();
+        const x = try reader.readVarU32();
         return .{ .type_idx = y, .table_idx = x };
     }
 };
