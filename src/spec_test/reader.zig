@@ -34,29 +34,29 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
     if (strcmp(cmd_type, "module")) {
         const file_name = json.object.get("filename").?.string;
         const name = getStringOrNull(json.object, "name");
-        return Command{ .module = .{ .line = line, .file_name = file_name, .name = name } };
+        return .{ .module = .{ .line = line, .file_name = file_name, .name = name } };
     } else if (strcmp(cmd_type, "module_quote")) {
-        return Command.module_quote;
+        return .module_quote;
     } else if (strcmp(cmd_type, "register")) {
         const name = getStringOrNull(json.object, "name");
         const as_name = json.object.get("as").?.string;
-        return Command{ .register = .{ .as_name = as_name, .name = name } };
+        return .{ .register = .{ .as_name = as_name, .name = name } };
     } else if (strcmp(cmd_type, "assert_return")) {
         const action = try actionFromJson(json.object.get("action").?, allocator);
         const expected = try resultArrayFromJson(json.object.get("expected").?, allocator);
-        return Command{ .assert_return = .{ .line = line, .action = action, .expected = expected } };
+        return .{ .assert_return = .{ .line = line, .action = action, .expected = expected } };
     } else if (strcmp(cmd_type, "assert_trap")) {
         const action = try actionFromJson(json.object.get("action").?, allocator);
         const text = json.object.get("text").?.string;
-        return Command{ .assert_trap = .{ .line = line, .action = action, .trap = errorFromString(text) } };
+        return .{ .assert_trap = .{ .line = line, .action = action, .trap = errorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_exhaustion")) {
-        return Command.assert_exhaustion;
+        return .assert_exhaustion;
     } else if (strcmp(cmd_type, "assert_malformed")) {
-        return Command.assert_malformed;
+        return .assert_malformed;
     } else if (strcmp(cmd_type, "assert_invalid")) {
-        return Command.assert_invalid;
+        return .assert_invalid;
     } else if (strcmp(cmd_type, "assert_unlinkable")) {
-        return Command.assert_unlinkable;
+        return .assert_unlinkable;
     } else {
         unreachable;
     }

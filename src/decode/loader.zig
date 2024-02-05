@@ -247,10 +247,10 @@ pub const ModuleLoader = struct {
     fn importdesc(self: *Self) Error!wa.ImportDesc {
         const kind = try self.reader.readU8();
         return switch (kind) {
-            0x00 => .{ .func = try self.reader.readVarU32() },
-            0x01 => .{ .table = try self.table() },
-            0x02 => .{ .memory = try self.memtype() },
-            0x03 => .{ .global = try self.globalType() },
+            0 => .{ .func = try self.reader.readVarU32() },
+            1 => .{ .table = try self.table() },
+            2 => .{ .memory = try self.memtype() },
+            3 => .{ .global = try self.globalType() },
             else => return Error.MalformedImportKind,
         };
     }
@@ -258,10 +258,10 @@ pub const ModuleLoader = struct {
     fn exportdesc(self: *Self) Error!wa.ExportDesc {
         const kind = try self.reader.readU8();
         return switch (kind) {
-            0x00 => .{ .func = try self.reader.readVarU32() },
-            0x01 => .{ .table = try self.reader.readVarU32() },
-            0x02 => .{ .memory = try self.reader.readVarU32() },
-            0x03 => .{ .global = try self.reader.readVarU32() },
+            0 => .{ .func = try self.reader.readVarU32() },
+            1 => .{ .table = try self.reader.readVarU32() },
+            2 => .{ .memory = try self.reader.readVarU32() },
+            3 => .{ .global = try self.reader.readVarU32() },
             else => return Error.MalformedExportKind,
         };
     }
@@ -301,8 +301,8 @@ pub const ModuleLoader = struct {
     fn mut(self: *Self) Error!wa.Mutability {
         const kind = try self.reader.readU8();
         return switch (kind) {
-            0x00 => .immutable,
-            0x01 => .mutable,
+            0 => .immutable,
+            1 => .mutable,
             else => return Error.MalformedMutId,
         };
     }
