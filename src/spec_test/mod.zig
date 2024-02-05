@@ -91,7 +91,20 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
                         }
                         std.debug.print("test pass (result = {any})\n", .{ret});
                     },
-                    .get => unreachable,
+                    .get => |garg| {
+                        const mod = if (garg.module) |name| engine.getModuleInst(name) orelse current_module else current_module;
+                        const gval = engine.getValueFromGlobal(mod, garg.field).?;
+                        const result = checkReturnValue(arg.expected[0], gval);
+                        if (!result) {
+                            std.debug.print("====================\n", .{});
+                            std.debug.print("\t  Test failed at line {}\n", .{arg.line});
+                            std.debug.print("\t  return =  {any}\n", .{gval});
+                            std.debug.print("\texpected = {any}\n", .{arg.expected[0]});
+                            std.debug.print("====================\n", .{});
+                            @panic("Test failed.");
+                        }
+                        std.debug.print("test pass (result = {any})\n", .{gval});
+                    },
                 }
             },
             .assert_trap => |arg| {

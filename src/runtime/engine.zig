@@ -21,6 +21,29 @@ pub const Engine = struct {
         };
     }
 
+    pub fn getModuleInst(self: *Self, module_name: []const u8) ?*types.ModuleInst {
+        return self.mod_insts.get(module_name);
+    }
+
+    pub fn getValueFromGlobal(self: *Self, mod_inst: *types.ModuleInst, field_name: []const u8) ?types.Value {
+        const externval = findExternValue(mod_inst, field_name);
+        if (externval != null and externval.? == .global) {
+            const glb = self.instance.store.globals.items[@intCast(externval.?.global)];
+            return glb.value;
+        } else {
+            return null;
+        }
+    }
+
+    fn findExternValue(mod_inst: *types.ModuleInst, name: []const u8) ?types.ExternalValue {
+        for (mod_inst.exports) |exp| {
+            if (std.mem.eql(u8, exp.name, name)) {
+                return exp.value;
+            }
+        }
+        return null;
+    }
+
     pub fn loadModuleFromPath(self: *Self, file_name: []const u8, module_name: ?[]const u8) !*types.ModuleInst {
         const decode = @import("wasm-decode");
         var loader = decode.Loader.new(self.allocator);

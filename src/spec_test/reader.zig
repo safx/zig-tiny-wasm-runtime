@@ -166,7 +166,10 @@ fn actionFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Action {
         const args: []const Value = try argArrayFromJson(json.object.get("args").?, allocator);
         return .{ .invoke = .{ .field = field, .args = args, .module = module } };
     } else if (strcmp(cmd_type, "get")) {
-        return Action.get;
+        json.dump();
+        const module = getStringOrNull(json.object, "module");
+        const field = json.object.get("field").?.string;
+        return .{ .get = .{ .field = field, .module = module } };
     } else {
         std.debug.print("unknown action type: {s}", .{cmd_type});
         unreachable;
