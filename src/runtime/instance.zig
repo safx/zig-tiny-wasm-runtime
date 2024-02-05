@@ -535,11 +535,11 @@ pub const Instance = struct {
             // .f32_nearest,
             // .f32_sqrt,
             .f32_add => try self.binOp(f32, opFloatAdd),
-            // .f32_sub,
-            // .f32_mul,
-            // .f32_div,
-            // .f32_min,
-            // .f32_max,
+            .f32_sub => try self.binOp(f32, opFloatSub),
+            .f32_mul => try self.binOp(f32, opFloatMul),
+            .f32_div => try self.binOp(f32, opFloatDiv),
+            .f32_min => try self.binOp(f32, opFloatMin),
+            .f32_max => try self.binOp(f32, opFloatMax),
             // .f32_copy_sign,
 
             // numeric instructions (3) f64
@@ -551,11 +551,11 @@ pub const Instance = struct {
             // .f64_nearest,
             // .f64_sqrt,
             .f64_add => try self.binOp(f64, opFloatAdd),
-            // .f64_sub,
-            // .f64_mul,
-            // .f64_div,
-            // .f64_min,
-            // .f64_max,
+            .f64_sub => try self.binOp(f64, opFloatSub),
+            .f64_mul => try self.binOp(f64, opFloatMul),
+            .f64_div => try self.binOp(f64, opFloatDiv),
+            .f64_min => try self.binOp(f64, opFloatMin),
+            .f64_max => try self.binOp(f64, opFloatMax),
             // .f64_copy_sign,
 
             // numeric instructions (4)
@@ -1168,4 +1168,24 @@ fn opFloatNeg(comptime T: type, value: T) Error!T {
 
 fn opFloatAdd(comptime T: type, lhs: T, rhs: T) Error!T {
     return lhs + rhs;
+}
+
+fn opFloatSub(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs - rhs;
+}
+
+fn opFloatMul(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs * rhs;
+}
+
+fn opFloatDiv(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs / rhs;
+}
+
+fn opFloatMin(comptime T: type, lhs: T, rhs: T) Error!T {
+    return @min(lhs, rhs);
+}
+
+fn opFloatMax(comptime T: type, lhs: T, rhs: T) Error!T {
+    return @max(lhs, rhs);
 }
