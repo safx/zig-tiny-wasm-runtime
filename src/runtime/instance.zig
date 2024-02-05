@@ -574,7 +574,11 @@ pub const Instance = struct {
                 try self.stack.pushValue(v);
             },
             // .i64_trunc_f64_u,
-            // .f32_convert_i32_s,
+            .f32_convert_i32_s => {
+                const value = self.stack.pop().value.asI32();
+                const v: f32 = @floatFromInt(value);
+                try self.stack.pushValue(v);
+            },
             // .f32_convert_i32_u,
             // .f32_convert_i64_s,
             // .f32_convert_i64_u,
@@ -589,7 +593,11 @@ pub const Instance = struct {
                 const v: f64 = @floatFromInt(value);
                 try self.stack.pushValue(v);
             },
-            // .f64_convert_i64_s,
+            .f64_convert_i64_s => {
+                const value = self.stack.pop().value.asI64();
+                const v: f64 = @floatFromInt(value);
+                try self.stack.pushValue(v);
+            },
             .f64_convert_i64_u => {
                 const value = self.stack.pop().value.asI64();
                 const v: f64 = @floatFromInt(value);
