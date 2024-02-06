@@ -324,8 +324,8 @@ test "Value" {
 }
 
 pub const RefValue = union(enum) {
-    func_ref: FuncAddr,
-    extern_ref: ExternAddr,
+    func_ref: ?FuncAddr,
+    extern_ref: ?ExternAddr,
 };
 
 pub const ExternalValue = union(std.wasm.ExternalKind) {

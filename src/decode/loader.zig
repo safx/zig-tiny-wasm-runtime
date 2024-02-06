@@ -212,7 +212,40 @@ pub const ModuleLoader = struct {
                 const mode = wa.ElementMode{ .active = .{ .table_idx = x, .offset = expr } };
                 return .{ .type = .funcref, .init = init_array, .mode = mode };
             },
-            3...7 => unreachable,
+            3 => {
+                const et = try self.reader.readU8();
+                _ = et; // == 0x00
+                const ys = try self.funcidxs();
+                const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
+                for (ys, 0..) |y, i| {
+                    init_array[i] = wa.InitExpression{ .ref_func = y };
+                }
+                return .{ .type = .funcref, .init = init_array, .mode = .declarative };
+            },
+            4 => {
+                const expr = try self.initExpr();
+                const init_array = try self.initExprVec();
+                const mode = wa.ElementMode{ .active = .{ .table_idx = 0, .offset = expr } };
+                return .{ .type = .funcref, .init = init_array, .mode = mode };
+            },
+            5 => {
+                const et = try self.refType();
+                const init_array = try self.initExprVec();
+                return .{ .type = et, .init = init_array, .mode = .passive };
+            },
+            6 => {
+                const x = try self.reader.readVarU32();
+                const expr = try self.initExpr();
+                const et = try self.refType();
+                const init_array = try self.initExprVec();
+                const mode = wa.ElementMode{ .active = .{ .table_idx = x, .offset = expr } };
+                return .{ .type = et, .init = init_array, .mode = mode };
+            },
+            7 => {
+                const et = try self.refType();
+                const init_array = try self.initExprVec();
+                return .{ .type = et, .init = init_array, .mode = .declarative };
+            },
             else => unreachable,
         }
         unreachable;
@@ -292,10 +325,14 @@ pub const ModuleLoader = struct {
             n(.f32_const) => .{ .f32_const = try self.reader.readF32() },
             n(.f64_const) => .{ .f64_const = try self.reader.readF64() },
             n(.global_get) => .{ .global_get = try self.reader.readVarU32() },
-            // ref.null
             0xd0 => .{ .ref_null = @enumFromInt(try self.reader.readU8()) },
+            0xd2 => .{ .ref_func = try self.reader.readVarU32() },
             else => unreachable,
         };
+    }
+
+    fn initExprVec(self: *Self) (Error || error{OutOfMemory})![]const wa.InitExpression {
+        return try self.createArray(wa.InitExpression, initExpr);
     }
 
     fn mut(self: *Self) Error!wa.Mutability {

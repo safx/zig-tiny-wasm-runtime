@@ -154,10 +154,9 @@ pub const Instance = struct {
             for (element.init, 0..) |e, j| {
                 try self.execOneInstruction(instractionFromInitExpr(e));
                 const value = self.stack.pop().value;
-
                 const val: types.RefValue = switch (value) {
-                    .func_ref => |v| .{ .func_ref = v.? },
-                    .extern_ref => |v| .{ .extern_ref = v.? },
+                    .func_ref => |v| .{ .func_ref = v },
+                    .extern_ref => |v| .{ .extern_ref = v },
                     else => unreachable,
                 };
                 refs[i][j] = val;
@@ -187,22 +186,25 @@ pub const Instance = struct {
         };
         try self.stack.push(.{ .frame = aux_frame });
 
-        // 14, 15: element segment
         for (module.elements, 0..) |elem, i| {
+            // 14: active elem
             switch (elem.mode) {
                 .active => |active_type| {
                     const n = elem.init.len;
+                    std.debug.print("======> {} {any}\n", .{ i, active_type });
                     try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
                     try self.execOneInstruction(.{
                         .table_init = .{
+                            .table_idx = active_type.table_idx,
                             .elem_idx = @intCast(i),
-                            .table_idx = 0, // FIXME: elem.mode,
                         },
                     });
                     try self.execOneInstruction(.{ .elem_drop = @intCast(i) });
                 },
+                // 15: declarative elem
+                .declarative => try self.execOneInstruction(.{ .elem_drop = @intCast(i) }),
                 else => continue,
             }
         }
@@ -289,7 +291,7 @@ pub const Instance = struct {
                 const rx = tab.elem[@intCast(i)];
                 if (rx == null)
                     return Error.UninitializedElement;
-                const r = rx.?.func_ref;
+                const r = rx.?.func_ref.?;
 
                 const f = self.store.funcs.items[@intCast(r)];
                 const ft_actual = f.type;
@@ -357,7 +359,7 @@ pub const Instance = struct {
                 const val = self.stack.pop().value;
                 const i = self.stack.pop().value.asI32();
                 // TODO check
-                tab.elem[@intCast(i)] = .{ .func_ref = val.func_ref.? }; // FIXME
+                tab.elem[@intCast(i)] = .{ .func_ref = val.func_ref };
 
                 {
                     for (self.store.tables.items, 0..) |table, ix| {
@@ -372,9 +374,9 @@ pub const Instance = struct {
             .table_init => |arg| {
                 const module = self.stack.topFrame().module;
                 while (true) {
-                    const ta = module.table_addrs[arg.elem_idx];
+                    const ta = module.table_addrs[arg.table_idx];
                     const tab = self.store.tables.items[ta];
-                    const ea = module.elem_addrs[arg.table_idx];
+                    const ea = module.elem_addrs[arg.elem_idx];
                     const elem = self.store.elems.items[ea];
                     const n = self.stack.pop().value.asI32();
                     const s = self.stack.pop().value.asI32();
@@ -389,7 +391,7 @@ pub const Instance = struct {
                     const ref = elem.elem[@intCast(s)];
                     try self.stack.pushValueAs(i32, d);
                     try self.stack.push(.{ .value = .{ .func_ref = ref.func_ref } }); // FIXME
-                    const inst = Instruction{ .table_set = arg.elem_idx };
+                    const inst = Instruction{ .table_set = arg.table_idx };
                     try self.execOneInstruction(inst);
                     try self.stack.pushValueAs(i32, d + 1);
                     try self.stack.pushValueAs(i32, s + 1);

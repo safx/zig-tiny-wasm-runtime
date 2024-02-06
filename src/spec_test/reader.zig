@@ -57,7 +57,10 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
         return .assert_invalid;
     } else if (strcmp(cmd_type, "assert_unlinkable")) {
         return .assert_unlinkable;
+    } else if (strcmp(cmd_type, "assert_uninstantiable")) {
+        return .assert_uninstantiable;
     } else {
+        std.debug.print("??? {s}\n", .{cmd_type});
         unreachable;
     }
 }
@@ -184,6 +187,8 @@ fn errorFromString(str: []const u8) types.Error {
         return E.IntegerOverflow;
     } else if (strcmp(str, "out of bounds memory access")) {
         return E.OutOfBoundsMemoryAccess;
+    } else if (strcmp(str, "out of bounds table access")) {
+        return E.OutOfBoundsTableyAccess;
     } else if (strcmp(str, "undefined element")) {
         return E.UndefinedElement;
     } else if (strcmp(str, "uninitialized element")) {

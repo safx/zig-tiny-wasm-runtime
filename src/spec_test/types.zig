@@ -19,6 +19,7 @@ pub const Command = union(enum) {
     assert_malformed,
     assert_invalid,
     assert_unlinkable,
+    assert_uninstantiable,
 };
 
 pub const Action = union(enum) {

@@ -1,6 +1,7 @@
 pub const Error = error{
     ExportItemNotFound,
     OutOfBoundsMemoryAccess,
+    OutOfBoundsTableyAccess,
     IntegerDivideByZero,
     IntegerOverflow,
     UndefinedElement,
