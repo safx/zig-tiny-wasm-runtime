@@ -25,8 +25,8 @@ const Context = struct {
         var num_import_mems: u32 = 0;
         var num_import_globals: u32 = 0;
         for (module.imports) |imp|
-            switch (imp) {
-                .function => num_import_funcs += 1,
+            switch (imp.desc) {
+                .func => num_import_funcs += 1,
                 .table => num_import_tables += 1,
                 .memory => num_import_mems += 1,
                 .global => num_import_globals += 1,

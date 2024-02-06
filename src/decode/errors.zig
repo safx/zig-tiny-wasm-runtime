@@ -4,6 +4,7 @@ pub const Error = error{
     UnknownBinaryVersion,
     MalformedFunctypeMagicNumber,
     MalformedSectionId,
+    MalformedElemKind,
     MalformedImportKind,
     MalformedExportKind,
     MalformedValueType,

@@ -912,6 +912,8 @@ const FlowControl = union(enum) {
     }
 };
 
+// arithmetic ops are defined outside the struct
+
 fn opIntClz(comptime T: type, value: T) Error!T {
     return @clz(value);
 }

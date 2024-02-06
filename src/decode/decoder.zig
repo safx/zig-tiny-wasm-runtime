@@ -294,6 +294,8 @@ pub const Decoder = struct {
             n(.i64_extend16_s) => .i64_extend16_s,
             n(.i64_extend32_s) => .i64_extend32_s,
 
+            0xfc => try miscOpcode(reader),
+
             else => {
                 std.debug.print("?? {x}\n", .{op_code});
                 unreachable;
@@ -303,10 +305,47 @@ pub const Decoder = struct {
         return inst;
     }
 
+    fn miscOpcode(reader: *BinaryReader) (Error || error{OutOfMemory})!Instruction {
+        const n = std.wasm.miscOpcode;
+        const op_code = try reader.readU8();
+        const inst: Instruction = switch (op_code) {
+            n(.i32_trunc_sat_f32_s) => unreachable,
+            n(.i32_trunc_sat_f32_u) => unreachable,
+            n(.i32_trunc_sat_f64_s) => unreachable,
+            n(.i32_trunc_sat_f64_u) => unreachable,
+            n(.i64_trunc_sat_f32_s) => unreachable,
+            n(.i64_trunc_sat_f32_u) => unreachable,
+            n(.i64_trunc_sat_f64_s) => unreachable,
+            n(.i64_trunc_sat_f64_u) => unreachable,
+            n(.memory_init) => .{ .memory_init = try reader.readVarU32() },
+            n(.data_drop) => .{ .data_drop = try reader.readVarU32() },
+            n(.memory_copy) => .memory_copy,
+            n(.memory_fill) => .memory_fill,
+            n(.table_init) => .{ .table_init = try tblArg(reader) },
+            n(.elem_drop) => .{ .elem_drop = try reader.readVarU32() },
+            n(.table_copy) => .{ .table_copy = try tblArg(reader) },
+            n(.table_grow) => .{ .table_grow = try reader.readVarU32() },
+            n(.table_size) => .{ .table_size = try reader.readVarU32() },
+            n(.table_fill) => .{ .table_fill = try reader.readVarU32() },
+
+            else => {
+                std.debug.print("?? 0xFC {x}\n", .{op_code});
+                unreachable;
+            },
+        };
+        return inst;
+    }
+
     fn memArg(reader: *BinaryReader) Error!Instruction.MemArg {
         const a = try reader.readVarU32();
         const o = try reader.readVarU32();
         return .{ .@"align" = a, .offset = o };
+    }
+
+    fn tblArg(reader: *BinaryReader) Error!Instruction.TblArg {
+        const t = try reader.readVarU32();
+        const e = try reader.readVarU32();
+        return .{ .table_idx = t, .elem_idx = e };
     }
 
     fn refType(reader: *BinaryReader) Error!wa.RefType {

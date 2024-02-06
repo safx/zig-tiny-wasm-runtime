@@ -7,6 +7,7 @@ const Error = @import("./errors.zig").Error;
 
 pub const ModuleLoader = struct {
     const Self = @This();
+    const assert = std.debug.assert;
 
     baseAllocator: std.mem.Allocator,
     allocator: std.mem.Allocator,
@@ -191,7 +192,7 @@ pub const ModuleLoader = struct {
             },
             1 => {
                 const et = try self.reader.readU8();
-                _ = et; // == 0x00
+                assert(et == 0);
                 const ys = try self.funcidxs();
                 const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
                 for (ys, 0..) |y, i| {
@@ -203,7 +204,7 @@ pub const ModuleLoader = struct {
                 const x = try self.reader.readVarU32();
                 const expr = try self.initExpr();
                 const et = try self.reader.readU8();
-                _ = et; // == 0x00
+                assert(et == 0);
                 const ys = try self.funcidxs();
                 const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
                 for (ys, 0..) |y, i| {
@@ -214,7 +215,7 @@ pub const ModuleLoader = struct {
             },
             3 => {
                 const et = try self.reader.readU8();
-                _ = et; // == 0x00
+                assert(et == 0);
                 const ys = try self.funcidxs();
                 const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
                 for (ys, 0..) |y, i| {
@@ -246,7 +247,7 @@ pub const ModuleLoader = struct {
                 const init_array = try self.initExprVec();
                 return .{ .type = et, .init = init_array, .mode = .declarative };
             },
-            else => unreachable,
+            else => return Error.MalformedElemKind,
         }
         unreachable;
     }
