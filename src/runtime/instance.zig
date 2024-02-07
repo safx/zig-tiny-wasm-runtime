@@ -445,33 +445,33 @@ pub const Instance = struct {
             .f64_const => |val| try self.stack.pushValue(val),
 
             // numeric instructions (2) i32
-            .i32_eqz => try self.unOp(i32, opIntEqz),
-            .i32_eq => try self.binOp(i32, opIntEq),
-            .i32_ne => try self.binOp(i32, opIntNe),
-            .i32_lt_s => try self.binOp(i32, opIntLtS),
-            .i32_lt_u => try self.binOp(i32, opIntLtU),
-            .i32_gt_s => try self.binOp(i32, opIntGtS),
-            .i32_gt_u => try self.binOp(i32, opIntGtU),
-            .i32_le_s => try self.binOp(i32, opIntLeS),
-            .i32_le_u => try self.binOp(i32, opIntLeU),
-            .i32_ge_s => try self.binOp(i32, opIntGeS),
-            .i32_ge_u => try self.binOp(i32, opIntGeU),
+            .i32_eqz => try self.testOp(i32, opIntEqz),
+            .i32_eq => try self.relOp(i32, opIntEq),
+            .i32_ne => try self.relOp(i32, opIntNe),
+            .i32_lt_s => try self.relOp(i32, opIntLtS),
+            .i32_lt_u => try self.relOp(i32, opIntLtU),
+            .i32_gt_s => try self.relOp(i32, opIntGtS),
+            .i32_gt_u => try self.relOp(i32, opIntGtU),
+            .i32_le_s => try self.relOp(i32, opIntLeS),
+            .i32_le_u => try self.relOp(i32, opIntLeU),
+            .i32_ge_s => try self.relOp(i32, opIntGeS),
+            .i32_ge_u => try self.relOp(i32, opIntGeU),
 
             // numeric instructions (2) i64
-            .i64_eqz => try self.unOp(i64, opIntEqz),
-            .i64_eq => try self.binOp(i64, opIntEq),
-            .i64_ne => try self.binOp(i64, opIntNe),
-            .i64_lt_s => try self.binOp(i64, opIntLtS),
-            .i64_lt_u => try self.binOp(i64, opIntLtU),
-            .i64_gt_s => try self.binOp(i64, opIntGtS),
-            .i64_gt_u => try self.binOp(i64, opIntGtU),
-            .i64_le_s => try self.binOp(i64, opIntLeS),
-            .i64_le_u => try self.binOp(i64, opIntLeU),
-            .i64_ge_s => try self.binOp(i64, opIntGeS),
-            .i64_ge_u => try self.binOp(i64, opIntGeU),
+            .i64_eqz => try self.testOp(i64, opIntEqz),
+            .i64_eq => try self.relOp(i64, opIntEq),
+            .i64_ne => try self.relOp(i64, opIntNe),
+            .i64_lt_s => try self.relOp(i64, opIntLtS),
+            .i64_lt_u => try self.relOp(i64, opIntLtU),
+            .i64_gt_s => try self.relOp(i64, opIntGtS),
+            .i64_gt_u => try self.relOp(i64, opIntGtU),
+            .i64_le_s => try self.relOp(i64, opIntLeS),
+            .i64_le_u => try self.relOp(i64, opIntLeU),
+            .i64_ge_s => try self.relOp(i64, opIntGeS),
+            .i64_ge_u => try self.relOp(i64, opIntGeU),
 
             // numeric instructions (2) f32
-            // .f32_eq,
+            .f32_eq => try self.relOp(f32, opFloatEq),
             // .f32_ne,
             // .f32_lt,
             // .f32_gt,
@@ -849,6 +849,25 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
+    inline fn testOp(self: *Self, comptime T: type, comptime f: fn (type, T) Error!i32) (Error || error{OutOfMemory})!void {
+        const value = self.stack.pop().value.as(T);
+        const result = try f(T, value);
+        try self.stack.pushValueAs(i32, result);
+    }
+
+    inline fn relOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!i32) (Error || error{OutOfMemory})!void {
+        const rhs = self.stack.pop().value.as(T);
+        const lhs = self.stack.pop().value.as(T);
+        const result = try f(T, lhs, rhs);
+        try self.stack.pushValueAs(i32, result);
+    }
+
+    inline fn cvtOp(self: *Self, comptime T2: type, comptime T1: type, comptime f: fn (type, T1) Error!T2) (Error || error{OutOfMemory})!void {
+        const value = self.stack.pop().value.as(T1);
+        const result: T2 = try f(T1, value);
+        try self.stack.pushValueAs(T2, result);
+    }
+
     /// `expand_F` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/runtime.html#exec-expand
     inline fn expandToFuncType(module: *types.ModuleInst, block_type: Instruction.BlockType) wa.FuncType {
@@ -924,7 +943,7 @@ fn opIntPopcnt(comptime T: type, value: T) Error!T {
     return @popCount(value);
 }
 
-fn opIntEqz(comptime T: type, value: T) Error!T {
+fn opIntEqz(comptime T: type, value: T) Error!i32 {
     return if (value == 0) 1 else 0;
 }
 
@@ -943,19 +962,19 @@ fn opExtend32(comptime T: type, value: T) Error!T {
     return result;
 }
 
-fn opIntEq(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opIntEq(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs == rhs) 1 else 0;
 }
 
-fn opIntNe(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opIntNe(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs != rhs) 1 else 0;
 }
 
-fn opIntLtS(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opIntLtS(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs < rhs) 1 else 0;
 }
 
-fn opIntLtU(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opIntLtU(comptime T: type, lhs: T, rhs: T) Error!i32 {
     if (T == i32) {
         const l: u32 = @bitCast(lhs);
         const r: u32 = @bitCast(rhs);
@@ -967,11 +986,11 @@ fn opIntLtU(comptime T: type, lhs: T, rhs: T) Error!T {
     }
 }
 
-fn opIntGtS(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opIntGtS(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs > rhs) 1 else 0;
 }
 
-fn opIntGtU(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opIntGtU(comptime T: type, lhs: T, rhs: T) Error!i32 {
     if (T == i32) {
         const l: u32 = @bitCast(lhs);
         const r: u32 = @bitCast(rhs);
@@ -983,11 +1002,11 @@ fn opIntGtU(comptime T: type, lhs: T, rhs: T) Error!T {
     }
 }
 
-fn opIntLeS(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opIntLeS(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs <= rhs) 1 else 0;
 }
 
-fn opIntLeU(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opIntLeU(comptime T: type, lhs: T, rhs: T) Error!i32 {
     if (T == i32) {
         const l: u32 = @bitCast(lhs);
         const r: u32 = @bitCast(rhs);
@@ -999,11 +1018,11 @@ fn opIntLeU(comptime T: type, lhs: T, rhs: T) Error!T {
     }
 }
 
-fn opIntGeS(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opIntGeS(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs >= rhs) 1 else 0;
 }
 
-fn opIntGeU(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opIntGeU(comptime T: type, lhs: T, rhs: T) Error!i32 {
     if (T == i32) {
         const l: u32 = @bitCast(lhs);
         const r: u32 = @bitCast(rhs);
@@ -1174,6 +1193,10 @@ fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
 
 fn opFloatNeg(comptime T: type, value: T) Error!T {
     return -value;
+}
+
+fn opFloatEq(comptime T: type, lhs: T, rhs: T) Error!i32 {
+    return if (lhs == rhs) 1 else 0;
 }
 
 fn opFloatAdd(comptime T: type, lhs: T, rhs: T) Error!T {
