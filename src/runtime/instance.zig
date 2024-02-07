@@ -472,19 +472,19 @@ pub const Instance = struct {
 
             // numeric instructions (2) f32
             .f32_eq => try self.relOp(f32, opFloatEq),
-            // .f32_ne,
-            // .f32_lt,
-            // .f32_gt,
-            // .f32_le,
-            // .f32_ge,
+            .f32_ne => try self.relOp(f32, opFloatNe),
+            .f32_lt => try self.relOp(f32, opFloatLt),
+            .f32_gt => try self.relOp(f32, opFloatGt),
+            .f32_le => try self.relOp(f32, opFloatLe),
+            .f32_ge => try self.relOp(f32, opFloatGe),
 
             // numeric instructions (2) f64
-            // .f64_eq,
-            // .f64_ne,
-            // .f64_lt,
-            // .f64_gt,
-            // .f64_le,
-            // .f64_ge,
+            .f64_eq => try self.relOp(f64, opFloatEq),
+            .f64_ne => try self.relOp(f64, opFloatNe),
+            .f64_lt => try self.relOp(f64, opFloatLt),
+            .f64_gt => try self.relOp(f64, opFloatGt),
+            .f64_le => try self.relOp(f64, opFloatLe),
+            .f64_ge => try self.relOp(f64, opFloatGe),
 
             // numeric instructions (3) i32
             .i32_clz => try self.unOp(i32, opIntClz),
@@ -1197,6 +1197,26 @@ fn opFloatNeg(comptime T: type, value: T) Error!T {
 
 fn opFloatEq(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs == rhs) 1 else 0;
+}
+
+fn opFloatNe(comptime T: type, lhs: T, rhs: T) Error!i32 {
+    return if (lhs != rhs) 0 else 1;
+}
+
+fn opFloatLt(comptime T: type, lhs: T, rhs: T) Error!i32 {
+    return if (lhs < rhs) 1 else 0;
+}
+
+fn opFloatGt(comptime T: type, lhs: T, rhs: T) Error!i32 {
+    return if (lhs > rhs) 1 else 0;
+}
+
+fn opFloatLe(comptime T: type, lhs: T, rhs: T) Error!i32 {
+    return if (lhs <= rhs) 1 else 0;
+}
+
+fn opFloatGe(comptime T: type, lhs: T, rhs: T) Error!i32 {
+    return if (lhs >= rhs) 1 else 0;
 }
 
 fn opFloatAdd(comptime T: type, lhs: T, rhs: T) Error!T {
