@@ -236,12 +236,17 @@ pub const Instance = struct {
     }
 
     fn printStack(self: *Self) void {
-        for (self.store.globals.items, 0..) |g, i| {
-            std.debug.print("{}={any}, ", .{ i, g.value });
-        }
-        std.debug.print("\n", .{});
+        // for (self.store.globals.items, 0..) |g, i| {
+        //     std.debug.print("{}={any}, ", .{ i, g.value });
+        // }
+        // std.debug.print("\n", .{});
 
-        for (self.stack.array.items) |i| {
+        const len = self.stack.array.items.len;
+        const slice = if (len > 10) self.stack.array.items[len - 10 ..] else self.stack.array.items;
+        if (len > 10) {
+            std.debug.print("  : ({} more items)\n  :\n", .{len - 10});
+        }
+        for (slice) |i| {
             switch (i) {
                 .value => |v| std.debug.print("  V {}\n", .{v}),
                 .label => |v| std.debug.print("  L {}\n", .{v}),

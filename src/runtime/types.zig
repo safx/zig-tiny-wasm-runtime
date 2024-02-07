@@ -295,7 +295,9 @@ pub const Value = union(wa.ValueType) {
             .i64 => |val| try writer.print("{}_i64", .{val}),
             .f32 => try writer.print("{d:.2}_f32", .{self.asF32()}),
             .f64 => try writer.print("{d:.2}_f64", .{self.asF64()}),
-            inline else => |val| try writer.print("{any}", .{val}),
+            .v128 => |val| try writer.print("{}_i128", .{val}),
+            .func_ref => |val| if (val) |v| try writer.print("{}_ref", .{v}) else try writer.print("null_ref", .{}),
+            .extern_ref => |val| if (val) |v| try writer.print("{}_extref", .{v}) else try writer.print("null_extref", .{}),
         }
     }
 };
