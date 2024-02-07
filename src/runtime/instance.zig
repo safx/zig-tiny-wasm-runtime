@@ -839,14 +839,14 @@ pub const Instance = struct {
     inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) Error!T) (Error || error{OutOfMemory})!void {
         const value = self.stack.pop().value.as(T);
         const result = try f(T, value);
-        try self.stack.pushValue(result);
+        try self.stack.pushValueAs(T, result);
     }
 
     inline fn binOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) (Error || error{OutOfMemory})!void {
         const rhs = self.stack.pop().value.as(T);
         const lhs = self.stack.pop().value.as(T);
         const result = try f(T, lhs, rhs);
-        try self.stack.pushValue(result);
+        try self.stack.pushValueAs(T, result);
     }
 
     /// `expand_F` in wasm spec
@@ -1193,6 +1193,11 @@ fn opFloatDiv(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opFloatMin(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (std.math.isNan(lhs) or std.math.isNan(rhs)) {
+        // std.math.nan() is not canonical NaN
+        const v = if (T == f64) @as(u64, 0x7ff8_0000_0000_0000) else @as(u32, 0x7fc0_0000);
+        return @bitCast(v);
+    }
     return @min(lhs, rhs);
 }
 
