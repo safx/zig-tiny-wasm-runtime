@@ -358,18 +358,11 @@ pub const Instance = struct {
                 const tab = self.store.tables.items[a];
                 const val = self.stack.pop().value;
                 const i = self.stack.pop().value.asI32();
-                // TODO check
-                tab.elem[@intCast(i)] = .{ .func_ref = val.func_ref };
 
-                {
-                    for (self.store.tables.items, 0..) |table, ix| {
-                        std.debug.print("**** table [{}]\n", .{ix});
-                        var out = std.ArrayList(u8).init(std.heap.c_allocator);
-                        defer out.deinit();
-                        try std.json.stringify(table.elem, .{}, out.writer());
-                        std.debug.print("*** {s}\n", .{out.items});
-                    }
-                }
+                if (i >= tab.elem.len)
+                    return Error.OutOfBoundsTableAccess;
+
+                tab.elem[@intCast(i)] = .{ .func_ref = val.func_ref };
             },
             .table_init => |arg| {
                 const module = self.stack.topFrame().module;
@@ -382,8 +375,8 @@ pub const Instance = struct {
                     const s = self.stack.pop().value.asI32();
                     const d = self.stack.pop().value.asI32();
 
-                    // TODO: check
-                    _ = tab;
+                    if (s + n > elem.elem.len or d + n > tab.elem.len)
+                        return Error.OutOfBoundsTableAccess;
 
                     if (n == 0)
                         break;
@@ -393,6 +386,7 @@ pub const Instance = struct {
                     try self.stack.push(.{ .value = .{ .func_ref = ref.func_ref } }); // FIXME
                     const inst = Instruction{ .table_set = arg.table_idx };
                     try self.execOneInstruction(inst);
+
                     try self.stack.pushValueAs(i32, d + 1);
                     try self.stack.pushValueAs(i32, s + 1);
                     try self.stack.pushValueAs(i32, n - 1);

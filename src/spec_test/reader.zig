@@ -188,7 +188,7 @@ fn errorFromString(str: []const u8) types.Error {
     } else if (strcmp(str, "out of bounds memory access")) {
         return E.OutOfBoundsMemoryAccess;
     } else if (strcmp(str, "out of bounds table access")) {
-        return E.OutOfBoundsTableyAccess;
+        return E.OutOfBoundsTableAccess;
     } else if (strcmp(str, "undefined element")) {
         return E.UndefinedElement;
     } else if (strcmp(str, "uninitialized element")) {
