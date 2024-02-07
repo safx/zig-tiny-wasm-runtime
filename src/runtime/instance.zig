@@ -395,8 +395,7 @@ pub const Instance = struct {
             .elem_drop => |elem_idx| {
                 const module = self.stack.topFrame().module;
                 const a = module.elem_addrs[elem_idx];
-                const elem = self.store.elems.items[a];
-                _ = elem; // TODO: delete elem
+                self.store.elems.items[a].elem = &.{};
             },
             // .table_copy: TblArg,
             // .table_grow: types.TableIdx,
