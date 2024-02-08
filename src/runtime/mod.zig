@@ -6,5 +6,6 @@ pub usingnamespace types;
 
 test {
     const std = @import("std");
+    _ = @import("./instance.zig");
     std.testing.refAllDecls(@This());
 }

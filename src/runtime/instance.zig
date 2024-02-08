@@ -527,13 +527,13 @@ pub const Instance = struct {
             .i64_rotr => try self.binOp(i64, opIntRotr),
 
             // numeric instructions (3) f32
-            // .f32_abs,
+            .f32_abs => try self.unOp(f32, opFloatAbs),
             .f32_neg => try self.unOp(f32, opFloatNeg),
-            // .f32_ceil,
-            // .f32_floor,
-            // .f32_trunc,
-            // .f32_nearest,
-            // .f32_sqrt,
+            .f32_ceil => try self.unOp(f32, opFloatCeil),
+            .f32_floor => try self.unOp(f32, opFloatFloor),
+            .f32_trunc => try self.unOp(f32, opFloatTrunc),
+            .f32_nearest => try self.unOp(f32, opFloatNearest),
+            .f32_sqrt => try self.unOp(f32, opFloatSqrt),
             .f32_add => try self.binOp(f32, opFloatAdd),
             .f32_sub => try self.binOp(f32, opFloatSub),
             .f32_mul => try self.binOp(f32, opFloatMul),
@@ -543,13 +543,13 @@ pub const Instance = struct {
             // .f32_copy_sign,
 
             // numeric instructions (3) f64
-            // .f64_abs,
+            .f64_abs => try self.unOp(f64, opFloatAbs),
             .f64_neg => try self.unOp(f64, opFloatNeg),
-            // .f64_ceil,
-            // .f64_floor,
-            // .f64_trunc,
-            // .f64_nearest,
-            // .f64_sqrt,
+            .f64_ceil => try self.unOp(f64, opFloatCeil),
+            .f64_floor => try self.unOp(f64, opFloatFloor),
+            .f64_trunc => try self.unOp(f64, opFloatTrunc),
+            .f64_nearest => try self.unOp(f64, opFloatNearest),
+            .f64_sqrt => try self.unOp(f64, opFloatSqrt),
             .f64_add => try self.binOp(f64, opFloatAdd),
             .f64_sub => try self.binOp(f64, opFloatSub),
             .f64_mul => try self.binOp(f64, opFloatMul),
@@ -1191,8 +1191,32 @@ fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
     }
 }
 
+fn opFloatAbs(comptime T: type, value: T) Error!T {
+    return @fabs(value);
+}
+
 fn opFloatNeg(comptime T: type, value: T) Error!T {
     return -value;
+}
+
+fn opFloatSqrt(comptime T: type, value: T) Error!T {
+    return @sqrt(value);
+}
+
+fn opFloatCeil(comptime T: type, value: T) Error!T {
+    return @ceil(value);
+}
+
+fn opFloatFloor(comptime T: type, value: T) Error!T {
+    return @floor(value);
+}
+
+fn opFloatTrunc(comptime T: type, value: T) Error!T {
+    return @trunc(value);
+}
+
+fn opFloatNearest(comptime T: type, value: T) Error!T {
+    return @trunc(value); // FIXME
 }
 
 fn opFloatEq(comptime T: type, lhs: T, rhs: T) Error!i32 {
@@ -1237,13 +1261,21 @@ fn opFloatDiv(comptime T: type, lhs: T, rhs: T) Error!T {
 
 fn opFloatMin(comptime T: type, lhs: T, rhs: T) Error!T {
     if (std.math.isNan(lhs) or std.math.isNan(rhs)) {
-        // std.math.nan() is not canonical NaN
-        const v = if (T == f64) @as(u64, 0x7ff8_0000_0000_0000) else @as(u32, 0x7fc0_0000);
-        return @bitCast(v);
+        return canonNan(T);
     }
     return @min(lhs, rhs);
 }
 
 fn opFloatMax(comptime T: type, lhs: T, rhs: T) Error!T {
+    if (std.math.isNan(lhs) or std.math.isNan(rhs)) {
+        return canonNan(T);
+    }
     return @max(lhs, rhs);
+}
+
+fn canonNan(comptime T: type) T {
+    // std.math.nan() is not canonical NaN
+    std.debug.assert(T == f64 or T == f32);
+    const v = if (T == f64) @as(u64, 0x7ff8_0000_0000_0000) else @as(u32, 0x7fc0_0000);
+    return @bitCast(v);
 }
