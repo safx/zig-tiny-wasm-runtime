@@ -2,6 +2,7 @@ const std = @import("std");
 const wa = @import("wasm-core");
 const types = @import("./types.zig");
 const Error = @import("./errors.zig").Error;
+const page_size = @import("./instance.zig").page_size;
 
 pub const ModuleInst = struct {
     types: []const wa.FuncType = &.{},
@@ -182,7 +183,7 @@ fn allocTable(store: *types.Store, table: wa.TableType, allocator: std.mem.Alloc
 fn allocMemory(store: *types.Store, mem: wa.MemoryType, allocator: std.mem.Allocator) error{OutOfMemory}!types.MemAddr {
     const inst = types.MemInst{
         .type = mem,
-        .data = try allocator.alloc(u8, mem.limits.min * 65_536),
+        .data = try allocator.alloc(u8, mem.limits.min * page_size),
     };
     @memset(inst.data, 0);
     return try appendElement(types.MemInst, &store.mems, inst);

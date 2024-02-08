@@ -5,6 +5,8 @@ const decode = @import("wasm-decode");
 pub const types = @import("./types.zig");
 pub const Error = @import("./errors.zig").Error;
 
+pub const page_size = 65_536;
+
 /// A type of WebAssembly instance
 pub const Instance = struct {
     const Self = @This();
@@ -432,7 +434,7 @@ pub const Instance = struct {
             // .i64_store16: MemArg,
             // .i64_store32: MemArg,
             // .memory_size,
-            // .memory_grow,
+            .memory_grow => try self.opMemoryGrow(),
             .memory_init => |data_idx| try self.opMemoryInit(data_idx),
             .data_drop => |data_idx| try self.opDataDrop(data_idx),
             // .memory_copy,
@@ -807,6 +809,43 @@ pub const Instance = struct {
         data.data = &.{};
     }
 
+    /// `memory.grow` in wasm spec
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-grow
+    inline fn opMemoryGrow(self: *Self) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        const mem_addr = module.mem_addrs[0];
+        var mem_inst = self.store.mems.items[mem_addr];
+
+        const sz: i32 = @intCast(mem_inst.data.len / page_size);
+        const n = self.stack.pop().value.asI32();
+
+        if (mem_inst.type.limits.max) |max| {
+            if (n + sz > max) {
+                try self.stack.pushValueAs(i32, -1);
+                return;
+            }
+        }
+        const r = try glowmem(&mem_inst, n, self.allocator);
+        try self.stack.pushValueAs(i32, r);
+        return;
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/modules.html#growing-memories
+    fn glowmem(mem_inst: *types.MemInst, n: i32, allocator: std.mem.Allocator) error{OutOfMemory}!i32 {
+        const data_len: i32 = @intCast(mem_inst.*.data.len / page_size);
+        const len: i32 = data_len + n;
+        if (len + n > 65536) {
+            return -1; // fail
+        }
+        const old_data = mem_inst.*.data;
+        const new_data = try allocator.alloc(u8, @intCast(len * page_size));
+        @memcpy(new_data[0..old_data.len], old_data);
+        @memset(new_data[old_data.len..], 0);
+        mem_inst.*.data = new_data;
+        mem_inst.*.type.limits.min = @intCast(len);
+        return len;
+    }
+
     /// `memory.init x` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-init-x
     inline fn opMemoryInit(self: *Self, data_idx: wa.DataIdx) (Error || error{OutOfMemory})!void {
@@ -817,9 +856,9 @@ pub const Instance = struct {
         const data_addr = module.data_addrs[data_idx];
         const data = self.store.datas.items[data_addr];
 
-        var n = self.stack.pop().value.i32;
-        var s = self.stack.pop().value.i32;
-        var d = self.stack.pop().value.i32;
+        var n = self.stack.pop().value.asI32();
+        var s = self.stack.pop().value.asI32();
+        var d = self.stack.pop().value.asI32();
 
         //const ea1: u64 = @intCast(s);
         //const ea2: u64 = @intCast(d);
