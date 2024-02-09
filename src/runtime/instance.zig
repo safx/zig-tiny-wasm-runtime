@@ -280,55 +280,13 @@ pub const Instance = struct {
             .br_if => |label_idx| return self.opBrIf(label_idx),
             .br_table => |table_info| return self.opBrTable(table_info),
             .@"return" => return FlowControl.exit,
-            .call => |func_idx| {
-                const module = self.stack.topFrame().module;
-                _ = try self.invokeFunction(module.func_addrs[func_idx]);
-            },
-            .call_indirect => |arg| {
-                std.debug.print("call_indirect: {any}\n", .{arg});
-                const module = self.stack.topFrame().module;
-                const ta = module.table_addrs[arg.table_idx];
-                const tab = self.store.tables.items[ta];
-
-                const ft_expect = module.types[arg.type_idx];
-
-                const i = self.stack.pop().value.asI32();
-                if (i >= tab.elem.len)
-                    return Error.UndefinedElement;
-                const rx = tab.elem[@intCast(i)];
-                if (rx == null)
-                    return Error.UninitializedElement;
-                const r = rx.?.func_ref.?;
-
-                const f = self.store.funcs.items[@intCast(r)];
-                const ft_actual = f.type;
-                if (ft_expect.parameter_types.len != ft_actual.parameter_types.len or ft_expect.result_types.len != ft_actual.result_types.len)
-                    return Error.IndirectCallTypeMismatch;
-
-                for (ft_expect.parameter_types, ft_actual.parameter_types) |e, a| {
-                    if (e != a) return Error.IndirectCallTypeMismatch;
-                }
-                for (ft_expect.result_types, ft_actual.result_types) |e, a| {
-                    if (e != a) return Error.IndirectCallTypeMismatch;
-                }
-
-                _ = try self.invokeFunction(r);
-            },
+            .call => |func_idx| try self.opCall(func_idx),
+            .call_indirect => |arg| try self.opCallIndirect(arg),
 
             // reference instructions
-            .ref_null => |ref_type| {
-                const val: types.Value = switch (ref_type) {
-                    .funcref => .{ .func_ref = null },
-                    .externref => .{ .extern_ref = null },
-                };
-                try self.stack.push(.{ .value = val });
-            },
+            .ref_null => |ref_type| try self.opRefNull(ref_type),
             // .ref_is_null,
-            .ref_func => |func_idx| {
-                const module = self.stack.topFrame().module;
-                const a = module.func_addrs[func_idx];
-                try self.stack.push(.{ .value = .{ .func_ref = a } });
-            },
+            .ref_func => |func_idx| try self.opRefFunc(func_idx),
 
             // parametric instructions
             .drop => _ = self.stack.pop(),
@@ -338,72 +296,15 @@ pub const Instance = struct {
             // variable instructions
             .local_get => |local_idx| try self.opLocalGet(local_idx),
             .local_set => |local_idx| try self.opLocalSet(local_idx),
-            .local_tee => |local_idx| {
-                _ = local_idx;
-                const value = self.stack.pop();
-                try self.stack.push(value);
-                try self.stack.push(value);
-            },
-            .global_get => |global_idx| {
-                const module = self.stack.topFrame().module;
-                const a = module.global_addrs[global_idx];
-                const glob = self.store.globals.items[a];
-                try self.stack.push(.{ .value = glob.value });
-            },
-            .global_set => |global_idx| {
-                const module = self.stack.topFrame().module;
-                const a = module.global_addrs[global_idx];
-                const value = self.stack.pop().value;
-                self.store.globals.items[a].value = value;
-            },
+            .local_tee => |local_idx| try self.opLocalTee(local_idx),
+            .global_get => |global_idx| try self.opGlobalGet(global_idx),
+            .global_set => |global_idx| try self.opGlobalSet(global_idx),
 
             // table instructions
             // .table_get: types.TableIdx,
-            .table_set => |table_idx| {
-                const module = self.stack.topFrame().module;
-                const a = module.table_addrs[table_idx];
-                const tab = self.store.tables.items[a];
-                const val = self.stack.pop().value;
-                const i = self.stack.pop().value.asI32();
-
-                if (i >= tab.elem.len)
-                    return Error.OutOfBoundsTableAccess;
-
-                tab.elem[@intCast(i)] = .{ .func_ref = val.func_ref };
-            },
-            .table_init => |arg| {
-                const module = self.stack.topFrame().module;
-                while (true) {
-                    const ta = module.table_addrs[arg.table_idx];
-                    const tab = self.store.tables.items[ta];
-                    const ea = module.elem_addrs[arg.elem_idx];
-                    const elem = self.store.elems.items[ea];
-                    const n = self.stack.pop().value.asI32();
-                    const s = self.stack.pop().value.asI32();
-                    const d = self.stack.pop().value.asI32();
-
-                    if (s + n > elem.elem.len or d + n > tab.elem.len)
-                        return Error.OutOfBoundsTableAccess;
-
-                    if (n == 0)
-                        break;
-
-                    const ref = elem.elem[@intCast(s)];
-                    try self.stack.pushValueAs(i32, d);
-                    try self.stack.push(.{ .value = .{ .func_ref = ref.func_ref } }); // FIXME
-                    const inst = Instruction{ .table_set = arg.table_idx };
-                    try self.execOneInstruction(inst);
-
-                    try self.stack.pushValueAs(i32, d + 1);
-                    try self.stack.pushValueAs(i32, s + 1);
-                    try self.stack.pushValueAs(i32, n - 1);
-                }
-            },
-            .elem_drop => |elem_idx| {
-                const module = self.stack.topFrame().module;
-                const a = module.elem_addrs[elem_idx];
-                self.store.elems.items[a].elem = &.{};
-            },
+            .table_set => |table_idx| try self.opTableSet(table_idx),
+            .table_init => |arg| try self.opTableInit(arg),
+            .elem_drop => |elem_idx| try self.opElemDrop(elem_idx),
             // .table_copy: TblArg,
             // .table_grow: types.TableIdx,
             // .table_size: types.TableIdx,
@@ -693,6 +594,57 @@ pub const Instance = struct {
         return self.opBr(label_idx);
     }
 
+    inline fn opCall(self: *Self, func_idx: wa.FuncIdx) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        _ = try self.invokeFunction(module.func_addrs[func_idx]);
+    }
+
+    inline fn opCallIndirect(self: *Self, arg: Instruction.CallIndirectArg) (Error || error{OutOfMemory})!void {
+        std.debug.print("call_indirect: {any}\n", .{arg});
+        const module = self.stack.topFrame().module;
+        const ta = module.table_addrs[arg.table_idx];
+        const tab = self.store.tables.items[ta];
+
+        const ft_expect = module.types[arg.type_idx];
+
+        const i = self.stack.pop().value.asI32();
+        if (i >= tab.elem.len)
+            return Error.UndefinedElement;
+        const rx = tab.elem[@intCast(i)];
+        if (rx == null)
+            return Error.UninitializedElement;
+        const r = rx.?.func_ref.?;
+
+        const f = self.store.funcs.items[@intCast(r)];
+        const ft_actual = f.type;
+        if (ft_expect.parameter_types.len != ft_actual.parameter_types.len or ft_expect.result_types.len != ft_actual.result_types.len)
+            return Error.IndirectCallTypeMismatch;
+
+        for (ft_expect.parameter_types, ft_actual.parameter_types) |e, a| {
+            if (e != a) return Error.IndirectCallTypeMismatch;
+        }
+        for (ft_expect.result_types, ft_actual.result_types) |e, a| {
+            if (e != a) return Error.IndirectCallTypeMismatch;
+        }
+
+        _ = try self.invokeFunction(r);
+    }
+
+    // reference instructions
+    inline fn opRefNull(self: *Self, ref_type: wa.RefType) (Error || error{OutOfMemory})!void {
+        const val: types.Value = switch (ref_type) {
+            .funcref => .{ .func_ref = null },
+            .externref => .{ .extern_ref = null },
+        };
+        try self.stack.push(.{ .value = val });
+    }
+
+    inline fn opRefFunc(self: *Self, func_idx: wa.FuncIdx) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        const a = module.func_addrs[func_idx];
+        try self.stack.push(.{ .value = .{ .func_ref = a } });
+    }
+
     // parametric instructions
     inline fn opSelect(self: *Self) error{OutOfMemory}!void {
         const c = self.stack.pop().value.asI32();
@@ -705,6 +657,7 @@ pub const Instance = struct {
         }
     }
 
+    // variable instructions
     inline fn opLocalGet(self: *Self, local_idx: wa.LocalIdx) (Error || error{OutOfMemory})!void {
         const frame = self.stack.topFrame();
         const val = frame.locals[local_idx];
@@ -717,12 +670,79 @@ pub const Instance = struct {
         frame.locals[local_idx] = val;
     }
 
+    inline fn opLocalTee(self: *Self, local_idx: wa.LocalIdx) (Error || error{OutOfMemory})!void {
+        _ = local_idx;
+        const value = self.stack.pop();
+        try self.stack.push(value);
+        try self.stack.push(value);
+    }
+    inline fn opGlobalGet(self: *Self, global_idx: wa.GlobalIdx) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        const a = module.global_addrs[global_idx];
+        const glob = self.store.globals.items[a];
+        try self.stack.push(.{ .value = glob.value });
+    }
+    inline fn opGlobalSet(self: *Self, global_idx: wa.GlobalIdx) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        const a = module.global_addrs[global_idx];
+        const value = self.stack.pop().value;
+        self.store.globals.items[a].value = value;
+    }
+
+    // table instructions
+    // .table_get: types.TableIdx,
+    inline fn opTableSet(self: *Self, table_idx: wa.TableIdx) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        const a = module.table_addrs[table_idx];
+        const tab = self.store.tables.items[a];
+        const val = self.stack.pop().value;
+        const i = self.stack.pop().value.asI32();
+
+        if (i >= tab.elem.len)
+            return Error.OutOfBoundsTableAccess;
+
+        tab.elem[@intCast(i)] = .{ .func_ref = val.func_ref };
+    }
+    inline fn opTableInit(self: *Self, arg: Instruction.TblArg) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        while (true) {
+            const ta = module.table_addrs[arg.table_idx];
+            const tab = self.store.tables.items[ta];
+            const ea = module.elem_addrs[arg.elem_idx];
+            const elem = self.store.elems.items[ea];
+            const n = self.stack.pop().value.asI32();
+            const s = self.stack.pop().value.asI32();
+            const d = self.stack.pop().value.asI32();
+
+            if (s + n > elem.elem.len or d + n > tab.elem.len)
+                return Error.OutOfBoundsTableAccess;
+
+            if (n == 0)
+                break;
+
+            const ref = elem.elem[@intCast(s)];
+            try self.stack.pushValueAs(i32, d);
+            try self.stack.push(.{ .value = .{ .func_ref = ref.func_ref } }); // FIXME
+            const inst = Instruction{ .table_set = arg.table_idx };
+            try self.execOneInstruction(inst);
+
+            try self.stack.pushValueAs(i32, d + 1);
+            try self.stack.pushValueAs(i32, s + 1);
+            try self.stack.pushValueAs(i32, n - 1);
+        }
+    }
+    inline fn opElemDrop(self: *Self, elem_idx: wa.ElemIdx) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        const a = module.elem_addrs[elem_idx];
+        self.store.elems.items[a].elem = &.{};
+    }
+
     inline fn opLoad(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!T {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
 
-        const ea = self.stack.pop().value.i32;
+        const ea = self.stack.pop().value.asI32();
         const ea_cast: u32 = @bitCast(ea);
 
         const ea_start_with_overflow = @addWithOverflow(ea_cast, mem_arg.offset);
@@ -779,7 +799,7 @@ pub const Instance = struct {
         const mem = &self.store.mems.items[a];
 
         const c = self.stack.pop().value;
-        const i = self.stack.pop().value.i32;
+        const i = self.stack.pop().value.asI32();
 
         var ea: u32 = @intCast(i);
         ea += mem_arg.offset;
@@ -794,12 +814,12 @@ pub const Instance = struct {
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
 
-        const c = self.stack.pop().value;
-        const i = self.stack.pop().value.i32;
+        const c = self.stack.pop().value.asI32();
+        const i = self.stack.pop().value.asI32();
 
         var ea: u32 = @intCast(i);
         ea += mem_arg.offset;
-        mem.data[ea] = @intCast(c.i32);
+        mem.data[ea] = @intCast(c);
     }
 
     inline fn opDataDrop(self: *Self, data_idx: wa.DataIdx) error{OutOfMemory}!void {
@@ -968,6 +988,15 @@ const FlowControl = union(enum) {
     }
 };
 
+inline fn basetype(comptime T: type) type {
+    return if (T == u32) i32 else if (T == u64) i64 else T;
+}
+
+inline fn unsignedTypeOf(comptime T: type) type {
+    std.debug.assert(T == i32 or T == i64);
+    return if (T == i32) u32 else u64;
+}
+
 // arithmetic ops are defined outside the struct
 
 fn opIntClz(comptime T: type, value: T) Error!T {
@@ -1014,15 +1043,10 @@ fn opIntLtS(comptime T: type, lhs: T, rhs: T) Error!i32 {
 }
 
 fn opIntLtU(comptime T: type, lhs: T, rhs: T) Error!i32 {
-    if (T == i32) {
-        const l: u32 = @bitCast(lhs);
-        const r: u32 = @bitCast(rhs);
-        return if (l < r) 1 else 0;
-    } else {
-        const l: u64 = @bitCast(lhs);
-        const r: u64 = @bitCast(rhs);
-        return if (l < r) 1 else 0;
-    }
+    const U = unsignedTypeOf(T);
+    const l: U = @bitCast(lhs);
+    const r: U = @bitCast(rhs);
+    return if (l < r) 1 else 0;
 }
 
 fn opIntGtS(comptime T: type, lhs: T, rhs: T) Error!i32 {
@@ -1030,15 +1054,10 @@ fn opIntGtS(comptime T: type, lhs: T, rhs: T) Error!i32 {
 }
 
 fn opIntGtU(comptime T: type, lhs: T, rhs: T) Error!i32 {
-    if (T == i32) {
-        const l: u32 = @bitCast(lhs);
-        const r: u32 = @bitCast(rhs);
-        return if (l > r) 1 else 0;
-    } else {
-        const l: u64 = @bitCast(lhs);
-        const r: u64 = @bitCast(rhs);
-        return if (l > r) 1 else 0;
-    }
+    const U = unsignedTypeOf(T);
+    const l: U = @bitCast(lhs);
+    const r: U = @bitCast(rhs);
+    return if (l > r) 1 else 0;
 }
 
 fn opIntLeS(comptime T: type, lhs: T, rhs: T) Error!i32 {
@@ -1046,15 +1065,10 @@ fn opIntLeS(comptime T: type, lhs: T, rhs: T) Error!i32 {
 }
 
 fn opIntLeU(comptime T: type, lhs: T, rhs: T) Error!i32 {
-    if (T == i32) {
-        const l: u32 = @bitCast(lhs);
-        const r: u32 = @bitCast(rhs);
-        return if (l <= r) 1 else 0;
-    } else {
-        const l: u64 = @bitCast(lhs);
-        const r: u64 = @bitCast(rhs);
-        return if (l <= r) 1 else 0;
-    }
+    const U = unsignedTypeOf(T);
+    const l: U = @bitCast(lhs);
+    const r: U = @bitCast(rhs);
+    return if (l <= r) 1 else 0;
 }
 
 fn opIntGeS(comptime T: type, lhs: T, rhs: T) Error!i32 {
@@ -1062,15 +1076,10 @@ fn opIntGeS(comptime T: type, lhs: T, rhs: T) Error!i32 {
 }
 
 fn opIntGeU(comptime T: type, lhs: T, rhs: T) Error!i32 {
-    if (T == i32) {
-        const l: u32 = @bitCast(lhs);
-        const r: u32 = @bitCast(rhs);
-        return if (l >= r) 1 else 0;
-    } else {
-        const l: u64 = @bitCast(lhs);
-        const r: u64 = @bitCast(rhs);
-        return if (l >= r) 1 else 0;
-    }
+    const U = unsignedTypeOf(T);
+    const l: U = @bitCast(lhs);
+    const r: U = @bitCast(rhs);
+    return if (l >= r) 1 else 0;
 }
 
 fn opIntAdd(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -1139,17 +1148,11 @@ fn opIntRemS(comptime T: type, lhs: T, rhs: T) Error!T {
 
 fn opIntRemU(comptime T: type, lhs: T, rhs: T) Error!T {
     if (rhs == 0) return Error.IntegerDivideByZero;
-    if (T == i32) {
-        const num: u32 = @bitCast(lhs);
-        const den: u32 = @bitCast(rhs);
-        const res = @mod(num, den);
-        return @bitCast(res);
-    } else {
-        const num: u64 = @bitCast(lhs);
-        const den: u64 = @bitCast(rhs);
-        const res = @mod(num, den);
-        return @bitCast(res);
-    }
+    const U = unsignedTypeOf(T);
+    const num: U = @bitCast(lhs);
+    const den: U = @bitCast(rhs);
+    const res = @mod(num, den);
+    return @bitCast(res);
 }
 
 fn opIntAnd(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -1173,17 +1176,11 @@ fn opIntShrS(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opIntShrU(comptime T: type, lhs: T, rhs: T) Error!T {
-    if (T == i32) {
-        const l: u32 = @bitCast(lhs);
-        const r: u32 = @bitCast(rhs);
-        const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
-        return @bitCast(res);
-    } else {
-        const l: u64 = @bitCast(lhs);
-        const r: u64 = @bitCast(rhs);
-        const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
-        return @bitCast(res);
-    }
+    const U = unsignedTypeOf(T);
+    const l: U = @bitCast(lhs);
+    const r: U = @bitCast(rhs);
+    const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
+    return @bitCast(res);
 }
 
 fn opIntRotl(comptime T: type, lhs: T, rhs: T) Error!T {
