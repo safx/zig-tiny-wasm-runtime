@@ -351,27 +351,27 @@ pub const Instance = struct {
             .i32_eqz => try self.testOp(i32, opIntEqz),
             .i32_eq => try self.relOp(i32, opIntEq),
             .i32_ne => try self.relOp(i32, opIntNe),
-            .i32_lt_s => try self.relOp(i32, opIntLtS),
-            .i32_lt_u => try self.relOp(i32, opIntLtU),
-            .i32_gt_s => try self.relOp(i32, opIntGtS),
-            .i32_gt_u => try self.relOp(i32, opIntGtU),
-            .i32_le_s => try self.relOp(i32, opIntLeS),
-            .i32_le_u => try self.relOp(i32, opIntLeU),
-            .i32_ge_s => try self.relOp(i32, opIntGeS),
-            .i32_ge_u => try self.relOp(i32, opIntGeU),
+            .i32_lt_s => try self.relOp(i32, opIntLt),
+            .i32_lt_u => try self.relOp(u32, opIntLt),
+            .i32_gt_s => try self.relOp(i32, opIntGt),
+            .i32_gt_u => try self.relOp(u32, opIntGt),
+            .i32_le_s => try self.relOp(i32, opIntLe),
+            .i32_le_u => try self.relOp(u32, opIntLe),
+            .i32_ge_s => try self.relOp(i32, opIntGe),
+            .i32_ge_u => try self.relOp(u32, opIntGe),
 
             // numeric instructions (2) i64
             .i64_eqz => try self.testOp(i64, opIntEqz),
             .i64_eq => try self.relOp(i64, opIntEq),
             .i64_ne => try self.relOp(i64, opIntNe),
-            .i64_lt_s => try self.relOp(i64, opIntLtS),
-            .i64_lt_u => try self.relOp(i64, opIntLtU),
-            .i64_gt_s => try self.relOp(i64, opIntGtS),
-            .i64_gt_u => try self.relOp(i64, opIntGtU),
-            .i64_le_s => try self.relOp(i64, opIntLeS),
-            .i64_le_u => try self.relOp(i64, opIntLeU),
-            .i64_ge_s => try self.relOp(i64, opIntGeS),
-            .i64_ge_u => try self.relOp(i64, opIntGeU),
+            .i64_lt_s => try self.relOp(i64, opIntLt),
+            .i64_lt_u => try self.relOp(u64, opIntLt),
+            .i64_gt_s => try self.relOp(i64, opIntGt),
+            .i64_gt_u => try self.relOp(u64, opIntGt),
+            .i64_le_s => try self.relOp(i64, opIntLe),
+            .i64_le_u => try self.relOp(u64, opIntLe),
+            .i64_ge_s => try self.relOp(i64, opIntGe),
+            .i64_ge_u => try self.relOp(u64, opIntGe),
 
             // numeric instructions (2) f32
             .f32_eq => try self.relOp(f32, opFloatEq),
@@ -914,9 +914,14 @@ pub const Instance = struct {
         try self.stack.pushValueAs(i32, result);
     }
 
+    inline fn basetype(comptime T: type) type {
+        return if (T == u32) i32 else if (T == u64) i64 else T;
+    }
+
     inline fn relOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!i32) (Error || error{OutOfMemory})!void {
-        const rhs = self.stack.pop().value.as(T);
-        const lhs = self.stack.pop().value.as(T);
+        const B = basetype(T);
+        const rhs: T = @bitCast(self.stack.pop().value.as(B));
+        const lhs: T = @bitCast(self.stack.pop().value.as(B));
         const result = try f(T, lhs, rhs);
         try self.stack.pushValueAs(i32, result);
     }
@@ -988,10 +993,6 @@ const FlowControl = union(enum) {
     }
 };
 
-inline fn basetype(comptime T: type) type {
-    return if (T == u32) i32 else if (T == u64) i64 else T;
-}
-
 inline fn unsignedTypeOf(comptime T: type) type {
     std.debug.assert(T == i32 or T == i64);
     return if (T == i32) u32 else u64;
@@ -1038,48 +1039,20 @@ fn opIntNe(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs != rhs) 1 else 0;
 }
 
-fn opIntLtS(comptime T: type, lhs: T, rhs: T) Error!i32 {
+fn opIntLt(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs < rhs) 1 else 0;
 }
 
-fn opIntLtU(comptime T: type, lhs: T, rhs: T) Error!i32 {
-    const U = unsignedTypeOf(T);
-    const l: U = @bitCast(lhs);
-    const r: U = @bitCast(rhs);
-    return if (l < r) 1 else 0;
-}
-
-fn opIntGtS(comptime T: type, lhs: T, rhs: T) Error!i32 {
+fn opIntGt(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs > rhs) 1 else 0;
 }
 
-fn opIntGtU(comptime T: type, lhs: T, rhs: T) Error!i32 {
-    const U = unsignedTypeOf(T);
-    const l: U = @bitCast(lhs);
-    const r: U = @bitCast(rhs);
-    return if (l > r) 1 else 0;
-}
-
-fn opIntLeS(comptime T: type, lhs: T, rhs: T) Error!i32 {
+fn opIntLe(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs <= rhs) 1 else 0;
 }
 
-fn opIntLeU(comptime T: type, lhs: T, rhs: T) Error!i32 {
-    const U = unsignedTypeOf(T);
-    const l: U = @bitCast(lhs);
-    const r: U = @bitCast(rhs);
-    return if (l <= r) 1 else 0;
-}
-
-fn opIntGeS(comptime T: type, lhs: T, rhs: T) Error!i32 {
+fn opIntGe(comptime T: type, lhs: T, rhs: T) Error!i32 {
     return if (lhs >= rhs) 1 else 0;
-}
-
-fn opIntGeU(comptime T: type, lhs: T, rhs: T) Error!i32 {
-    const U = unsignedTypeOf(T);
-    const l: U = @bitCast(lhs);
-    const r: U = @bitCast(rhs);
-    return if (l >= r) 1 else 0;
 }
 
 fn opIntAdd(comptime T: type, lhs: T, rhs: T) Error!T {
