@@ -397,15 +397,15 @@ pub const Instance = struct {
             .i32_sub => try self.binOp(i32, opIntSub),
             .i32_mul => try self.binOp(i32, opIntMul),
             .i32_div_s => try self.binOp(i32, opIntDivS),
-            .i32_div_u => try self.binOp(i32, opIntDivU),
+            .i32_div_u => try self.binOp(u32, opIntDivU),
             .i32_rem_s => try self.binOp(i32, opIntRemS),
-            .i32_rem_u => try self.binOp(i32, opIntRemU),
+            .i32_rem_u => try self.binOp(u32, opIntRemU),
             .i32_and => try self.binOp(i32, opIntAnd),
             .i32_or => try self.binOp(i32, opIntOr),
             .i32_xor => try self.binOp(i32, opIntXor),
             .i32_shl => try self.binOp(i32, opIntShl),
             .i32_shr_s => try self.binOp(i32, opIntShrS),
-            .i32_shr_u => try self.binOp(i32, opIntShrU),
+            .i32_shr_u => try self.binOp(u32, opIntShrU),
             .i32_rotl => try self.binOp(i32, opIntRotl),
             .i32_rotr => try self.binOp(i32, opIntRotr),
 
@@ -417,15 +417,15 @@ pub const Instance = struct {
             .i64_sub => try self.binOp(i64, opIntSub),
             .i64_mul => try self.binOp(i64, opIntMul),
             .i64_div_s => try self.binOp(i64, opIntDivS),
-            .i64_div_u => try self.binOp(i64, opIntDivU),
+            .i64_div_u => try self.binOp(u64, opIntDivU),
             .i64_rem_s => try self.binOp(i64, opIntRemS),
-            .i64_rem_u => try self.binOp(i64, opIntRemU),
+            .i64_rem_u => try self.binOp(u64, opIntRemU),
             .i64_and => try self.binOp(i64, opIntAnd),
             .i64_or => try self.binOp(i64, opIntOr),
             .i64_xor => try self.binOp(i64, opIntXor),
             .i64_shl => try self.binOp(i64, opIntShl),
             .i64_shr_s => try self.binOp(i64, opIntShrS),
-            .i64_shr_u => try self.binOp(i64, opIntShrU),
+            .i64_shr_u => try self.binOp(u64, opIntShrU),
             .i64_rotl => try self.binOp(i64, opIntRotl),
             .i64_rotr => try self.binOp(i64, opIntRotr),
 
@@ -901,9 +901,14 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
+    inline fn basetype(comptime T: type) type {
+        return if (T == u32) i32 else if (T == u64) i64 else T;
+    }
+
     inline fn binOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) (Error || error{OutOfMemory})!void {
-        const rhs = self.stack.pop().value.as(T);
-        const lhs = self.stack.pop().value.as(T);
+        const B = basetype(T);
+        const rhs: T = @bitCast(self.stack.pop().value.as(B));
+        const lhs: T = @bitCast(self.stack.pop().value.as(B));
         const result = try f(T, lhs, rhs);
         try self.stack.pushValueAs(T, result);
     }
@@ -912,10 +917,6 @@ pub const Instance = struct {
         const value = self.stack.pop().value.as(T);
         const result = try f(T, value);
         try self.stack.pushValueAs(i32, result);
-    }
-
-    inline fn basetype(comptime T: type) type {
-        return if (T == u32) i32 else if (T == u64) i64 else T;
     }
 
     inline fn relOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!i32) (Error || error{OutOfMemory})!void {
@@ -1073,16 +1074,12 @@ fn opIntDivS(comptime T: type, lhs: T, rhs: T) Error!T {
 fn opIntDivU(comptime T: type, lhs: T, rhs: T) Error!T {
     if (rhs == 0) return Error.IntegerDivideByZero;
     if (T == i32) {
-        if (lhs == -2147483648 and rhs == -1) return 0;
-        const l: u32 = @bitCast(lhs);
-        const r: u32 = @bitCast(rhs);
-        const res = @divTrunc(l, r);
+        if (lhs == 2147483648 and rhs == 4294967295) return 0;
+        const res = @divTrunc(lhs, rhs);
         return @bitCast(res);
     } else {
-        if (lhs == -9223372036854775808 and rhs == -1) return 0;
-        const l: u64 = @bitCast(lhs);
-        const r: u64 = @bitCast(rhs);
-        const res = @divTrunc(l, r);
+        if (lhs == 9223372036854775808 and rhs == 18446744073709551615) return 0;
+        const res = @divTrunc(lhs, rhs);
         return @bitCast(res);
     }
 }
@@ -1121,10 +1118,7 @@ fn opIntRemS(comptime T: type, lhs: T, rhs: T) Error!T {
 
 fn opIntRemU(comptime T: type, lhs: T, rhs: T) Error!T {
     if (rhs == 0) return Error.IntegerDivideByZero;
-    const U = unsignedTypeOf(T);
-    const num: U = @bitCast(lhs);
-    const den: U = @bitCast(rhs);
-    const res = @mod(num, den);
+    const res = @mod(lhs, rhs);
     return @bitCast(res);
 }
 
@@ -1149,10 +1143,7 @@ fn opIntShrS(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opIntShrU(comptime T: type, lhs: T, rhs: T) Error!T {
-    const U = unsignedTypeOf(T);
-    const l: U = @bitCast(lhs);
-    const r: U = @bitCast(rhs);
-    const res = l >> @intCast(@mod(r, @bitSizeOf(T)));
+    const res = lhs >> @intCast(@mod(rhs, @bitSizeOf(T)));
     return @bitCast(res);
 }
 
