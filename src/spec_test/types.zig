@@ -6,6 +6,8 @@ pub const Error = decode.Error || runtime.Error;
 // https://github.com/WebAssembly/spec/tree/master/interpreter#scripts
 
 pub const Command = union(enum) {
+    action: ActionCommandArg,
+
     // module
     module: ModuleCommandArg,
     module_quote,
@@ -34,6 +36,11 @@ pub const Result = union(enum) {
     f32_nan_arithmetic,
     f64_nan_canonical,
     f64_nan_arithmetic,
+};
+
+pub const ActionCommandArg = struct {
+    line: u32,
+    action: Action,
 };
 
 pub const ModuleCommandArg = struct {

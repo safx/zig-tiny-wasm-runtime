@@ -31,7 +31,10 @@ fn commandArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]c
 fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command {
     const cmd_type = json.object.get("type").?.string;
     const line: u32 = @intCast(json.object.get("line").?.integer);
-    if (strcmp(cmd_type, "module")) {
+    if (strcmp(cmd_type, "action")) {
+        const action = try actionFromJson(json.object.get("action").?, allocator);
+        return .{ .action = .{ .line = line, .action = action } };
+    } else if (strcmp(cmd_type, "module")) {
         const file_name = json.object.get("filename").?.string;
         const name = getStringOrNull(json.object, "name");
         return .{ .module = .{ .line = line, .file_name = file_name, .name = name } };
@@ -192,6 +195,8 @@ fn errorFromString(str: []const u8) types.Error {
     } else if (strcmp(str, "undefined element")) {
         return E.UndefinedElement;
     } else if (strcmp(str, "uninitialized element")) {
+        return E.UninitializedElement;
+    } else if (strcmp(str, "uninitialized element 2")) {
         return E.UninitializedElement;
     } else {
         std.debug.print("??? {s}\n", .{str});
