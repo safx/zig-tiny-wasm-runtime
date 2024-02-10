@@ -845,17 +845,17 @@ pub const Instance = struct {
                 return;
             }
         }
-        const r = try glowmem(&mem_inst, n, self.allocator);
-        try self.stack.pushValueAs(i32, r);
+        try growmem(&mem_inst, n, self.allocator);
+        try self.stack.pushValueAs(i32, sz);
         return;
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-memories
-    fn glowmem(mem_inst: *types.MemInst, n: i32, allocator: std.mem.Allocator) error{OutOfMemory}!i32 {
+    fn growmem(mem_inst: *types.MemInst, n: i32, allocator: std.mem.Allocator) error{OutOfMemory}!void {
         const data_len: i32 = @intCast(mem_inst.*.data.len / page_size);
         const len: i32 = data_len + n;
         if (len + n > 65536) {
-            return -1; // fail
+            return; // fail
         }
         const old_data = mem_inst.*.data;
         const new_data = try allocator.alloc(u8, @intCast(len * page_size));
@@ -863,7 +863,6 @@ pub const Instance = struct {
         @memset(new_data[old_data.len..], 0);
         mem_inst.*.data = new_data;
         mem_inst.*.type.limits.min = @intCast(len);
-        return len;
     }
 
     /// `memory.init x` in wasm spec
@@ -1073,15 +1072,10 @@ fn opIntDivS(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 fn opIntDivU(comptime T: type, lhs: T, rhs: T) Error!T {
     if (rhs == 0) return Error.IntegerDivideByZero;
-    if (T == i32) {
-        if (lhs == 2147483648 and rhs == 4294967295) return 0;
-        const res = @divTrunc(lhs, rhs);
-        return @bitCast(res);
-    } else {
-        if (lhs == 9223372036854775808 and rhs == 18446744073709551615) return 0;
-        const res = @divTrunc(lhs, rhs);
-        return @bitCast(res);
-    }
+    if (T == i32 and lhs == 2147483648 and rhs == 4294967295) return 0;
+    if (T == i64 and lhs == 9223372036854775808 and rhs == 18446744073709551615) return 0;
+    const res = @divTrunc(lhs, rhs);
+    return @bitCast(res);
 }
 fn opIntRemS(comptime T: type, lhs: T, rhs: T) Error!T {
     if (rhs == 0) return Error.IntegerDivideByZero;
