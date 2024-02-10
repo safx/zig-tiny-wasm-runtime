@@ -463,20 +463,16 @@ pub const Instance = struct {
 
             // numeric instructions (4)
             // .i32_wrap_i64,
-            // .i32_trunc_f32_s,
-            // .i32_trunc_f32_u,
-            // .i32_trunc_f64_s,
-            // .i32_trunc_f64_u,
+            .i32_trunc_f32_s => try self.instrOp(i32, f32, opToIntTrunc),
+            .i32_trunc_f32_u => try self.instrOp(u32, f32, opToIntTrunc),
+            .i32_trunc_f64_s => try self.instrOp(i32, f64, opToIntTrunc),
+            .i32_trunc_f64_u => try self.instrOp(u32, f64, opToIntTrunc),
             // .i64_extend_i32_s,
             // .i64_extend_i32_u,
-            // .i64_trunc_f32_s,
-            // .i64_trunc_f32_u,
-            .i64_trunc_f64_s => {
-                const value = self.stack.pop().value.asF64();
-                const v: i64 = @intFromFloat(value);
-                try self.stack.pushValue(v);
-            },
-            // .i64_trunc_f64_u,
+            .i64_trunc_f32_s => try self.instrOp(i64, f32, opToIntTrunc),
+            .i64_trunc_f32_u => try self.instrOp(i64, f32, opToIntTrunc),
+            .i64_trunc_f64_s => try self.instrOp(i64, f64, opToIntTrunc),
+            .i64_trunc_f64_u => try self.instrOp(u64, f64, opToIntTrunc),
             .f32_convert_i32_s => try self.instrOp(f32, i32, opConvert),
             .f32_convert_i32_u => try self.instrOp(f32, u32, opConvert),
             .f32_convert_i64_s => try self.instrOp(f32, i64, opConvert),
@@ -857,10 +853,11 @@ pub const Instance = struct {
     }
 
     inline fn instrOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) (Error || error{OutOfMemory})!void {
-        const B = basetype(T);
-        const value: T = @bitCast(self.stack.pop().value.as(B));
+        const value: T = @bitCast(self.stack.pop().value.as(basetype(T)));
         const result: R = f(R, T, value);
-        try self.stack.pushValueAs(R, result);
+        const B = basetype(R);
+        const converted_result: B = @bitCast(result);
+        try self.stack.pushValueAs(B, converted_result);
     }
 
     inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) (Error || error{OutOfMemory})!void {
@@ -975,6 +972,11 @@ fn opIntCtz(comptime T: type, value: T) T {
 
 fn opIntPopcnt(comptime T: type, value: T) T {
     return @popCount(value);
+}
+
+fn opToIntTrunc(comptime R: type, comptime T: type, value: T) R {
+    const result: R = @intFromFloat(value);
+    return result;
 }
 
 fn opConvert(comptime R: type, comptime T: type, value: T) R {
