@@ -834,7 +834,7 @@ pub const Instance = struct {
     inline fn opMemoryGrow(self: *Self) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
-        var mem_inst = self.store.mems.items[mem_addr];
+        const mem_inst = self.store.mems.items[mem_addr];
 
         const sz: i32 = @intCast(mem_inst.data.len / page_size);
         const n = self.stack.pop().value.asI32();
@@ -845,24 +845,26 @@ pub const Instance = struct {
                 return;
             }
         }
-        try growmem(&mem_inst, n, self.allocator);
+
+        const new_data = try growmem(mem_inst, n, self.allocator);
+        self.store.mems.items[mem_addr].data = new_data;
+        self.store.mems.items[mem_addr].type.limits.min = @intCast(new_data.len);
         try self.stack.pushValueAs(i32, sz);
-        return;
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-memories
-    fn growmem(mem_inst: *types.MemInst, n: i32, allocator: std.mem.Allocator) error{OutOfMemory}!void {
-        const data_len: i32 = @intCast(mem_inst.*.data.len / page_size);
+    fn growmem(mem_inst: types.MemInst, n: i32, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
+        const data_len: i32 = @intCast(mem_inst.data.len / page_size);
         const len: i32 = data_len + n;
         if (len + n > 65536) {
-            return; // fail
+            return std.mem.Allocator.Error.OutOfMemory; // TODO: use another error
         }
-        const old_data = mem_inst.*.data;
+        const old_data = mem_inst.data;
         const new_data = try allocator.alloc(u8, @intCast(len * page_size));
         @memcpy(new_data[0..old_data.len], old_data);
         @memset(new_data[old_data.len..], 0);
-        mem_inst.*.data = new_data;
-        mem_inst.*.type.limits.min = @intCast(len);
+        // `limits.min` should be updated outside this function
+        return new_data;
     }
 
     /// `memory.init x` in wasm spec
