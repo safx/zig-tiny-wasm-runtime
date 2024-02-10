@@ -477,40 +477,16 @@ pub const Instance = struct {
                 try self.stack.pushValue(v);
             },
             // .i64_trunc_f64_u,
-            .f32_convert_i32_s => {
-                const value = self.stack.pop().value.asI32();
-                const v: f32 = @floatFromInt(value);
-                try self.stack.pushValue(v);
-            },
-            // .f32_convert_i32_u,
-            // .f32_convert_i64_s,
-            // .f32_convert_i64_u,
+            .f32_convert_i32_s => try self.instrOp(f32, i32, opConvert),
+            .f32_convert_i32_u => try self.instrOp(f32, u32, opConvert),
+            .f32_convert_i64_s => try self.instrOp(f32, i64, opConvert),
+            .f32_convert_i64_u => try self.instrOp(f32, u64, opConvert),
             // .f32_demote_f64,
-            .f64_convert_i32_s => {
-                const value = self.stack.pop().value.asI32();
-                const v: f64 = @floatFromInt(value);
-                try self.stack.pushValue(v);
-            },
-            .f64_convert_i32_u => {
-                const value = self.stack.pop().value.asI32();
-                const v: f64 = @floatFromInt(value);
-                try self.stack.pushValue(v);
-            },
-            .f64_convert_i64_s => {
-                const value = self.stack.pop().value.asI64();
-                const v: f64 = @floatFromInt(value);
-                try self.stack.pushValue(v);
-            },
-            .f64_convert_i64_u => {
-                const value = self.stack.pop().value.asI64();
-                const v: f64 = @floatFromInt(value);
-                try self.stack.pushValue(v);
-            },
-            .f64_promote_f32 => {
-                const value = self.stack.pop().value.asF32();
-                const v: f64 = value;
-                try self.stack.pushValue(v);
-            },
+            .f64_convert_i32_s => try self.instrOp(f64, i32, opConvert),
+            .f64_convert_i32_u => try self.instrOp(f64, i32, opConvert),
+            .f64_convert_i64_s => try self.instrOp(f64, i64, opConvert),
+            .f64_convert_i64_u => try self.instrOp(f64, u64, opConvert),
+            .f64_promote_f32 => try self.instrOp(f64, f32, opPromote),
             // .i32_reinterpret_f32,
             // .i64_reinterpret_f64,
             // .f32_reinterpret_i32,
@@ -880,10 +856,10 @@ pub const Instance = struct {
         return if (T == u32) i32 else if (T == u64) i64 else T;
     }
 
-    inline fn instrOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, T) Error!R) (Error || error{OutOfMemory})!void {
+    inline fn instrOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) (Error || error{OutOfMemory})!void {
         const B = basetype(T);
         const value: T = @bitCast(self.stack.pop().value.as(B));
-        const result: R = f(T, value);
+        const result: R = f(R, T, value);
         try self.stack.pushValueAs(R, result);
     }
 
@@ -1001,17 +977,26 @@ fn opIntPopcnt(comptime T: type, value: T) T {
     return @popCount(value);
 }
 
-fn opExtend8(comptime T: type, value: T) T {
+fn opConvert(comptime R: type, comptime T: type, value: T) R {
+    const result: R = @floatFromInt(value);
+    return result;
+}
+
+fn opPromote(comptime R: type, comptime T: type, value: T) R {
+    return value;
+}
+
+fn opExtend8(comptime R: type, comptime T: type, value: T) R {
     const result: i8 = @truncate(value);
     return result;
 }
 
-fn opExtend16(comptime T: type, value: T) T {
+fn opExtend16(comptime R: type, comptime T: type, value: T) R {
     const result: i16 = @truncate(value);
     return result;
 }
 
-fn opExtend32(comptime T: type, value: T) T {
+fn opExtend32(comptime R: type, comptime T: type, value: T) R {
     const result: i32 = @truncate(value);
     return result;
 }
