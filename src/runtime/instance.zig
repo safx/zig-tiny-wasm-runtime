@@ -896,9 +896,9 @@ pub const Instance = struct {
         }
     }
 
-    inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) Error!T) (Error || error{OutOfMemory})!void {
+    inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) (Error || error{OutOfMemory})!void {
         const value = self.stack.pop().value.as(T);
-        const result = try f(T, value);
+        const result = f(T, value);
         try self.stack.pushValueAs(T, result);
     }
 
@@ -1002,29 +1002,29 @@ inline fn unsignedTypeOf(comptime T: type) type {
 
 // arithmetic ops are defined outside the struct
 
-fn opIntClz(comptime T: type, value: T) Error!T {
+fn opIntClz(comptime T: type, value: T) T {
     return @clz(value);
 }
 
-fn opIntCtz(comptime T: type, value: T) Error!T {
+fn opIntCtz(comptime T: type, value: T) T {
     return @ctz(value);
 }
 
-fn opIntPopcnt(comptime T: type, value: T) Error!T {
+fn opIntPopcnt(comptime T: type, value: T) T {
     return @popCount(value);
 }
 
-fn opExtend8(comptime T: type, value: T) Error!T {
+fn opExtend8(comptime T: type, value: T) T {
     const result: i8 = @truncate(value);
     return result;
 }
 
-fn opExtend16(comptime T: type, value: T) Error!T {
+fn opExtend16(comptime T: type, value: T) T {
     const result: i16 = @truncate(value);
     return result;
 }
 
-fn opExtend32(comptime T: type, value: T) Error!T {
+fn opExtend32(comptime T: type, value: T) T {
     const result: i32 = @truncate(value);
     return result;
 }
@@ -1187,31 +1187,31 @@ fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
     }
 }
 
-fn opFloatAbs(comptime T: type, value: T) Error!T {
+fn opFloatAbs(comptime T: type, value: T) T {
     return @fabs(value);
 }
 
-fn opFloatNeg(comptime T: type, value: T) Error!T {
+fn opFloatNeg(comptime T: type, value: T) T {
     return -value;
 }
 
-fn opFloatSqrt(comptime T: type, value: T) Error!T {
+fn opFloatSqrt(comptime T: type, value: T) T {
     return @sqrt(value);
 }
 
-fn opFloatCeil(comptime T: type, value: T) Error!T {
+fn opFloatCeil(comptime T: type, value: T) T {
     return @ceil(value);
 }
 
-fn opFloatFloor(comptime T: type, value: T) Error!T {
+fn opFloatFloor(comptime T: type, value: T) T {
     return @floor(value);
 }
 
-fn opFloatTrunc(comptime T: type, value: T) Error!T {
+fn opFloatTrunc(comptime T: type, value: T) T {
     return @trunc(value);
 }
 
-fn opFloatNearest(comptime T: type, value: T) Error!T {
+fn opFloatNearest(comptime T: type, value: T) T {
     return @trunc(value); // FIXME
 }
 
