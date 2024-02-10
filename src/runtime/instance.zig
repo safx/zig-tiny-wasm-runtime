@@ -311,20 +311,20 @@ pub const Instance = struct {
             // .table_fill: types.TableIdx,
 
             // memory instructions
-            .i32_load => |mem_arg| try self.opI32Load(i32, mem_arg),
-            .i64_load => |mem_arg| try self.opI64Load(i64, mem_arg),
-            .f32_load => |mem_arg| try self.opF32Load(mem_arg),
-            .f64_load => |mem_arg| try self.opF64Load(mem_arg),
-            .i32_load8_s => |mem_arg| try self.opI32Load(i8, mem_arg),
-            .i32_load8_u => |mem_arg| try self.opI32Load(u8, mem_arg),
-            .i32_load16_s => |mem_arg| try self.opI32Load(i16, mem_arg),
-            .i32_load16_u => |mem_arg| try self.opI32Load(u16, mem_arg),
-            .i64_load8_s => |mem_arg| try self.opI64Load(i8, mem_arg),
-            .i64_load8_u => |mem_arg| try self.opI64Load(u8, mem_arg),
-            .i64_load16_s => |mem_arg| try self.opI64Load(i16, mem_arg),
-            .i64_load16_u => |mem_arg| try self.opI64Load(u16, mem_arg),
-            .i64_load32_s => |mem_arg| try self.opI64Load(i32, mem_arg),
-            .i64_load32_u => |mem_arg| try self.opI64Load(u32, mem_arg),
+            .i32_load => |mem_arg| try self.opLoad(i32, i32, mem_arg),
+            .i64_load => |mem_arg| try self.opLoad(i64, i64, mem_arg),
+            .f32_load => |mem_arg| try self.opLoad(f32, f32, mem_arg),
+            .f64_load => |mem_arg| try self.opLoad(f64, f64, mem_arg),
+            .i32_load8_s => |mem_arg| try self.opLoad(i32, i8, mem_arg),
+            .i32_load8_u => |mem_arg| try self.opLoad(i32, u8, mem_arg),
+            .i32_load16_s => |mem_arg| try self.opLoad(i32, i16, mem_arg),
+            .i32_load16_u => |mem_arg| try self.opLoad(i32, u16, mem_arg),
+            .i64_load8_s => |mem_arg| try self.opLoad(i64, i8, mem_arg),
+            .i64_load8_u => |mem_arg| try self.opLoad(i64, u8, mem_arg),
+            .i64_load16_s => |mem_arg| try self.opLoad(i64, i16, mem_arg),
+            .i64_load16_u => |mem_arg| try self.opLoad(i64, u16, mem_arg),
+            .i64_load32_s => |mem_arg| try self.opLoad(i64, i32, mem_arg),
+            .i64_load32_u => |mem_arg| try self.opLoad(i64, u32, mem_arg),
             .i32_store => |mem_arg| try self.opI32Store(mem_arg),
             // .i64_store: MemArg,
             // .f32_store: MemArg,
@@ -737,7 +737,7 @@ pub const Instance = struct {
         self.store.elems.items[a].elem = &.{};
     }
 
-    inline fn opLoad(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!T {
+    inline fn opLoad(self: *Self, comptime T: type, comptime N: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
@@ -755,7 +755,7 @@ pub const Instance = struct {
             return Error.OutOfBoundsMemoryAccess;
         }
 
-        const size = @sizeOf(T);
+        const size = @sizeOf(N);
         const ea_end_with_overflow = @addWithOverflow(ea_start, size);
         if (ea_end_with_overflow[1] == 1) {
             return Error.OutOfBoundsMemoryAccess;
@@ -767,30 +767,10 @@ pub const Instance = struct {
         }
 
         std.debug.print("=== {any} ==", .{mem.data[ea_start..ea_end]});
-        const val = decode.safeNumCast(T, mem.data[ea_start..ea_end]);
+        const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
 
         std.debug.print("===> {}\n", .{val});
-        return val;
-    }
-
-    inline fn opI64Load(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
-        const val = try self.opLoad(T, mem_arg);
-        try self.stack.push(.{ .value = .{ .i64 = val } });
-    }
-
-    inline fn opI32Load(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
-        const val = try self.opLoad(T, mem_arg);
-        try self.stack.push(.{ .value = .{ .i32 = val } });
-    }
-
-    inline fn opF32Load(self: *Self, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
-        const val = try self.opLoad(f32, mem_arg);
-        try self.stack.pushValue(val);
-    }
-
-    inline fn opF64Load(self: *Self, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
-        const val = try self.opLoad(f64, mem_arg);
-        try self.stack.pushValue(val);
+        try self.stack.pushValueAs(T, val);
     }
 
     inline fn opI32Store(self: *Self, mem_arg: Instruction.MemArg) error{OutOfMemory}!void {
