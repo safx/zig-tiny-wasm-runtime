@@ -266,7 +266,19 @@ pub const ModuleLoader = struct {
                 const mode = wa.DataMode{ .active = .{ .mem_idx = 0, .offset = exp } };
                 return .{ .init = init_array, .mode = mode };
             },
-            1...7 => unreachable, // TODO
+            1 => {
+                const len = try self.reader.readVarU32();
+                const init_array = try self.reader.readBytes(len);
+                return .{ .init = init_array, .mode = .passive };
+            },
+            2 => {
+                const x = try self.reader.readVarU32();
+                const exp = try self.initExpr();
+                const len = try self.reader.readVarU32();
+                const init_array = try self.reader.readBytes(len);
+                const mode = wa.DataMode{ .active = .{ .mem_idx = x, .offset = exp } };
+                return .{ .init = init_array, .mode = mode };
+            },
             else => unreachable,
         }
         unreachable;
