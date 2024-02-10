@@ -517,11 +517,11 @@ pub const Instance = struct {
             // .f64_reinterpret_i64,
 
             // numeric instructions (5)
-            .i32_extend8_s => try self.unOp(i32, opExtend8),
-            .i32_extend16_s => try self.unOp(i32, opExtend16),
-            .i64_extend8_s => try self.unOp(i64, opExtend8),
-            .i64_extend16_s => try self.unOp(i64, opExtend16),
-            .i64_extend32_s => try self.unOp(i64, opExtend32),
+            .i32_extend8_s => try self.instrOp(i32, i32, opExtend8),
+            .i32_extend16_s => try self.instrOp(i32, i32, opExtend16),
+            .i64_extend8_s => try self.instrOp(i64, i64, opExtend8),
+            .i64_extend16_s => try self.instrOp(i64, i64, opExtend16),
+            .i64_extend32_s => try self.instrOp(i64, i64, opExtend32),
 
             else => unreachable,
         }
@@ -876,14 +876,21 @@ pub const Instance = struct {
         }
     }
 
+    inline fn basetype(comptime T: type) type {
+        return if (T == u32) i32 else if (T == u64) i64 else T;
+    }
+
+    inline fn instrOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, T) Error!R) (Error || error{OutOfMemory})!void {
+        const B = basetype(T);
+        const value: T = @bitCast(self.stack.pop().value.as(B));
+        const result: R = f(T, value);
+        try self.stack.pushValueAs(R, result);
+    }
+
     inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) (Error || error{OutOfMemory})!void {
         const value = self.stack.pop().value.as(T);
         const result = f(T, value);
         try self.stack.pushValueAs(T, result);
-    }
-
-    inline fn basetype(comptime T: type) type {
-        return if (T == u32) i32 else if (T == u64) i64 else T;
     }
 
     inline fn binOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) (Error || error{OutOfMemory})!void {
