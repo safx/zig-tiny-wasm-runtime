@@ -991,7 +991,7 @@ const FlowControl = union(enum) {
         } else if (info.@"else" != null) {
             return .{ .jump = info.@"else".? };
         } else {
-            return .exit; // FIXME: should be unreachable?
+            return .{ .jump = info.end };
         }
     }
 };
