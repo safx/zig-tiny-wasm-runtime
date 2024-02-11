@@ -586,7 +586,8 @@ pub const Instance = struct {
         if (rx == null)
             return Error.UninitializedElement;
         const r = rx.?.func_ref.?;
-
+        std.debug.print("===============================''''''''''''''''{} {any}\n", .{ i, tab.elem });
+        std.debug.print("===============================''''''''''''''''{any} {}\n", .{ rx, r });
         const f = self.store.funcs.items[@intCast(r)];
         const ft_actual = f.type;
         if (ft_expect.parameter_types.len != ft_actual.parameter_types.len or ft_expect.result_types.len != ft_actual.result_types.len)
@@ -677,32 +678,27 @@ pub const Instance = struct {
     }
     inline fn opTableInit(self: *Self, arg: Instruction.TblArg) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
-        while (true) {
-            const ta = module.table_addrs[arg.table_idx];
-            const tab = self.store.tables.items[ta];
-            const ea = module.elem_addrs[arg.elem_idx];
-            const elem = self.store.elems.items[ea];
-            const n = self.stack.pop().value.asI32();
-            const s = self.stack.pop().value.asI32();
-            const d = self.stack.pop().value.asI32();
+        const ta = module.table_addrs[arg.table_idx];
+        const tab = self.store.tables.items[ta];
+        const ea = module.elem_addrs[arg.elem_idx];
+        const elem = self.store.elems.items[ea];
+        var n = self.stack.pop().value.asI32();
+        var s = self.stack.pop().value.asI32();
+        var d = self.stack.pop().value.asI32();
 
-            if (s + n > elem.elem.len or d + n > tab.elem.len)
-                return Error.OutOfBoundsTableAccess;
+        if (s + n > elem.elem.len or d + n > tab.elem.len)
+            return Error.OutOfBoundsTableAccess;
 
-            if (n == 0)
-                break;
-
+        while (n > 0) : (n -= 1) {
             const ref = elem.elem[@intCast(s)];
             try self.stack.pushValueAs(i32, d);
             try self.stack.push(.{ .value = .{ .func_ref = ref.func_ref } }); // FIXME
-            const inst = Instruction{ .table_set = arg.table_idx };
-            try self.execOneInstruction(inst);
-
-            try self.stack.pushValueAs(i32, d + 1);
-            try self.stack.pushValueAs(i32, s + 1);
-            try self.stack.pushValueAs(i32, n - 1);
+            try self.execOneInstruction(.{ .table_set = arg.table_idx });
+            d += 1;
+            s += 1;
         }
     }
+
     inline fn opElemDrop(self: *Self, elem_idx: wa.ElemIdx) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const a = module.elem_addrs[elem_idx];

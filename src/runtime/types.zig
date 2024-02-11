@@ -348,6 +348,16 @@ pub const LabelType = union(enum) {
     block: wa.InstractionAddr,
     @"if": wa.InstractionAddr,
     loop: wa.InstractionAddr,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        switch (self) {
+            inline else => |val| if (@TypeOf(val) == void) {
+                try writer.print("{s}", .{@tagName(self)});
+            } else {
+                try writer.print("{s} {any}", .{ @tagName(self), val });
+            },
+        }
+    }
 };
 
 pub const ActivationFrame = struct {
