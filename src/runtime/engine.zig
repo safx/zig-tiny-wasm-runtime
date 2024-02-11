@@ -54,14 +54,18 @@ pub const Engine = struct {
         const module = try loader.parseAll(data);
         defer module.deinit();
 
-        return try self.loadModule(module, if (module_name) |n| n else getBasename(file_name));
+        return try self.loadModule(module, if (module_name) |n| n else getFilename(file_name));
     }
 
     fn loadModule(self: *Self, module: wa.Module, module_name: []const u8) (Error || error{OutOfMemory})!*types.ModuleInst {
         const extern_vals = try self.resolveImports(module, self.allocator);
         const mod_inst = try self.instance.instantiate(module, extern_vals);
-        try self.mod_insts.put(module_name, mod_inst);
+        try self.registerModule(mod_inst, module_name);
         return mod_inst;
+    }
+
+    pub fn registerModule(self: *Self, mod_inst: *types.ModuleInst, module_name: []const u8) error{OutOfMemory}!void {
+        try self.mod_insts.put(module_name, mod_inst);
     }
 
     pub fn invokeFunctionByAddr(self: *Self, func_addr: types.FuncAddr, args: []const types.Value) (Error || error{OutOfMemory})![]const types.Value {
@@ -83,14 +87,11 @@ pub const Engine = struct {
     }
 };
 
-fn getBasename(filename: []const u8) []const u8 {
-    // FIXME: assume that filename doesn't include path separator
-    var parts = std.mem.split(u8, filename, ".");
-    var prev_elem: []const u8 = "";
+fn getFilename(path: []const u8) []const u8 {
+    var parts = std.mem.split(u8, path, "/");
     var elem: []const u8 = "";
     while (parts.next()) |p| {
-        prev_elem = elem;
         elem = p;
     }
-    return prev_elem;
+    return elem;
 }

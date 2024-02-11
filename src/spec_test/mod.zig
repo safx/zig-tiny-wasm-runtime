@@ -55,7 +55,9 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
             .module => |arg| {
                 current_module = try engine.loadModuleFromPath(arg.file_name, arg.name);
             },
-            .register => {}, // skip because we handled in reader
+            .register => |arg| {
+                try engine.registerModule(current_module, arg.as_name);
+            },
             .action => |arg| {
                 const ret = try doAction(arg.action, &engine, current_module, allocator);
                 defer allocator.free(ret);

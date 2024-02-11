@@ -18,12 +18,7 @@ fn commandArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]c
     var array = std.ArrayList(Command).init(allocator);
     for (json.object.get("commands").?.array.items) |cmd_json| {
         const cmd = try commandFromJson(cmd_json, allocator);
-        if (cmd == .register) {
-            // we assume `register` follows `module`
-            array.items[array.items.len - 1].module.name = cmd.register.as_name;
-        } else {
-            try array.append(cmd);
-        }
+        try array.append(cmd);
     }
     return array.toOwnedSlice();
 }
