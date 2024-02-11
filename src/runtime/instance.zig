@@ -326,7 +326,7 @@ pub const Instance = struct {
             .i64_load32_s => |mem_arg| try self.opLoad(i64, i32, mem_arg),
             .i64_load32_u => |mem_arg| try self.opLoad(i64, u32, mem_arg),
             .i32_store => |mem_arg| try self.opI32Store(mem_arg),
-            // .i64_store: MemArg,
+            .i64_store => |mem_arg| try self.opI64Store(mem_arg),
             // .f32_store: MemArg,
             // .f64_store: MemArg,
             .i32_store8 => |mem_arg| try self.opI32Store8(mem_arg),
@@ -746,15 +746,35 @@ pub const Instance = struct {
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
 
-        const c = self.stack.pop().value;
+        const c = self.stack.pop().value.asI32();
         const i = self.stack.pop().value.asI32();
 
         var ea: u32 = @intCast(i);
         ea += mem_arg.offset;
-        mem.data[ea] = @intCast(c.i32 & 0xff);
-        mem.data[ea + 1] = @intCast((c.i32 >> 8) & 0xff);
-        mem.data[ea + 2] = @intCast((c.i32 >> 16) & 0xff);
-        mem.data[ea + 3] = @intCast((c.i32 >> 24) & 0xff);
+        mem.data[ea] = @intCast(c & 0xff);
+        mem.data[ea + 1] = @intCast((c >> 8) & 0xff);
+        mem.data[ea + 2] = @intCast((c >> 16) & 0xff);
+        mem.data[ea + 3] = @intCast((c >> 24) & 0xff);
+    }
+
+    inline fn opI64Store(self: *Self, mem_arg: Instruction.MemArg) error{OutOfMemory}!void {
+        const module = self.stack.topFrame().module;
+        const a = module.mem_addrs[0];
+        const mem = &self.store.mems.items[a];
+
+        const c = self.stack.pop().value.asI64();
+        const i = self.stack.pop().value.asI32();
+
+        var ea: u32 = @intCast(i);
+        ea += mem_arg.offset;
+        mem.data[ea] = @intCast(c & 0xff);
+        mem.data[ea + 1] = @intCast((c >> 8) & 0xff);
+        mem.data[ea + 2] = @intCast((c >> 16) & 0xff);
+        mem.data[ea + 3] = @intCast((c >> 24) & 0xff);
+        mem.data[ea + 4] = @intCast((c >> 32) & 0xff);
+        mem.data[ea + 5] = @intCast((c >> 40) & 0xff);
+        mem.data[ea + 6] = @intCast((c >> 48) & 0xff);
+        mem.data[ea + 7] = @intCast((c >> 56) & 0xff);
     }
 
     inline fn opI32Store8(self: *Self, mem_arg: Instruction.MemArg) error{OutOfMemory}!void {
@@ -762,12 +782,12 @@ pub const Instance = struct {
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
 
-        const c = self.stack.pop().value.asI32() & 0xff;
+        const c = self.stack.pop().value.asI32();
         const i = self.stack.pop().value.asI32();
 
         var ea: u32 = @intCast(i);
         ea += mem_arg.offset;
-        mem.data[ea] = @intCast(c);
+        mem.data[ea] = @intCast(c & 0xff);
     }
 
     inline fn opDataDrop(self: *Self, data_idx: wa.DataIdx) error{OutOfMemory}!void {
