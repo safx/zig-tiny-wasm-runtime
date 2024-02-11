@@ -62,34 +62,11 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
             .assert_return => |arg| {
                 const ret = try doAction(arg.action, &engine, current_module, allocator);
                 defer allocator.free(ret);
-                if (ret.len != arg.expected.len) {
-                    @panic("Test failed (length not match).");
-                }
-
-                for (ret, arg.expected) |rv, exp| {
-                    const result = checkReturnValue(exp, rv);
-                    if (!result) {
-                        std.debug.print("====================\n", .{});
-                        std.debug.print("\t  Test failed at line {}\n", .{arg.line});
-                        std.debug.print("\t  return =  {any}\n", .{ret});
-                        std.debug.print("\texpected = {any}\n", .{exp});
-                        std.debug.print("====================\n", .{});
-                        @panic("Test failed.");
-                    }
-                }
-                std.debug.print("test pass (result = {any})\n", .{ret});
+                validateResult(arg.expected, ret, arg.line);
             },
             .assert_trap => |arg| {
                 _ = doAction(arg.action, &engine, current_module, allocator) catch |err| {
-                    if (err != arg.trap) {
-                        std.debug.print("====================\n", .{});
-                        std.debug.print("\t  Test failed at line {}\n", .{arg.line});
-                        std.debug.print("\n  actual failure: {}\n", .{err});
-                        std.debug.print("\n  expected failure: {any}\n", .{arg.trap});
-                        std.debug.print("====================\n", .{});
-                        @panic("Test failed.");
-                    }
-                    std.debug.print("test pass (expected failure: {any})\n", .{arg.trap});
+                    validateCatchedError(arg.trap, err, arg.line);
                     continue;
                 };
                 std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
@@ -121,6 +98,25 @@ fn doAction(action: types.Action, engine: *runtime.Engine, current_module: *runt
     }
 }
 
+fn validateResult(expected_value: []const types.Result, actual_result: []const runtime.Value, line: u32) void {
+    if (actual_result.len != expected_value.len) {
+        @panic("Test failed (length not match).");
+    }
+
+    for (expected_value, actual_result) |exp, res| {
+        const result = checkReturnValue(exp, res);
+        if (!result) {
+            std.debug.print("====================\n", .{});
+            std.debug.print("\t  Test failed at line {}\n", .{line});
+            std.debug.print("\t  return =  {any}\n", .{actual_result});
+            std.debug.print("\texpected = {any}\n", .{expected_value});
+            std.debug.print("====================\n", .{});
+            @panic("Test failed.");
+        }
+    }
+    std.debug.print("test pass (result = {any})\n", .{actual_result});
+}
+
 fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
     switch (expected) {
         .@"const" => |exp_const| {
@@ -144,6 +140,18 @@ fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
         .f64_nan_arithmetic => return isArithmeticNanF64(result.f64),
         .f64_nan_canonical => return isCanonicalNanF64(result.f64),
     }
+}
+
+fn validateCatchedError(expected_error: anyerror, actual_error: anyerror, line: u32) void {
+    if (actual_error != expected_error) {
+        std.debug.print("====================\n", .{});
+        std.debug.print("\t  Test failed at line {}\n", .{line});
+        std.debug.print("\n  actual failure: {}\n", .{actual_error});
+        std.debug.print("\n  expected failure: {any}\n", .{expected_error});
+        std.debug.print("====================\n", .{});
+        @panic("Test failed.");
+    }
+    std.debug.print("test pass (expected failure: {any})\n", .{expected_error});
 }
 
 /// Returns function name by searching from the latest instaitiated modules.
