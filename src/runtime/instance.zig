@@ -847,9 +847,8 @@ pub const Instance = struct {
 
         while (n > 0) : (n -= 1) {
             const b = data.data[@intCast(s)];
-            try self.stack.push(.{ .value = .{ .i32 = d } });
-            try self.stack.push(.{ .value = .{ .i32 = @intCast(b) } });
-
+            try self.stack.pushValueAs(i32, d);
+            try self.stack.pushValueAs(i32, b);
             try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
             s += 1;
             d += 1;
@@ -892,7 +891,7 @@ pub const Instance = struct {
         const mem_inst = self.store.mems.items[mem_addr];
 
         var n = self.stack.pop().value.asI32();
-        const val = self.stack.pop().value;
+        const val = self.stack.pop();
         var d = self.stack.pop().value.asI32();
 
         if (d + n > mem_inst.data.len) {
@@ -900,8 +899,8 @@ pub const Instance = struct {
         }
 
         while (n > 0) : (n -= 1) {
-            try self.stack.push(.{ .value = .{ .i32 = d } });
-            try self.stack.push(.{ .value = val });
+            try self.stack.pushValueAs(i32, d);
+            try self.stack.push(val);
             try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
             d += 1;
         }
