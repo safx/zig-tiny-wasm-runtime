@@ -301,7 +301,7 @@ pub const Instance = struct {
             .global_set => |global_idx| try self.opGlobalSet(global_idx),
 
             // table instructions
-            // .table_get: types.TableIdx,
+            .table_get => |table_idx| try self.opTableGet(table_idx),
             .table_set => |table_idx| try self.opTableSet(table_idx),
             .table_init => |arg| try self.opTableInit(arg),
             .elem_drop => |elem_idx| try self.opElemDrop(elem_idx),
@@ -663,7 +663,19 @@ pub const Instance = struct {
     }
 
     // table instructions
-    // .table_get: types.TableIdx,
+    inline fn opTableGet(self: *Self, table_idx: wa.TableIdx) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        const a = module.table_addrs[table_idx];
+        const tab = self.store.tables.items[a];
+        const i = self.stack.pop().value.asI32();
+
+        if (i >= tab.elem.len)
+            return Error.OutOfBoundsTableAccess;
+
+        const val = tab.elem[@intCast(i)];
+        const ref_val: ?types.FuncAddr = if (val) |v| v.func_ref else null;
+        try self.stack.push(.{ .value = .{ .func_ref = ref_val } });
+    }
     inline fn opTableSet(self: *Self, table_idx: wa.TableIdx) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];

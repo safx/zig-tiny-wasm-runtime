@@ -80,8 +80,8 @@ pub const Decoder = struct {
             n(.@"else") => .@"else",
 
             // contronl instructions
-            n(.nop) => .nop,
             n(.@"unreachable") => .@"unreachable",
+            n(.nop) => .nop,
             n(.block) => .{ .block = try block(reader) },
             n(.loop) => .{ .loop = try block(reader) },
             n(.@"if") => .{ .@"if" = try ifBlock(reader) },
@@ -108,6 +108,10 @@ pub const Decoder = struct {
             n(.local_tee) => .{ .local_tee = try reader.readVarU32() },
             n(.global_get) => .{ .global_get = try reader.readVarU32() },
             n(.global_set) => .{ .global_set = try reader.readVarU32() },
+
+            // table instructions
+            0x25 => .{ .table_get = try reader.readVarU32() },
+            0x26 => .{ .table_set = try reader.readVarU32() },
 
             // memory instructions
             n(.i32_load) => .{ .i32_load = try memArg(reader) },
@@ -290,10 +294,10 @@ pub const Decoder = struct {
             n(.i64_extend16_s) => .i64_extend16_s,
             n(.i64_extend32_s) => .i64_extend32_s,
 
-            0xfc => try miscOpcode(reader),
+            0xFC => try miscOpcode(reader),
 
             else => {
-                std.debug.print("?? {x}\n", .{op_code});
+                std.debug.print("?? Unknown opcode: 0x{x}\n", .{op_code});
                 unreachable;
             },
         };
@@ -305,6 +309,21 @@ pub const Decoder = struct {
         const n = std.wasm.miscOpcode;
         const op_code = try reader.readU8();
         const inst: Instruction = switch (op_code) {
+            // table instructions
+            n(.table_init) => .{ .table_init = try tblArg(reader) },
+            n(.elem_drop) => .{ .elem_drop = try reader.readVarU32() },
+            n(.table_copy) => .{ .table_copy = try tblArg(reader) },
+            n(.table_grow) => .{ .table_grow = try reader.readVarU32() },
+            n(.table_size) => .{ .table_size = try reader.readVarU32() },
+            n(.table_fill) => .{ .table_fill = try reader.readVarU32() },
+
+            // memory instructions
+            n(.memory_init) => try memoryInit(reader),
+            n(.data_drop) => .{ .data_drop = try reader.readVarU32() },
+            n(.memory_copy) => if (try reader.readU8() == 0 and try reader.readU8() == 0) .memory_copy else unreachable,
+            n(.memory_fill) => if (try reader.readU8() == 0) .memory_fill else unreachable,
+
+            // saturating truncation instructions
             n(.i32_trunc_sat_f32_s) => unreachable,
             n(.i32_trunc_sat_f32_u) => unreachable,
             n(.i32_trunc_sat_f64_s) => unreachable,
@@ -313,16 +332,6 @@ pub const Decoder = struct {
             n(.i64_trunc_sat_f32_u) => unreachable,
             n(.i64_trunc_sat_f64_s) => unreachable,
             n(.i64_trunc_sat_f64_u) => unreachable,
-            n(.memory_init) => try memoryInit(reader),
-            n(.data_drop) => .{ .data_drop = try reader.readVarU32() },
-            n(.memory_copy) => if (try reader.readU8() == 0 and try reader.readU8() == 0) .memory_copy else unreachable,
-            n(.memory_fill) => if (try reader.readU8() == 0) .memory_fill else unreachable,
-            n(.table_init) => .{ .table_init = try tblArg(reader) },
-            n(.elem_drop) => .{ .elem_drop = try reader.readVarU32() },
-            n(.table_copy) => .{ .table_copy = try tblArg(reader) },
-            n(.table_grow) => .{ .table_grow = try reader.readVarU32() },
-            n(.table_size) => .{ .table_size = try reader.readVarU32() },
-            n(.table_fill) => .{ .table_fill = try reader.readVarU32() },
 
             else => {
                 std.debug.print("?? 0xFC {x}\n", .{op_code});
