@@ -334,11 +334,11 @@ pub const Instance = struct {
             // .i64_store8: MemArg,
             // .i64_store16: MemArg,
             // .i64_store32: MemArg,
-            // .memory_size,
+            .memory_size => try self.opMemorySize(),
             .memory_grow => try self.opMemoryGrow(),
             .memory_init => |data_idx| try self.opMemoryInit(data_idx),
             .data_drop => |data_idx| try self.opDataDrop(data_idx),
-            // .memory_copy,
+            .memory_copy => try self.opMemoryGrow(),
             .memory_fill => try self.opMemoryFill(),
 
             // numeric instructions (1)
@@ -781,6 +781,15 @@ pub const Instance = struct {
         data.data = &.{};
     }
 
+    inline fn opMemorySize(self: *Self) error{OutOfMemory}!void {
+        const module = self.stack.topFrame().module;
+        const mem_addr = module.mem_addrs[0];
+        const mem_inst = self.store.mems.items[mem_addr];
+
+        const sz: i32 = @intCast(mem_inst.data.len / page_size);
+        try self.stack.pushValueAs(i32, sz);
+    }
+
     /// `memory.grow` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-grow
     inline fn opMemoryGrow(self: *Self) (Error || error{OutOfMemory})!void {
@@ -844,6 +853,36 @@ pub const Instance = struct {
             try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
             s += 1;
             d += 1;
+        }
+    }
+
+    inline fn opMemoryCopy(self: *Self) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        const mem_addr = module.mem_addrs[0];
+        const mem_inst = self.store.mems.items[mem_addr];
+
+        var n = self.stack.pop().value.asI32();
+        const s = self.stack.pop().value.asI32();
+        var d = self.stack.pop().value.asI32();
+
+        if (d + n > mem_inst.data.len) {
+            return Error.OutOfBoundsMemoryAccess;
+        }
+
+        while (n > 0) : (n -= 1) {
+            if (d <= s) {
+                try self.stack.pushValueAs(i32, d);
+                try self.stack.pushValueAs(i32, s);
+                try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0 } });
+                try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
+                d += 1;
+                s += 1;
+            } else {
+                try self.stack.pushValueAs(i32, d + n - 1);
+                try self.stack.pushValueAs(i32, s + n - 1);
+                try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0 } });
+                try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
+            }
         }
     }
 
