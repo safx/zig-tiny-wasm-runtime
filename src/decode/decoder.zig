@@ -313,10 +313,10 @@ pub const Decoder = struct {
             n(.i64_trunc_sat_f32_u) => unreachable,
             n(.i64_trunc_sat_f64_s) => unreachable,
             n(.i64_trunc_sat_f64_u) => unreachable,
-            n(.memory_init) => .{ .memory_init = try reader.readVarU32() },
+            n(.memory_init) => try memoryInit(reader),
             n(.data_drop) => .{ .data_drop = try reader.readVarU32() },
-            n(.memory_copy) => .memory_copy,
-            n(.memory_fill) => .memory_fill,
+            n(.memory_copy) => if (try reader.readU8() == 0 and try reader.readU8() == 0) .memory_copy else unreachable,
+            n(.memory_fill) => if (try reader.readU8() == 0) .memory_fill else unreachable,
             n(.table_init) => .{ .table_init = try tblArg(reader) },
             n(.elem_drop) => .{ .elem_drop = try reader.readVarU32() },
             n(.table_copy) => .{ .table_copy = try tblArg(reader) },
@@ -330,6 +330,12 @@ pub const Decoder = struct {
             },
         };
         return inst;
+    }
+
+    fn memoryInit(reader: *BinaryReader) Error!Instruction {
+        const data_idx = try reader.readVarU32();
+        _ = try reader.readVarU32(); // TODO should be zero
+        return .{ .memory_init = data_idx };
     }
 
     fn memArg(reader: *BinaryReader) Error!Instruction.MemArg {

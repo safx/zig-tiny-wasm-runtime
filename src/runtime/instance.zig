@@ -339,7 +339,7 @@ pub const Instance = struct {
             .memory_init => |data_idx| try self.opMemoryInit(data_idx),
             .data_drop => |data_idx| try self.opDataDrop(data_idx),
             // .memory_copy,
-            // .memory_fill,
+            .memory_fill => try self.opMemoryFill(),
 
             // numeric instructions (1)
             .i32_const => |val| try self.stack.pushValue(val),
@@ -766,7 +766,7 @@ pub const Instance = struct {
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
 
-        const c = self.stack.pop().value.asI32();
+        const c = self.stack.pop().value.asI32() & 0xff;
         const i = self.stack.pop().value.asI32();
 
         var ea: u32 = @intCast(i);
@@ -841,9 +841,29 @@ pub const Instance = struct {
             try self.stack.push(.{ .value = .{ .i32 = d } });
             try self.stack.push(.{ .value = .{ .i32 = @intCast(b) } });
 
-            const ins: Instruction = .{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } };
-            try self.execOneInstruction(ins);
+            try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
             s += 1;
+            d += 1;
+        }
+    }
+
+    inline fn opMemoryFill(self: *Self) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        const mem_addr = module.mem_addrs[0];
+        const mem_inst = self.store.mems.items[mem_addr];
+
+        var n = self.stack.pop().value.asI32();
+        const val = self.stack.pop().value;
+        var d = self.stack.pop().value.asI32();
+
+        if (d + n > mem_inst.data.len) {
+            return Error.OutOfBoundsMemoryAccess;
+        }
+
+        while (n > 0) : (n -= 1) {
+            try self.stack.push(.{ .value = .{ .i32 = d } });
+            try self.stack.push(.{ .value = val });
+            try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
             d += 1;
         }
     }
