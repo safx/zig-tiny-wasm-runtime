@@ -21,7 +21,7 @@ pub const Engine = struct {
         };
     }
 
-    pub fn getModuleInst(self: *Self, module_name: []const u8) ?*types.ModuleInst {
+    pub fn getModuleInstByName(self: *Self, module_name: []const u8) ?*types.ModuleInst {
         return self.mod_insts.get(module_name);
     }
 

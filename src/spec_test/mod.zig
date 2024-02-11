@@ -44,8 +44,6 @@ pub fn execSpecTestsFromFile(file_name: []const u8) !void {
 
 fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) !void {
     var engine = runtime.Engine.new(allocator);
-
-    var module_insts = std.StringHashMap(*runtime.ModuleInst).init(allocator);
     var current_module: *runtime.ModuleInst = try engine.loadModuleFromPath("spectest.wasm", "spectest");
 
     for (commands) |cmd| {
@@ -56,87 +54,66 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
         switch (cmd) {
             .module => |arg| {
                 current_module = try engine.loadModuleFromPath(arg.file_name, arg.name);
-                if (arg.name) |name| {
-                    try module_insts.put(name, current_module);
-                }
             },
             .assert_return => |arg| {
-                switch (arg.action) {
-                    .invoke => |iarg| {
-                        if (iarg.module) |name| {
-                            current_module = module_insts.get(name).?;
-                        }
-
-                        const func_args = try allocator.alloc(runtime.Value, iarg.args.len);
-                        for (iarg.args, 0..) |a, i| {
-                            func_args[i] = a;
-                        }
-                        const func_addr = try getFunctionByName(current_module, iarg.field);
-                        const ret = try engine.invokeFunctionByAddr(func_addr.value.function, func_args);
-                        defer allocator.free(ret);
-                        if (ret.len != arg.expected.len) {
-                            @panic("Test failed (length not match).");
-                        }
-
-                        for (ret, arg.expected) |rv, exp| {
-                            const result = checkReturnValue(exp, rv);
-                            if (!result) {
-                                std.debug.print("====================\n", .{});
-                                std.debug.print("\t  Test failed at line {}\n", .{arg.line});
-                                std.debug.print("\t  return =  {any}\n", .{ret});
-                                std.debug.print("\texpected = {any}\n", .{exp});
-                                std.debug.print("====================\n", .{});
-                                @panic("Test failed.");
-                            }
-                        }
-                        std.debug.print("test pass (result = {any})\n", .{ret});
-                    },
-                    .get => |garg| {
-                        const mod = if (garg.module) |name| engine.getModuleInst(name) orelse current_module else current_module;
-                        const gval = engine.getValueFromGlobal(mod, garg.field).?;
-                        const result = checkReturnValue(arg.expected[0], gval);
-                        if (!result) {
-                            std.debug.print("====================\n", .{});
-                            std.debug.print("\t  Test failed at line {}\n", .{arg.line});
-                            std.debug.print("\t  return =  {any}\n", .{gval});
-                            std.debug.print("\texpected = {any}\n", .{arg.expected[0]});
-                            std.debug.print("====================\n", .{});
-                            @panic("Test failed.");
-                        }
-                        std.debug.print("test pass (result = {any})\n", .{gval});
-                    },
+                const ret = try doAction(arg.action, &engine, current_module, allocator);
+                defer allocator.free(ret);
+                if (ret.len != arg.expected.len) {
+                    @panic("Test failed (length not match).");
                 }
+
+                for (ret, arg.expected) |rv, exp| {
+                    const result = checkReturnValue(exp, rv);
+                    if (!result) {
+                        std.debug.print("====================\n", .{});
+                        std.debug.print("\t  Test failed at line {}\n", .{arg.line});
+                        std.debug.print("\t  return =  {any}\n", .{ret});
+                        std.debug.print("\texpected = {any}\n", .{exp});
+                        std.debug.print("====================\n", .{});
+                        @panic("Test failed.");
+                    }
+                }
+                std.debug.print("test pass (result = {any})\n", .{ret});
             },
             .assert_trap => |arg| {
-                switch (arg.action) {
-                    .invoke => |iarg| {
-                        const func_args = try allocator.alloc(runtime.Value, iarg.args.len);
-                        for (iarg.args, 0..) |a, i| {
-                            func_args[i] = a;
-                        }
-                        const func_addr = try getFunctionByName(current_module, iarg.field);
-                        _ = engine.invokeFunctionByAddr(func_addr.value.function, func_args) catch |err| {
-                            const match_error = err == arg.trap;
-                            if (match_error) {
-                                std.debug.print("test pass (expected failure: {any})\n", .{arg.trap});
-                                continue;
-                            } else {
-                                std.debug.print("====================\n", .{});
-                                std.debug.print("\t  Test failed at line {}\n", .{arg.line});
-                                std.debug.print("\n  actual failure: {}\n", .{err});
-                                std.debug.print("\n  expected failure: {any}\n", .{arg.trap});
-                                std.debug.print("====================\n", .{});
-                                @panic("Test failed.");
-                            }
-                        };
-                        std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
+                _ = doAction(arg.action, &engine, current_module, allocator) catch |err| {
+                    if (err != arg.trap) {
+                        std.debug.print("====================\n", .{});
+                        std.debug.print("\t  Test failed at line {}\n", .{arg.line});
+                        std.debug.print("\n  actual failure: {}\n", .{err});
+                        std.debug.print("\n  expected failure: {any}\n", .{arg.trap});
+                        std.debug.print("====================\n", .{});
                         @panic("Test failed.");
-                    },
-                    .get => unreachable,
-                }
+                    }
+                    std.debug.print("test pass (expected failure: {any})\n", .{arg.trap});
+                    continue;
+                };
+                std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
+                @panic("Test failed.");
             },
             else => {},
         }
+    }
+}
+
+fn doAction(action: types.Action, engine: *runtime.Engine, current_module: *runtime.ModuleInst, allocator: std.mem.Allocator) ![]const runtime.Value {
+    switch (action) {
+        .invoke => |arg| {
+            const mod = if (arg.module) |name| engine.getModuleInstByName(name) orelse current_module else current_module;
+            const func_args = try allocator.alloc(runtime.Value, arg.args.len);
+            defer allocator.free(func_args);
+            for (arg.args, 0..) |a, i| {
+                func_args[i] = a;
+            }
+            const func_addr = try getFunctionByName(mod, arg.field);
+            const ret = try engine.invokeFunctionByAddr(func_addr.value.function, func_args);
+            return ret;
+        },
+        .get => |arg| {
+            const mod = if (arg.module) |name| engine.getModuleInstByName(name) orelse current_module else current_module;
+            const gval = engine.getValueFromGlobal(mod, arg.field).?;
+            return &.{gval};
+        },
     }
 }
 
