@@ -325,15 +325,15 @@ pub const Instance = struct {
             .i64_load16_u => |mem_arg| try self.opLoad(i64, u16, mem_arg),
             .i64_load32_s => |mem_arg| try self.opLoad(i64, i32, mem_arg),
             .i64_load32_u => |mem_arg| try self.opLoad(i64, u32, mem_arg),
-            .i32_store => |mem_arg| try self.opI32Store(mem_arg),
-            .i64_store => |mem_arg| try self.opI64Store(mem_arg),
-            // .f32_store: MemArg,
-            // .f64_store: MemArg,
-            .i32_store8 => |mem_arg| try self.opI32Store8(mem_arg),
-            // .i32_store16
-            // .i64_store8: MemArg,
-            // .i64_store16: MemArg,
-            // .i64_store32: MemArg,
+            .i32_store => |mem_arg| try self.opStore(i32, 32, mem_arg),
+            .i64_store => |mem_arg| try self.opStore(i64, 64, mem_arg),
+            .f32_store => |mem_arg| try self.opStore(i32, 32, mem_arg),
+            .f64_store => |mem_arg| try self.opStore(i64, 64, mem_arg),
+            .i32_store8 => |mem_arg| try self.opStore(i32, 8, mem_arg),
+            .i32_store16 => |mem_arg| try self.opStore(i32, 16, mem_arg),
+            .i64_store8 => |mem_arg| try self.opStore(i64, 8, mem_arg),
+            .i64_store16 => |mem_arg| try self.opStore(i64, 16, mem_arg),
+            .i64_store32 => |mem_arg| try self.opStore(i64, 32, mem_arg),
             .memory_size => try self.opMemorySize(),
             .memory_grow => try self.opMemoryGrow(),
             .memory_init => |data_idx| try self.opMemoryInit(data_idx),
@@ -741,53 +741,20 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, val);
     }
 
-    inline fn opI32Store(self: *Self, mem_arg: Instruction.MemArg) error{OutOfMemory}!void {
+    inline fn opStore(self: *Self, comptime T: type, comptime bit_size: u32, mem_arg: Instruction.MemArg) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
 
-        const c = self.stack.pop().value.asI32();
+        const c = self.stack.pop().value.as(T);
         const i = self.stack.pop().value.asI32();
 
         var ea: u32 = @intCast(i);
         ea += mem_arg.offset;
-        mem.data[ea] = @intCast(c & 0xff);
-        mem.data[ea + 1] = @intCast((c >> 8) & 0xff);
-        mem.data[ea + 2] = @intCast((c >> 16) & 0xff);
-        mem.data[ea + 3] = @intCast((c >> 24) & 0xff);
-    }
-
-    inline fn opI64Store(self: *Self, mem_arg: Instruction.MemArg) error{OutOfMemory}!void {
-        const module = self.stack.topFrame().module;
-        const a = module.mem_addrs[0];
-        const mem = &self.store.mems.items[a];
-
-        const c = self.stack.pop().value.asI64();
-        const i = self.stack.pop().value.asI32();
-
-        var ea: u32 = @intCast(i);
-        ea += mem_arg.offset;
-        mem.data[ea] = @intCast(c & 0xff);
-        mem.data[ea + 1] = @intCast((c >> 8) & 0xff);
-        mem.data[ea + 2] = @intCast((c >> 16) & 0xff);
-        mem.data[ea + 3] = @intCast((c >> 24) & 0xff);
-        mem.data[ea + 4] = @intCast((c >> 32) & 0xff);
-        mem.data[ea + 5] = @intCast((c >> 40) & 0xff);
-        mem.data[ea + 6] = @intCast((c >> 48) & 0xff);
-        mem.data[ea + 7] = @intCast((c >> 56) & 0xff);
-    }
-
-    inline fn opI32Store8(self: *Self, mem_arg: Instruction.MemArg) error{OutOfMemory}!void {
-        const module = self.stack.topFrame().module;
-        const a = module.mem_addrs[0];
-        const mem = &self.store.mems.items[a];
-
-        const c = self.stack.pop().value.asI32();
-        const i = self.stack.pop().value.asI32();
-
-        var ea: u32 = @intCast(i);
-        ea += mem_arg.offset;
-        mem.data[ea] = @intCast(c & 0xff);
+        const byte_size = bit_size / 8;
+        inline for (0..byte_size) |idx| {
+            mem.data[ea + idx] = @intCast((c >> idx * 8) & 0xff);
+        }
     }
 
     inline fn opDataDrop(self: *Self, data_idx: wa.DataIdx) error{OutOfMemory}!void {
