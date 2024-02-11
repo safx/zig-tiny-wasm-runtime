@@ -483,10 +483,10 @@ pub const Instance = struct {
             .f64_convert_i64_s => try self.instrOp(f64, i64, opConvert),
             .f64_convert_i64_u => try self.instrOp(f64, u64, opConvert),
             .f64_promote_f32 => try self.instrOp(f64, f32, opPromote),
-            // .i32_reinterpret_f32,
-            // .i64_reinterpret_f64,
-            // .f32_reinterpret_i32,
-            // .f64_reinterpret_i64,
+            .i32_reinterpret_f32 => try self.instrOp(i32, f32, opReinterpret),
+            .i64_reinterpret_f64 => try self.instrOp(i64, f64, opReinterpret),
+            .f32_reinterpret_i32 => try self.instrOp(f32, i32, opReinterpret),
+            .f64_reinterpret_i64 => try self.instrOp(f64, i64, opReinterpret),
 
             // numeric instructions (5)
             .i32_extend8_s => try self.instrOp(i32, i32, opExtend8),
@@ -1022,6 +1022,11 @@ fn opToIntTrunc(comptime R: type, comptime T: type, value: T) R {
 
 fn opConvert(comptime R: type, comptime T: type, value: T) R {
     const result: R = @floatFromInt(value);
+    return result;
+}
+
+fn opReinterpret(comptime R: type, comptime T: type, value: T) R {
+    const result: R = @bitCast(value);
     return result;
 }
 
