@@ -80,7 +80,11 @@ pub const InvokeCommandArg = struct {
     module: ?[]const u8,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{s} {any}", .{ self.field, self.args });
+        if (self.module) |m| {
+            _ = try writer.print("{s} {any} (module:{s})", .{ self.field, self.args, m });
+        } else {
+            _ = try writer.print("{s} {any}", .{ self.field, self.args });
+        }
     }
 };
 
