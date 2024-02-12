@@ -295,16 +295,16 @@ pub const Instance = struct {
 
             // variable instructions
             .local_get => |local_idx| try self.opLocalGet(local_idx),
-            .local_set => |local_idx| try self.opLocalSet(local_idx),
+            .local_set => |local_idx| self.opLocalSet(local_idx),
             .local_tee => |local_idx| try self.opLocalTee(local_idx),
             .global_get => |global_idx| try self.opGlobalGet(global_idx),
-            .global_set => |global_idx| try self.opGlobalSet(global_idx),
+            .global_set => |global_idx| self.opGlobalSet(global_idx),
 
             // table instructions
             .table_get => |table_idx| try self.opTableGet(table_idx),
             .table_set => |table_idx| try self.opTableSet(table_idx),
             .table_init => |arg| try self.opTableInit(arg),
-            .elem_drop => |elem_idx| try self.opElemDrop(elem_idx),
+            .elem_drop => |elem_idx| self.opElemDrop(elem_idx),
             // .table_copy: TblArg,
             // .table_grow: types.TableIdx,
             // .table_size: types.TableIdx,
@@ -337,7 +337,7 @@ pub const Instance = struct {
             .memory_size => try self.opMemorySize(),
             .memory_grow => try self.opMemoryGrow(),
             .memory_init => |data_idx| try self.opMemoryInit(data_idx),
-            .data_drop => |data_idx| try self.opDataDrop(data_idx),
+            .data_drop => |data_idx| self.opDataDrop(data_idx),
             .memory_copy => try self.opMemoryGrow(),
             .memory_fill => try self.opMemoryFill(),
 
@@ -604,7 +604,7 @@ pub const Instance = struct {
     }
 
     // reference instructions
-    inline fn opRefNull(self: *Self, ref_type: wa.RefType) (Error || error{OutOfMemory})!void {
+    inline fn opRefNull(self: *Self, ref_type: wa.RefType) error{OutOfMemory}!void {
         const val: types.Value = switch (ref_type) {
             .funcref => .{ .func_ref = null },
             .externref => .{ .extern_ref = null },
@@ -612,7 +612,7 @@ pub const Instance = struct {
         try self.stack.push(.{ .value = val });
     }
 
-    inline fn opRefFunc(self: *Self, func_idx: wa.FuncIdx) (Error || error{OutOfMemory})!void {
+    inline fn opRefFunc(self: *Self, func_idx: wa.FuncIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const a = module.func_addrs[func_idx];
         try self.stack.push(.{ .value = .{ .func_ref = a } });
@@ -631,31 +631,31 @@ pub const Instance = struct {
     }
 
     // variable instructions
-    inline fn opLocalGet(self: *Self, local_idx: wa.LocalIdx) (Error || error{OutOfMemory})!void {
+    inline fn opLocalGet(self: *Self, local_idx: wa.LocalIdx) error{OutOfMemory}!void {
         const frame = self.stack.topFrame();
         const val = frame.locals[local_idx];
         try self.stack.push(.{ .value = val });
     }
 
-    inline fn opLocalSet(self: *Self, local_idx: wa.LocalIdx) (Error || error{OutOfMemory})!void {
+    inline fn opLocalSet(self: *Self, local_idx: wa.LocalIdx) void {
         const frame = self.stack.topFrame();
         const val = self.stack.pop().value;
         frame.locals[local_idx] = val;
     }
 
-    inline fn opLocalTee(self: *Self, local_idx: wa.LocalIdx) (Error || error{OutOfMemory})!void {
+    inline fn opLocalTee(self: *Self, local_idx: wa.LocalIdx) error{OutOfMemory}!void {
         _ = local_idx;
         const value = self.stack.pop();
         try self.stack.push(value);
         try self.stack.push(value);
     }
-    inline fn opGlobalGet(self: *Self, global_idx: wa.GlobalIdx) (Error || error{OutOfMemory})!void {
+    inline fn opGlobalGet(self: *Self, global_idx: wa.GlobalIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const a = module.global_addrs[global_idx];
         const glob = self.store.globals.items[a];
         try self.stack.push(.{ .value = glob.value });
     }
-    inline fn opGlobalSet(self: *Self, global_idx: wa.GlobalIdx) (Error || error{OutOfMemory})!void {
+    inline fn opGlobalSet(self: *Self, global_idx: wa.GlobalIdx) void {
         const module = self.stack.topFrame().module;
         const a = module.global_addrs[global_idx];
         const value = self.stack.pop().value;
@@ -663,7 +663,7 @@ pub const Instance = struct {
     }
 
     // table instructions
-    inline fn opTableGet(self: *Self, table_idx: wa.TableIdx) (Error || error{OutOfMemory})!void {
+    inline fn opTableGet(self: *Self, table_idx: wa.TableIdx) (error{OutOfBoundsTableAccess} || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
@@ -675,7 +675,7 @@ pub const Instance = struct {
         const val = tab.elem[@intCast(i)];
         try self.stack.push(.{ .value = types.Value.fromRefValue(val) });
     }
-    inline fn opTableSet(self: *Self, table_idx: wa.TableIdx) (Error || error{OutOfMemory})!void {
+    inline fn opTableSet(self: *Self, table_idx: wa.TableIdx) error{OutOfBoundsTableAccess}!void {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
@@ -710,7 +710,7 @@ pub const Instance = struct {
         }
     }
 
-    inline fn opElemDrop(self: *Self, elem_idx: wa.ElemIdx) (Error || error{OutOfMemory})!void {
+    inline fn opElemDrop(self: *Self, elem_idx: wa.ElemIdx) void {
         const module = self.stack.topFrame().module;
         const a = module.elem_addrs[elem_idx];
         self.store.elems.items[a].elem = &.{};
@@ -773,7 +773,7 @@ pub const Instance = struct {
         }
     }
 
-    inline fn opDataDrop(self: *Self, data_idx: wa.DataIdx) error{OutOfMemory}!void {
+    inline fn opDataDrop(self: *Self, data_idx: wa.DataIdx) void {
         const module = self.stack.topFrame().module;
         const a = module.data_addrs[data_idx];
         const data = &self.store.datas.items[a];
@@ -791,7 +791,7 @@ pub const Instance = struct {
 
     /// `memory.grow` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-grow
-    inline fn opMemoryGrow(self: *Self) (Error || error{OutOfMemory})!void {
+    inline fn opMemoryGrow(self: *Self) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
         const mem_inst = self.store.mems.items[mem_addr];
@@ -917,7 +917,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(B, converted_result);
     }
 
-    inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) (Error || error{OutOfMemory})!void {
+    inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) error{OutOfMemory}!void {
         const value = self.stack.pop().value.as(T);
         const result = f(T, value);
         try self.stack.pushValueAs(T, result);
@@ -931,13 +931,13 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
-    inline fn testOp(self: *Self, comptime T: type, comptime f: fn (type, T) i32) (Error || error{OutOfMemory})!void {
+    inline fn testOp(self: *Self, comptime T: type, comptime f: fn (type, T) i32) error{OutOfMemory}!void {
         const value = self.stack.pop().value.as(T);
         const result = f(T, value);
         try self.stack.pushValueAs(i32, result);
     }
 
-    inline fn relOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) i32) (Error || error{OutOfMemory})!void {
+    inline fn relOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) i32) error{OutOfMemory}!void {
         const B = basetype(T);
         const rhs: T = @bitCast(self.stack.pop().value.as(B));
         const lhs: T = @bitCast(self.stack.pop().value.as(B));
