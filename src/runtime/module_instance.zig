@@ -169,8 +169,8 @@ fn allocFunc(store: *types.Store, func: wa.Func, mod_inst: *types.ModuleInst) er
 /// `alloctable` in wasm spec
 /// https://webassembly.github.io/spec/core/exec/modules.html#tables
 fn allocTable(store: *types.Store, table: wa.TableType, allocator: std.mem.Allocator) error{OutOfMemory}!types.TableAddr {
-    var elem = try allocator.alloc(?types.RefValue, table.limit.min);
-    @memset(elem, null);
+    var elem = try allocator.alloc(types.RefValue, table.limit.min);
+    @memset(elem, nullFromReftype(table.ref_type));
     const inst = types.TableInst{
         .type = table,
         .elem = elem,
@@ -222,4 +222,8 @@ fn appendElement(comptime T: type, array: *std.ArrayList(T), elem: T) error{OutO
     const addr: u32 = @intCast(array.items.len);
     try array.append(elem);
     return addr;
+}
+
+fn nullFromReftype(ref_type: std.wasm.RefType) types.RefValue {
+    return if (ref_type == std.wasm.RefType.funcref) .{ .func_ref = null } else .{ .extern_ref = null };
 }

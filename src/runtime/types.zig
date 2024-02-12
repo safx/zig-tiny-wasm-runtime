@@ -168,7 +168,7 @@ pub const FuncInst = struct {
 
 pub const TableInst = struct {
     type: wa.TableType,
-    elem: []?RefValue,
+    elem: []RefValue,
 };
 
 pub const MemInst = struct {
@@ -221,6 +221,13 @@ pub const Value = union(wa.ValueType) {
             f32 => .{ .f32 = @bitCast(v) },
             f64 => .{ .f64 = @bitCast(v) },
             else => @panic("unknown type: " ++ @typeName(@TypeOf(v))),
+        };
+    }
+
+    pub fn fromRefValue(val: RefValue) Self {
+        return switch (val) {
+            .func_ref => |v| .{ .func_ref = v },
+            .extern_ref => |v| .{ .extern_ref = v },
         };
     }
 
@@ -326,8 +333,24 @@ test "Value" {
 }
 
 pub const RefValue = union(enum) {
+    const Self = @This();
+
     func_ref: ?FuncAddr,
     extern_ref: ?ExternAddr,
+
+    pub fn fromValue(val: Value) Self {
+        return switch (val) {
+            .func_ref => |v| .{ .func_ref = v },
+            .extern_ref => |v| .{ .extern_ref = v },
+            else => unreachable,
+        };
+    }
+
+    pub fn isNull(self: Self) bool {
+        return switch (self) {
+            inline else => |val| val == null,
+        };
+    }
 };
 
 pub const ExternalValue = union(std.wasm.ExternalKind) {

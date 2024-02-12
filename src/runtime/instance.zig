@@ -583,9 +583,9 @@ pub const Instance = struct {
         if (i >= tab.elem.len)
             return Error.UndefinedElement;
         const rx = tab.elem[@intCast(i)];
-        if (rx == null)
+        if (rx.isNull())
             return Error.UninitializedElement;
-        const r = rx.?.func_ref.?;
+        const r = rx.func_ref.?;
         std.debug.print("===============================''''''''''''''''{} {any}\n", .{ i, tab.elem });
         std.debug.print("===============================''''''''''''''''{any} {}\n", .{ rx, r });
         const f = self.store.funcs.items[@intCast(r)];
@@ -673,8 +673,7 @@ pub const Instance = struct {
             return Error.OutOfBoundsTableAccess;
 
         const val = tab.elem[@intCast(i)];
-        const ref_val: ?types.FuncAddr = if (val) |v| v.func_ref else null;
-        try self.stack.push(.{ .value = .{ .func_ref = ref_val } });
+        try self.stack.push(.{ .value = types.Value.fromRefValue(val) });
     }
     inline fn opTableSet(self: *Self, table_idx: wa.TableIdx) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
@@ -686,7 +685,7 @@ pub const Instance = struct {
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
 
-        tab.elem[@intCast(i)] = .{ .func_ref = val.func_ref };
+        tab.elem[@intCast(i)] = types.RefValue.fromValue(val);
     }
     inline fn opTableInit(self: *Self, arg: Instruction.TblArg) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
@@ -704,7 +703,7 @@ pub const Instance = struct {
         while (n > 0) : (n -= 1) {
             const ref = elem.elem[@intCast(s)];
             try self.stack.pushValueAs(i32, d);
-            try self.stack.push(.{ .value = .{ .func_ref = ref.func_ref } }); // FIXME
+            try self.stack.push(.{ .value = types.Value.fromRefValue(ref) });
             try self.execOneInstruction(.{ .table_set = arg.table_idx });
             d += 1;
             s += 1;
