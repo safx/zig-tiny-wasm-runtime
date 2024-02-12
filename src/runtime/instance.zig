@@ -443,7 +443,7 @@ pub const Instance = struct {
             .f32_div => try self.binOp(f32, opFloatDiv),
             .f32_min => try self.binOp(f32, opFloatMin),
             .f32_max => try self.binOp(f32, opFloatMax),
-            // .f32_copy_sign,
+            .f32_copy_sign => try self.binOp(f32, opFloatCopySign),
 
             // numeric instructions (3) f64
             .f64_abs => try self.unOp(f64, opFloatAbs),
@@ -459,7 +459,7 @@ pub const Instance = struct {
             .f64_div => try self.binOp(f64, opFloatDiv),
             .f64_min => try self.binOp(f64, opFloatMin),
             .f64_max => try self.binOp(f64, opFloatMax),
-            // .f64_copy_sign,
+            .f64_copy_sign => try self.binOp(f32, opFloatCopySign),
 
             // numeric instructions (4)
             // .i32_wrap_i64,
@@ -1313,6 +1313,10 @@ fn opFloatMax(comptime T: type, lhs: T, rhs: T) Error!T {
         return canonNan(T);
     }
     return @max(lhs, rhs);
+}
+
+fn opFloatCopySign(comptime T: type, lhs: T, rhs: T) Error!T {
+    return std.math.copysign(lhs, rhs);
 }
 
 fn canonNan(comptime T: type) T {
