@@ -752,7 +752,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, val);
     }
 
-    inline fn opStore(self: *Self, comptime T: type, comptime bit_size: u32, mem_arg: Instruction.MemArg) error{OutOfMemory}!void {
+    inline fn opStore(self: *Self, comptime T: type, comptime bit_size: u32, mem_arg: Instruction.MemArg) error{OutOfBoundsMemoryAccess}!void {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
@@ -763,6 +763,11 @@ pub const Instance = struct {
         var ea: u32 = @intCast(i);
         ea += mem_arg.offset;
         const byte_size = bit_size / 8;
+
+        if (ea + byte_size > mem.data.len) {
+            return Error.OutOfBoundsMemoryAccess;
+        }
+
         inline for (0..byte_size) |idx| {
             mem.data[ea + idx] = @intCast((c >> idx * 8) & 0xff);
         }
