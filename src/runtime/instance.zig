@@ -29,8 +29,8 @@ pub const Instance = struct {
 
     /// `Invocation of function address` and `Returning from a function`
     /// https://webassembly.github.io/spec/core/exec/instructions.html#function-calls
-    fn invokeFunction(self: *Self, func_addr: types.FuncAddr) (Error || error{OutOfMemory})![]const types.Value {
-        self.printStack();
+    fn invokeFunction(self: *Self, func_addr: types.FuncAddr) (Error || error{OutOfMemory})!void {
+        std.debug.print("================================== invokeFunction \n", .{});
 
         // 1:
 
@@ -58,18 +58,24 @@ pub const Instance = struct {
             .locals = locals,
             .arity = num_returns,
             .module = func_inst.module,
+            .instructions = func_inst.code.body,
         };
         try self.stack.push(.{ .frame = frame });
         try self.stack.push(.{ .label = .{ .arity = @intCast(num_returns), .type = .root } });
 
         // 5, 11
-        try self.execExpr(func_inst.code.body);
+        //try self.execExpr(func_inst.code.body);
+    }
+
+    fn returnFunction(self: *Self) (Error || error{OutOfMemory})![]const types.Value {
+        std.debug.print("================================== returnFunction \n", .{});
+        const num_returns = self.stack.topFrame().arity;
 
         // 1, 2, 3: assert
 
         // 4: pop frames etc
         const ret = try self.allocator.alloc(types.Value, num_returns);
-        i = num_returns;
+        var i = num_returns;
         while (i > 0) : (i -= 1) {
             ret[i - 1] = self.stack.pop().value;
         }
@@ -87,30 +93,6 @@ pub const Instance = struct {
         return ret;
     }
 
-    fn execExpr(self: *Self, instrs: []const Instruction) (Error || error{OutOfMemory})!void {
-        std.debug.print("---------------\n", .{});
-        for (instrs, 0..) |i, idx| {
-            std.debug.print("[{}] {}\n", .{ idx, i });
-        }
-        std.debug.print("---------------\n", .{});
-
-        var ip: wa.InstractionAddr = 0;
-        while (ip < instrs.len) {
-            const instr = instrs[ip];
-            const flow_ctrl = try self.execInstruction(ip, instr);
-
-            if (flow_ctrl != .none) {
-                std.debug.print("\t===> {}\n", .{flow_ctrl});
-            }
-
-            switch (flow_ctrl) {
-                .none => ip += 1,
-                .jump => |new_ip| ip = new_ip,
-                .exit => return,
-            }
-        }
-    }
-
     pub fn invokeFunctionByAddr(self: *Self, func_addr: types.FuncAddr, args: []const types.Value) (Error || error{OutOfMemory})![]const types.Value {
         // TODO: args check
 
@@ -119,10 +101,30 @@ pub const Instance = struct {
             try self.stack.push(.{ .value = arg });
         }
 
-        const ret = try self.invokeFunction(func_addr);
+        try self.invokeFunction(func_addr);
+        try self.execLoop();
+        return try self.returnFunction();
+    }
 
-        // TODO: handle return
-        return ret;
+    fn execLoop(self: *Self) (Error || error{OutOfMemory})!void {
+        br: while (self.stack.topFrame().ip < self.stack.topFrame().instructions.len) {
+            const instrs = self.stack.topFrame().instructions;
+            const ip = self.stack.topFrame().ip;
+            self.stack.updateTopFrameIp(ip + 1); // FIXME: add `call` into `FlowControl`
+
+            const instr = instrs[ip];
+            const flow_ctrl = try self.execInstruction(ip, instr);
+
+            if (flow_ctrl != .none) {
+                std.debug.print("\t===> {}\n", .{flow_ctrl});
+            }
+
+            switch (flow_ctrl) {
+                .none => {}, // PASS: self.stack.updateTopFrameIp(ip + 1),
+                .jump => |new_ip| self.stack.updateTopFrameIp(new_ip),
+                .exit => break :br,
+            }
+        }
     }
 
     /// `instantiate` in wasm spec

@@ -107,6 +107,18 @@ pub const Stack = struct {
         unreachable;
     }
 
+    pub fn updateTopFrameIp(self: *Self, ip: u32) void {
+        var i = self.array.items.len;
+        while (i > 0) : (i -= 1) {
+            const item = self.array.items[i - 1];
+            if (item == .frame) {
+                self.array.items[i - 1].frame.ip = ip;
+                return;
+            }
+        }
+        unreachable;
+    }
+
     // finds the uppermost label and remove it.
     pub fn popUppermostLabel(self: *Self) ?Label {
         var len = self.array.items.len;
@@ -387,4 +399,6 @@ pub const ActivationFrame = struct {
     locals: []Value = &.{},
     arity: usize = 0,
     module: *ModuleInst,
+    instructions: []const wa.Instruction = &.{},
+    ip: u32 = 0,
 };
