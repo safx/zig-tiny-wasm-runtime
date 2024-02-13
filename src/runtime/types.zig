@@ -156,6 +156,15 @@ pub const Stack = struct {
             }
         }
     }
+
+    pub fn hasFrame(self: *Self) bool {
+        for (self.array.items) |e| {
+            if (e == .frame) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 pub const StackItem = union(enum) {

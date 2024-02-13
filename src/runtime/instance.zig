@@ -30,8 +30,6 @@ pub const Instance = struct {
     /// `Invocation of function address` and `Returning from a function`
     /// https://webassembly.github.io/spec/core/exec/instructions.html#function-calls
     fn invokeFunction(self: *Self, func_addr: types.FuncAddr) (Error || error{OutOfMemory})!void {
-        std.debug.print("================================== invokeFunction \n", .{});
-
         // 1:
 
         // 2, 3:
@@ -63,12 +61,15 @@ pub const Instance = struct {
         try self.stack.push(.{ .frame = frame });
         try self.stack.push(.{ .label = .{ .arity = @intCast(num_returns), .type = .root } });
 
-        // 5, 11
-        //try self.execExpr(func_inst.code.body);
+        // 5, 11: is done by execLoop
+        std.debug.print("---------------\n", .{});
+        for (func_inst.code.body, 0..) |op, idx| {
+            std.debug.print("[{}] {}\n", .{ idx, op });
+        }
+        std.debug.print("---------------\n", .{});
     }
 
     fn returnFunction(self: *Self) (Error || error{OutOfMemory})![]const types.Value {
-        std.debug.print("================================== returnFunction \n", .{});
         const num_returns = self.stack.topFrame().arity;
 
         // 1, 2, 3: assert
@@ -102,15 +103,20 @@ pub const Instance = struct {
         }
 
         try self.invokeFunction(func_addr);
-        try self.execLoop();
-        return try self.returnFunction();
+        const return_values = try self.execLoop(); // TODO
+
+        // pop value : FIXME
+        for (return_values) |_| {
+            _ = self.stack.pop();
+        }
+
+        return return_values;
     }
 
-    fn execLoop(self: *Self) (Error || error{OutOfMemory})!void {
-        br: while (self.stack.topFrame().ip < self.stack.topFrame().instructions.len) {
+    fn execLoop(self: *Self) (Error || error{OutOfMemory})![]const types.Value {
+        while (true) {
             const instrs = self.stack.topFrame().instructions;
             const ip = self.stack.topFrame().ip;
-            self.stack.updateTopFrameIp(ip + 1); // FIXME: add `call` into `FlowControl`
 
             const instr = instrs[ip];
             const flow_ctrl = try self.execInstruction(ip, instr);
@@ -120,11 +126,21 @@ pub const Instance = struct {
             }
 
             switch (flow_ctrl) {
-                .none => {}, // PASS: self.stack.updateTopFrameIp(ip + 1),
+                .none => self.stack.updateTopFrameIp(ip + 1),
                 .jump => |new_ip| self.stack.updateTopFrameIp(new_ip),
-                .exit => break :br,
+                .call => |func_addr| {
+                    self.stack.updateTopFrameIp(ip + 1);
+                    try self.invokeFunction(func_addr);
+                },
+                .exit => {
+                    const ret = try self.returnFunction();
+                    if (!self.stack.hasFrame()) {
+                        return ret;
+                    }
+                },
             }
         }
+        unreachable;
     }
 
     /// `instantiate` in wasm spec
@@ -282,8 +298,8 @@ pub const Instance = struct {
             .br_if => |label_idx| return self.opBrIf(label_idx),
             .br_table => |table_info| return self.opBrTable(table_info),
             .@"return" => return FlowControl.exit,
-            .call => |func_idx| try self.opCall(func_idx),
-            .call_indirect => |arg| try self.opCallIndirect(arg),
+            .call => |func_idx| return try self.opCall(func_idx),
+            .call_indirect => |arg| return try self.opCallIndirect(arg),
 
             // reference instructions
             .ref_null => |ref_type| try self.opRefNull(ref_type),
@@ -568,12 +584,12 @@ pub const Instance = struct {
         return self.opBr(label_idx);
     }
 
-    inline fn opCall(self: *Self, func_idx: wa.FuncIdx) (Error || error{OutOfMemory})!void {
+    inline fn opCall(self: *Self, func_idx: wa.FuncIdx) (Error || error{OutOfMemory})!FlowControl {
         const module = self.stack.topFrame().module;
-        _ = try self.invokeFunction(module.func_addrs[func_idx]);
+        return .{ .call = module.func_addrs[func_idx] };
     }
 
-    inline fn opCallIndirect(self: *Self, arg: Instruction.CallIndirectArg) (Error || error{OutOfMemory})!void {
+    inline fn opCallIndirect(self: *Self, arg: Instruction.CallIndirectArg) (Error || error{OutOfMemory})!FlowControl {
         std.debug.print("call_indirect: {any}\n", .{arg});
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[arg.table_idx];
@@ -602,7 +618,7 @@ pub const Instance = struct {
             if (e != a) return Error.IndirectCallTypeMismatch;
         }
 
-        _ = try self.invokeFunction(r);
+        return .{ .call = r };
     }
 
     // reference instructions
@@ -981,6 +997,7 @@ const FlowControl = union(enum) {
     none,
     jump: wa.InstractionAddr,
     exit,
+    call: types.FuncAddr,
 
     pub fn newAtOpEnd(label: types.Label) FlowControl {
         return switch (label.type) {
