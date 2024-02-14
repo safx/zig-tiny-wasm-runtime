@@ -323,10 +323,10 @@ pub const Instance = struct {
             .table_set => |table_idx| try self.opTableSet(table_idx),
             .table_init => |arg| try self.opTableInit(arg),
             .elem_drop => |elem_idx| self.opElemDrop(elem_idx),
-            // .table_copy: TblArg,
-            // .table_grow: types.TableIdx,
-            // .table_size: types.TableIdx,
-            // .table_fill: types.TableIdx,
+            .table_copy => |arg| try self.opTableCopy(arg),
+            .table_grow => |table_idx| try self.opTableGrow(table_idx),
+            .table_size => |table_idx| try self.opTableSize(table_idx),
+            .table_fill => |table_idx| try self.opTableFill(table_idx),
 
             // memory instructions
             .i32_load => |mem_arg| try self.opLoad(i32, i32, mem_arg),
@@ -699,6 +699,7 @@ pub const Instance = struct {
         const val = tab.elem[@intCast(i)];
         try self.stack.push(.{ .value = types.Value.fromRefValue(val) });
     }
+
     inline fn opTableSet(self: *Self, table_idx: wa.TableIdx) error{OutOfBoundsTableAccess}!void {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
@@ -711,6 +712,7 @@ pub const Instance = struct {
 
         tab.elem[@intCast(i)] = types.RefValue.fromValue(val);
     }
+
     inline fn opTableInit(self: *Self, arg: Instruction.TblArg) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[arg.table_idx];
@@ -740,6 +742,79 @@ pub const Instance = struct {
         self.store.elems.items[a].elem = &.{};
     }
 
+    inline fn opTableCopy(self: *Self, arg: Instruction.TblArg) error{OutOfBoundsTableAccess}!void {
+        const module = self.stack.topFrame().module;
+        const ta = module.table_addrs[arg.table_idx];
+        const tab = self.store.tables.items[ta];
+        _ = tab;
+        unreachable;
+    }
+
+    inline fn opTableGrow(self: *Self, table_idx: wa.TableIdx) error{OutOfMemory}!void {
+        const module = self.stack.topFrame().module;
+        const ta = module.table_addrs[table_idx];
+        const tab = self.store.tables.items[ta];
+
+        var n = self.stack.pop().value.asI32();
+        const val = self.stack.pop().value;
+
+        if (tab.type.limit.max != null and @as(usize, @intCast(n)) + tab.elem.len > tab.type.limit.max.?) {
+            try self.stack.pushValueAs(i32, -1);
+            return;
+        }
+
+        const sz = tab.elem.len;
+
+        const new_elem = try growtable(tab, n, types.RefValue.fromValue(val), self.allocator);
+        self.store.tables.items[ta].elem = new_elem;
+        self.store.tables.items[ta].type.limit.min = @intCast(new_elem.len);
+
+        try self.stack.pushValueAs(i32, @as(i32, @intCast(sz)));
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/modules.html#growing-tables
+    inline fn growtable(table_inst: types.TableInst, n: i32, val: types.RefValue, allocator: std.mem.Allocator) error{OutOfMemory}![]types.RefValue {
+        const data_len: i32 = @intCast(table_inst.elem.len);
+        const len: i32 = data_len + n;
+        if (len + n > 65536) {
+            return std.mem.Allocator.Error.OutOfMemory; // TODO: use another error
+        }
+        const old_elem = table_inst.elem;
+        const new_elem = try allocator.alloc(types.RefValue, @intCast(len));
+        @memcpy(new_elem[0..old_elem.len], old_elem);
+        @memset(new_elem[old_elem.len..], val);
+        // `limits.min` should be updated outside this function
+        return new_elem;
+    }
+
+    inline fn opTableSize(self: *Self, table_idx: wa.TableIdx) error{OutOfMemory}!void {
+        const module = self.stack.topFrame().module;
+        const ta = module.table_addrs[table_idx];
+        const tab = self.store.tables.items[ta];
+        const val: i32 = @intCast(tab.elem.len);
+        try self.stack.pushValueAs(i32, val);
+    }
+
+    inline fn opTableFill(self: *Self, table_idx: wa.TableIdx) error{OutOfBoundsTableAccess}!void {
+        const module = self.stack.topFrame().module;
+        const ta = module.table_addrs[table_idx];
+        const tab = self.store.tables.items[ta];
+
+        var n = self.stack.pop().value.asI32();
+        const val = self.stack.pop().value;
+        var i = self.stack.pop().value.asI32();
+
+        if (i + n > tab.elem.len)
+            return Error.OutOfBoundsTableAccess;
+
+        while (n > 0) {
+            tab.elem[@intCast(i)] = types.RefValue.fromValue(val);
+            i += 1;
+            n -= 1;
+        }
+    }
+
+    // memory instructions
     inline fn opLoad(self: *Self, comptime T: type, comptime N: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
