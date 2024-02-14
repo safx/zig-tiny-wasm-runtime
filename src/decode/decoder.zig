@@ -310,9 +310,9 @@ pub const Decoder = struct {
         const op_code = try reader.readU8();
         const inst: Instruction = switch (op_code) {
             // table instructions
-            n(.table_init) => .{ .table_init = try tblArg(reader) },
+            n(.table_init) => .{ .table_init = try tableInitArg(reader) },
             n(.elem_drop) => .{ .elem_drop = try reader.readVarU32() },
-            n(.table_copy) => .{ .table_copy = try tblCopyArg(reader) },
+            n(.table_copy) => .{ .table_copy = try tableCopyArg(reader) },
             n(.table_grow) => .{ .table_grow = try reader.readVarU32() },
             n(.table_size) => .{ .table_size = try reader.readVarU32() },
             n(.table_fill) => .{ .table_fill = try reader.readVarU32() },
@@ -353,13 +353,13 @@ pub const Decoder = struct {
         return .{ .@"align" = a, .offset = o };
     }
 
-    fn tblArg(reader: *BinaryReader) Error!Instruction.TblArg {
-        const t = try reader.readVarU32();
-        const e = try reader.readVarU32();
-        return .{ .table_idx = t, .elem_idx = e };
+    fn tableInitArg(reader: *BinaryReader) Error!Instruction.TableInitArg {
+        const elem = try reader.readVarU32();
+        const table = try reader.readVarU32();
+        return .{ .table_idx = table, .elem_idx = elem };
     }
 
-    fn tblCopyArg(reader: *BinaryReader) Error!Instruction.TblCopyArg {
+    fn tableCopyArg(reader: *BinaryReader) Error!Instruction.TableCopyArg {
         const dst = try reader.readVarU32();
         const src = try reader.readVarU32();
         return .{ .table_idx_dst = dst, .table_idx_src = src };

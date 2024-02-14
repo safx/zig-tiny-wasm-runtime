@@ -13,12 +13,12 @@ pub const Instruction = union(enum) {
         table_idx: TableIdx,
     };
 
-    pub const TblArg = struct {
-        elem_idx: ElemIdx,
+    pub const TableInitArg = struct {
         table_idx: TableIdx,
+        elem_idx: ElemIdx,
     };
 
-    pub const TblCopyArg = struct {
+    pub const TableCopyArg = struct {
         table_idx_src: TableIdx,
         table_idx_dst: TableIdx,
     };
@@ -95,9 +95,9 @@ pub const Instruction = union(enum) {
     // table instructions
     table_get: TableIdx,
     table_set: TableIdx,
-    table_init: TblArg,
+    table_init: TableInitArg,
     elem_drop: ElemIdx,
-    table_copy: TblCopyArg,
+    table_copy: TableCopyArg,
     table_grow: TableIdx,
     table_size: TableIdx,
     table_fill: TableIdx,

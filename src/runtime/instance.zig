@@ -715,7 +715,7 @@ pub const Instance = struct {
         tab.elem[i] = types.RefValue.fromValue(val);
     }
 
-    inline fn opTableInit(self: *Self, arg: Instruction.TblArg) (Error || error{OutOfMemory})!void {
+    fn opTableInit(self: *Self, arg: Instruction.TableInitArg) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[arg.table_idx];
         const tab = self.store.tables.items[ta];
@@ -726,6 +726,7 @@ pub const Instance = struct {
         var d = self.stack.pop().value.asI32();
 
         while (n > 0) : (n -= 1) {
+            std.debug.print("=== s={}, d={}, n={}    E={}, T={}\n", .{ s, d, n, elem.elem.len, tab.elem.len });
             if (s + n > elem.elem.len or d + n > tab.elem.len)
                 return Error.OutOfBoundsTableAccess;
 
@@ -744,7 +745,7 @@ pub const Instance = struct {
         self.store.elems.items[a].elem = &.{};
     }
 
-    inline fn opTableCopy(self: *Self, arg: Instruction.TblCopyArg) (Error || error{OutOfMemory})!void {
+    inline fn opTableCopy(self: *Self, arg: Instruction.TableCopyArg) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const ta_d = module.table_addrs[arg.table_idx_dst];
         const tab_d = self.store.tables.items[ta_d];
