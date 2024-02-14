@@ -693,7 +693,7 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
-        const i = self.stack.pop().value.asI32();
+        const i: u32 = @bitCast(self.stack.pop().value.asI32());
 
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
@@ -707,12 +707,12 @@ pub const Instance = struct {
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
         const val = self.stack.pop().value;
-        const i = self.stack.pop().value.asI32();
+        const i: u32 = @bitCast(self.stack.pop().value.asI32());
 
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
 
-        tab.elem[@intCast(i)] = types.RefValue.fromValue(val);
+        tab.elem[i] = types.RefValue.fromValue(val);
     }
 
     inline fn opTableInit(self: *Self, arg: Instruction.TblArg) (Error || error{OutOfMemory})!void {

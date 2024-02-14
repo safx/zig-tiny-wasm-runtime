@@ -193,6 +193,8 @@ fn errorFromString(str: []const u8) types.Error {
         return E.UninitializedElement;
     } else if (strcmp(str, "uninitialized element 2")) {
         return E.UninitializedElement;
+    } else if (strcmp(str, "indirect call type mismatch")) {
+        return E.IndirectCallTypeMismatch;
     } else {
         std.debug.print("??? {s}\n", .{str});
         unreachable;
