@@ -1122,6 +1122,7 @@ const FlowControl = union(enum) {
     pub fn newAtOpBr(label: types.Label) FlowControl {
         return switch (label.type) {
             .root => .exit,
+            .loop => |idx| .{ .jump = idx }, // jump to `loop`
             inline else => |idx| .{ .jump = idx + 1 }, // jump next to `end`
         };
     }
