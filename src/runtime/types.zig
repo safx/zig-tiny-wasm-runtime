@@ -252,6 +252,13 @@ pub const Value = union(wa.ValueType) {
         };
     }
 
+    pub fn isNull(self: Self) bool {
+        return switch (self) {
+            .func_ref, .extern_ref => |v| v == null,
+            else => false,
+        };
+    }
+
     pub fn as(self: Self, comptime T: type) T {
         return switch (T) {
             i32 => self.asI32(),

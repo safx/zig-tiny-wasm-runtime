@@ -303,7 +303,7 @@ pub const Instance = struct {
 
             // reference instructions
             .ref_null => |ref_type| try self.opRefNull(ref_type),
-            // .ref_is_null,
+            .ref_is_null => try self.opIsNull(),
             .ref_func => |func_idx| try self.opRefFunc(func_idx),
 
             // parametric instructions
@@ -480,22 +480,22 @@ pub const Instance = struct {
             .f64_copy_sign => try self.binOp(f32, opFloatCopySign),
 
             // numeric instructions (4)
-            // .i32_wrap_i64,
-            .i32_trunc_f32_s => try self.instrOp(i32, f32, opToIntTrunc),
-            .i32_trunc_f32_u => try self.instrOp(u32, f32, opToIntTrunc),
-            .i32_trunc_f64_s => try self.instrOp(i32, f64, opToIntTrunc),
-            .i32_trunc_f64_u => try self.instrOp(u32, f64, opToIntTrunc),
-            // .i64_extend_i32_s,
-            // .i64_extend_i32_u,
-            .i64_trunc_f32_s => try self.instrOp(i64, f32, opToIntTrunc),
-            .i64_trunc_f32_u => try self.instrOp(i64, f32, opToIntTrunc),
-            .i64_trunc_f64_s => try self.instrOp(i64, f64, opToIntTrunc),
-            .i64_trunc_f64_u => try self.instrOp(u64, f64, opToIntTrunc),
+            .i32_wrap_i64 => try self.instrOp(i32, i64, opWrap),
+            .i32_trunc_f32_s => try self.instrOp(i32, f32, opTrunc),
+            .i32_trunc_f32_u => try self.instrOp(u32, f32, opTrunc),
+            .i32_trunc_f64_s => try self.instrOp(i32, f64, opTrunc),
+            .i32_trunc_f64_u => try self.instrOp(u32, f64, opTrunc),
+            .i64_extend_i32_s => try self.instrOp(i64, i32, opExtend32),
+            .i64_extend_i32_u => try self.instrOp(i64, i32, opExtend32),
+            .i64_trunc_f32_s => try self.instrOp(i64, f32, opTrunc),
+            .i64_trunc_f32_u => try self.instrOp(i64, f32, opTrunc),
+            .i64_trunc_f64_s => try self.instrOp(i64, f64, opTrunc),
+            .i64_trunc_f64_u => try self.instrOp(u64, f64, opTrunc),
             .f32_convert_i32_s => try self.instrOp(f32, i32, opConvert),
             .f32_convert_i32_u => try self.instrOp(f32, u32, opConvert),
             .f32_convert_i64_s => try self.instrOp(f32, i64, opConvert),
             .f32_convert_i64_u => try self.instrOp(f32, u64, opConvert),
-            // .f32_demote_f64,
+            .f32_demote_f64 => try self.instrOp(f32, f64, opDemote),
             .f64_convert_i32_s => try self.instrOp(f64, i32, opConvert),
             .f64_convert_i32_u => try self.instrOp(f64, i32, opConvert),
             .f64_convert_i64_s => try self.instrOp(f64, i64, opConvert),
@@ -628,6 +628,12 @@ pub const Instance = struct {
             .externref => .{ .extern_ref = null },
         };
         try self.stack.push(.{ .value = val });
+    }
+
+    inline fn opIsNull(self: *Self) error{OutOfMemory}!void {
+        const val = self.stack.pop().value;
+        const v: i32 = if (val.isNull()) 1 else 0;
+        try self.stack.pushValueAs(i32, v);
     }
 
     inline fn opRefFunc(self: *Self, func_idx: wa.FuncIdx) error{OutOfMemory}!void {
@@ -1050,7 +1056,7 @@ fn opIntPopcnt(comptime T: type, value: T) T {
     return @popCount(value);
 }
 
-fn opToIntTrunc(comptime R: type, comptime T: type, value: T) R {
+fn opTrunc(comptime R: type, comptime T: type, value: T) R {
     const result: R = @intFromFloat(value);
     return result;
 }
@@ -1069,6 +1075,16 @@ fn opPromote(comptime R: type, comptime T: type, value: T) R {
     return value;
 }
 
+fn opWrap(comptime R: type, comptime T: type, value: T) R {
+    const result: i32 = @intCast(value & 0xffffffff);
+    return result;
+}
+
+fn opDemote(comptime R: type, comptime T: type, value: T) R {
+    const result: f32 = @floatCast(value);
+    return result;
+}
+
 fn opExtend8(comptime R: type, comptime T: type, value: T) R {
     const result: i8 = @truncate(value);
     return result;
@@ -1081,6 +1097,11 @@ fn opExtend16(comptime R: type, comptime T: type, value: T) R {
 
 fn opExtend32(comptime R: type, comptime T: type, value: T) R {
     const result: i32 = @truncate(value);
+    return result;
+}
+
+fn opExtend64(comptime R: type, comptime T: type, value: T) R {
+    const result: i64 = @truncate(value);
     return result;
 }
 
