@@ -670,10 +670,10 @@ pub const Instance = struct {
     }
 
     inline fn opLocalTee(self: *Self, local_idx: wa.LocalIdx) error{OutOfMemory}!void {
-        _ = local_idx;
         const value = self.stack.pop();
         try self.stack.push(value);
         try self.stack.push(value);
+        self.opLocalSet(local_idx);
     }
     inline fn opGlobalGet(self: *Self, global_idx: wa.GlobalIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
