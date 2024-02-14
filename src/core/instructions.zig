@@ -18,6 +18,11 @@ pub const Instruction = union(enum) {
         table_idx: TableIdx,
     };
 
+    pub const TblCopyArg = struct {
+        table_idx_src: TableIdx,
+        table_idx_dst: TableIdx,
+    };
+
     pub const BlockInfo = struct {
         type: BlockType,
         end: InstractionAddr = 0,
@@ -92,7 +97,7 @@ pub const Instruction = union(enum) {
     table_set: TableIdx,
     table_init: TblArg,
     elem_drop: ElemIdx,
-    table_copy: TblArg,
+    table_copy: TblCopyArg,
     table_grow: TableIdx,
     table_size: TableIdx,
     table_fill: TableIdx,

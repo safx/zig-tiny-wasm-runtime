@@ -312,7 +312,7 @@ pub const Decoder = struct {
             // table instructions
             n(.table_init) => .{ .table_init = try tblArg(reader) },
             n(.elem_drop) => .{ .elem_drop = try reader.readVarU32() },
-            n(.table_copy) => .{ .table_copy = try tblArg(reader) },
+            n(.table_copy) => .{ .table_copy = try tblCopyArg(reader) },
             n(.table_grow) => .{ .table_grow = try reader.readVarU32() },
             n(.table_size) => .{ .table_size = try reader.readVarU32() },
             n(.table_fill) => .{ .table_fill = try reader.readVarU32() },
@@ -357,6 +357,12 @@ pub const Decoder = struct {
         const t = try reader.readVarU32();
         const e = try reader.readVarU32();
         return .{ .table_idx = t, .elem_idx = e };
+    }
+
+    fn tblCopyArg(reader: *BinaryReader) Error!Instruction.TblCopyArg {
+        const dst = try reader.readVarU32();
+        const src = try reader.readVarU32();
+        return .{ .table_idx_dst = dst, .table_idx_src = src };
     }
 
     fn refType(reader: *BinaryReader) Error!wa.RefType {

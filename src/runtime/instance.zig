@@ -117,8 +117,11 @@ pub const Instance = struct {
         while (true) {
             const instrs = self.stack.topFrame().instructions;
             const ip = self.stack.topFrame().ip;
-
             const instr = instrs[ip];
+
+            self.printStack();
+            std.debug.print("== [{}]: {}\n", .{ ip, instr });
+
             const flow_ctrl = try self.execInstruction(ip, instr);
 
             if (flow_ctrl != .none) {
@@ -277,13 +280,12 @@ pub const Instance = struct {
 
     /// executes an instruction without control flow
     fn execOneInstruction(self: *Self, instr: Instruction) (Error || error{OutOfMemory})!void {
+        std.debug.print("== [_] {}\n", .{instr});
         _ = try self.execInstruction(0, instr);
     }
 
     /// executes an instruction and returns control flow
     fn execInstruction(self: *Self, ip: wa.InstractionAddr, instr: Instruction) (Error || error{OutOfMemory})!FlowControl {
-        self.printStack();
-        std.debug.print("== [{}]: {}\n", .{ ip, instr });
         switch (instr) {
             .end => return self.opEnd(),
             .@"else" => return self.opElse(),
@@ -723,10 +725,10 @@ pub const Instance = struct {
         var s = self.stack.pop().value.asI32();
         var d = self.stack.pop().value.asI32();
 
-        if (s + n > elem.elem.len or d + n > tab.elem.len)
-            return Error.OutOfBoundsTableAccess;
-
         while (n > 0) : (n -= 1) {
+            if (s + n > elem.elem.len or d + n > tab.elem.len)
+                return Error.OutOfBoundsTableAccess;
+
             const ref = elem.elem[@intCast(s)];
             try self.stack.pushValueAs(i32, d);
             try self.stack.push(.{ .value = types.Value.fromRefValue(ref) });
@@ -742,12 +744,35 @@ pub const Instance = struct {
         self.store.elems.items[a].elem = &.{};
     }
 
-    inline fn opTableCopy(self: *Self, arg: Instruction.TblArg) error{OutOfBoundsTableAccess}!void {
+    inline fn opTableCopy(self: *Self, arg: Instruction.TblCopyArg) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
-        const ta = module.table_addrs[arg.table_idx];
-        const tab = self.store.tables.items[ta];
-        _ = tab;
-        unreachable;
+        const ta_d = module.table_addrs[arg.table_idx_dst];
+        const tab_d = self.store.tables.items[ta_d];
+        const ta_s = module.table_addrs[arg.table_idx_src];
+        const tab_s = self.store.tables.items[ta_s];
+
+        var n = self.stack.pop().value.asI32();
+        var s = self.stack.pop().value.asI32();
+        var d = self.stack.pop().value.asI32();
+
+        while (n > 0) : (n -= 1) {
+            if (s + n > tab_d.elem.len or s + n > tab_s.elem.len)
+                return Error.OutOfBoundsTableAccess;
+
+            if (d <= s) {
+                try self.stack.pushValueAs(i32, d);
+                try self.stack.pushValueAs(i32, s);
+                try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
+                try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
+                d += 1;
+                s += 1;
+            } else {
+                try self.stack.pushValueAs(i32, d + n - 1);
+                try self.stack.pushValueAs(i32, s + n - 1);
+                try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
+                try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
+            }
+        }
     }
 
     inline fn opTableGrow(self: *Self, table_idx: wa.TableIdx) error{OutOfMemory}!void {
@@ -804,10 +829,10 @@ pub const Instance = struct {
         const val = self.stack.pop().value;
         var i = self.stack.pop().value.asI32();
 
-        if (i + n > tab.elem.len)
-            return Error.OutOfBoundsTableAccess;
-
         while (n > 0) {
+            if (i + n > tab.elem.len)
+                return Error.OutOfBoundsTableAccess;
+
             tab.elem[@intCast(i)] = types.RefValue.fromValue(val);
             i += 1;
             n -= 1;
