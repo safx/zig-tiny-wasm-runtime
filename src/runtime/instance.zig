@@ -599,10 +599,10 @@ pub const Instance = struct {
 
         const ft_expect = module.types[arg.type_idx];
 
-        const i = self.stack.pop().value.asI32();
+        const i: u32 = @bitCast(self.stack.pop().value.asI32());
         if (i >= tab.elem.len)
             return Error.UndefinedElement;
-        const rx = tab.elem[@intCast(i)];
+        const rx = tab.elem[i];
         if (rx.isNull())
             return Error.UninitializedElement;
         const r = rx.func_ref.?;
@@ -698,7 +698,7 @@ pub const Instance = struct {
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
 
-        const val = tab.elem[@intCast(i)];
+        const val = tab.elem[i];
         try self.stack.push(.{ .value = types.Value.fromRefValue(val) });
     }
 
@@ -846,10 +846,9 @@ pub const Instance = struct {
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
 
-        const ea = self.stack.pop().value.asI32();
-        const ea_cast: u32 = @bitCast(ea);
+        const ea: u32 = @bitCast(self.stack.pop().value.asI32());
 
-        const ea_start_with_overflow = @addWithOverflow(ea_cast, mem_arg.offset);
+        const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
         if (ea_start_with_overflow[1] == 1) {
             return Error.OutOfBoundsMemoryAccess;
         }
