@@ -479,7 +479,7 @@ pub const Instance = struct {
             .f64_div => try self.binOp(f64, opFloatDiv),
             .f64_min => try self.binOp(f64, opFloatMin),
             .f64_max => try self.binOp(f64, opFloatMax),
-            .f64_copy_sign => try self.binOp(f32, opFloatCopySign),
+            .f64_copy_sign => try self.binOp(f64, opFloatCopySign),
 
             // numeric instructions (4)
             .i32_wrap_i64 => try self.instrOp(i32, i64, opWrap),
