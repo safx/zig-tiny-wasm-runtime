@@ -195,6 +195,8 @@ fn errorFromString(str: []const u8) types.Error {
         return E.UninitializedElement;
     } else if (strcmp(str, "indirect call type mismatch")) {
         return E.IndirectCallTypeMismatch;
+    } else if (strcmp(str, "invalid conversion to integer")) {
+        return E.InvalidConversionToInteger;
     } else {
         std.debug.print("??? {s}\n", .{str});
         unreachable;

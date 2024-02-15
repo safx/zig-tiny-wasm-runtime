@@ -515,6 +515,16 @@ pub const Instance = struct {
             .i64_extend16_s => try self.instrOp(i64, i64, opExtend16),
             .i64_extend32_s => try self.instrOp(i64, i64, opExtend32),
 
+            // saturating truncation instructions
+            .i32_trunc_sat_f32_s => try self.cvtOp(i32, f32, opTruncSat),
+            .i32_trunc_sat_f32_u => try self.cvtOp(u32, f32, opTruncSat),
+            .i32_trunc_sat_f64_s => try self.cvtOp(i32, f64, opTruncSat),
+            .i32_trunc_sat_f64_u => try self.cvtOp(u32, f64, opTruncSat),
+            .i64_trunc_sat_f32_s => try self.cvtOp(i64, f32, opTruncSat),
+            .i64_trunc_sat_f32_u => try self.cvtOp(u64, f32, opTruncSat),
+            .i64_trunc_sat_f64_s => try self.cvtOp(i64, f64, opTruncSat),
+            .i64_trunc_sat_f64_u => try self.cvtOp(u64, f64, opTruncSat),
+
             else => unreachable,
         }
         return .none;
@@ -1070,9 +1080,9 @@ pub const Instance = struct {
         try self.stack.pushValueAs(i32, result);
     }
 
-    inline fn cvtOp(self: *Self, comptime T2: type, comptime T1: type, comptime f: fn (type, T1) Error!T2) (Error || error{OutOfMemory})!void {
+    inline fn cvtOp(self: *Self, comptime T2: type, comptime T1: type, comptime f: fn (type, type, T1) Error!T2) (Error || error{OutOfMemory})!void {
         const value = self.stack.pop().value.as(T1);
-        const result: T2 = try f(T1, value);
+        const result: T2 = try f(T2, T1, value);
         try self.stack.pushValueAs(T2, result);
     }
 
@@ -1459,6 +1469,26 @@ fn opFloatMax(comptime T: type, lhs: T, rhs: T) Error!T {
 
 fn opFloatCopySign(comptime T: type, lhs: T, rhs: T) Error!T {
     return std.math.copysign(lhs, rhs);
+}
+
+fn opTruncSat(comptime T2: type, comptime T1: type, value: T1) Error!T2 {
+    const max = std.math.maxInt(T2);
+    const min = std.math.minInt(T2);
+
+    if (std.math.isNan(value))
+        return 0;
+    if (std.math.isNegativeInf(value))
+        return min;
+    if (std.math.isPositiveInf(value))
+        return max;
+
+    const tval = @trunc(value);
+    if (tval > max)
+        return max;
+    if (tval < min)
+        return min;
+
+    return @as(T2, @intFromFloat(tval));
 }
 
 fn canonNan(comptime T: type) T {

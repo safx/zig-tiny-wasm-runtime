@@ -324,14 +324,14 @@ pub const Decoder = struct {
             n(.memory_fill) => if (try reader.readU8() == 0) .memory_fill else unreachable,
 
             // saturating truncation instructions
-            n(.i32_trunc_sat_f32_s) => unreachable,
-            n(.i32_trunc_sat_f32_u) => unreachable,
-            n(.i32_trunc_sat_f64_s) => unreachable,
-            n(.i32_trunc_sat_f64_u) => unreachable,
-            n(.i64_trunc_sat_f32_s) => unreachable,
-            n(.i64_trunc_sat_f32_u) => unreachable,
-            n(.i64_trunc_sat_f64_s) => unreachable,
-            n(.i64_trunc_sat_f64_u) => unreachable,
+            n(.i32_trunc_sat_f32_s) => .i32_trunc_sat_f32_s,
+            n(.i32_trunc_sat_f32_u) => .i32_trunc_sat_f32_u,
+            n(.i32_trunc_sat_f64_s) => .i32_trunc_sat_f64_s,
+            n(.i32_trunc_sat_f64_u) => .i32_trunc_sat_f64_u,
+            n(.i64_trunc_sat_f32_s) => .i64_trunc_sat_f32_s,
+            n(.i64_trunc_sat_f32_u) => .i64_trunc_sat_f32_u,
+            n(.i64_trunc_sat_f64_s) => .i64_trunc_sat_f64_s,
+            n(.i64_trunc_sat_f64_u) => .i64_trunc_sat_f64_u,
 
             else => {
                 std.debug.print("?? 0xFC {x}\n", .{op_code});

@@ -287,6 +287,16 @@ pub const Instruction = union(enum) {
     i64_extend16_s,
     i64_extend32_s,
 
+    // saturating truncation instructions
+    i32_trunc_sat_f32_s,
+    i32_trunc_sat_f32_u,
+    i32_trunc_sat_f64_s,
+    i32_trunc_sat_f64_u,
+    i64_trunc_sat_f32_s,
+    i64_trunc_sat_f32_u,
+    i64_trunc_sat_f64_s,
+    i64_trunc_sat_f64_u,
+
     // vector instructions
     misc: wasm.MiscOpcode,
     simd: wasm.SimdOpcode,
