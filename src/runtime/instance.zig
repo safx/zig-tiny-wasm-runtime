@@ -540,16 +540,17 @@ pub const Instance = struct {
     }
 
     inline fn opIf(self: *Self, block_info: Instruction.IfBlockInfo) error{OutOfMemory}!FlowControl {
-        const value = self.stack.pop().value.i32;
+        const cond = self.stack.pop().value.i32;
         try self.insertLabel(block_info.type, .{ .@"if" = block_info.end });
-        return FlowControl.newAtOpIf(block_info, value);
+        return FlowControl.newAtOpIf(block_info, cond);
     }
 
     inline fn insertLabel(self: *Self, block_type: Instruction.BlockType, label_type: types.LabelType) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const func_type = expandToFuncType(module, block_type);
+        const arity = if (label_type == .loop) func_type.parameter_types.len else func_type.result_types.len;
         const label = types.StackItem{ .label = .{
-            .arity = @intCast(func_type.result_types.len),
+            .arity = @intCast(arity),
             .type = label_type,
         } };
         try self.stack.insertAt(func_type.parameter_types.len, label);
@@ -568,7 +569,7 @@ pub const Instance = struct {
             self.stack.popValuesAndUppermostLabel();
         }
         try self.stack.appendSlice(copies);
-        std.debug.print("== br \n", .{});
+        std.debug.print("== br {any} \n", .{label});
         self.printStack();
 
         return FlowControl.newAtOpBr(label);
