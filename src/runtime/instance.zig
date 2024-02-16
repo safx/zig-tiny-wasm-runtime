@@ -358,7 +358,7 @@ pub const Instance = struct {
             .memory_grow => try self.opMemoryGrow(),
             .memory_init => |data_idx| try self.opMemoryInit(data_idx),
             .data_drop => |data_idx| self.opDataDrop(data_idx),
-            .memory_copy => try self.opMemoryGrow(),
+            .memory_copy => try self.opMemoryCopy(),
             .memory_fill => try self.opMemoryFill(),
 
             // numeric instructions (1)
@@ -995,7 +995,7 @@ pub const Instance = struct {
         const mem_inst = self.store.mems.items[mem_addr];
 
         var n = self.stack.pop().value.asI32();
-        const s = self.stack.pop().value.asI32();
+        var s = self.stack.pop().value.asI32();
         var d = self.stack.pop().value.asI32();
 
         if (d + n > mem_inst.data.len) {
