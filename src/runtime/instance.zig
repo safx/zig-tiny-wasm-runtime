@@ -186,10 +186,9 @@ pub const Instance = struct {
         }
 
         defer {
-            self.allocator.free(vals);
-            for (refs) |ref|
-                self.allocator.free(ref);
+            // free only the outer array because child arrays of refs are used in ModuleInst
             self.allocator.free(refs);
+            self.allocator.free(vals);
         }
         try self.store.funcs.resize(self.store.funcs.items.len - module.funcs.len); // purge funcs of aux_module
 
