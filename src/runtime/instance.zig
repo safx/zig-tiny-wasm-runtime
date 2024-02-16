@@ -172,8 +172,7 @@ pub const Instance = struct {
         // 9: Get `ref*`
         var refs = try self.allocator.alloc([]types.RefValue, module.elements.len);
         for (module.elements, 0..) |element, i| {
-            var refs_i = try self.allocator.alloc(types.RefValue, element.init.len);
-            refs[i] = refs_i;
+            refs[i] = try self.allocator.alloc(types.RefValue, element.init.len);
             for (element.init, 0..) |e, j| {
                 try self.execOneInstruction(instractionFromInitExpr(e));
                 const value = self.stack.pop().value;
@@ -214,7 +213,7 @@ pub const Instance = struct {
             switch (elem.mode) {
                 .active => |active_type| {
                     const n = elem.init.len;
-                    std.debug.print("======> {} {any}\n", .{ i, active_type });
+                    std.debug.print("======> Elem-{} {any}\n", .{ i, active_type });
                     try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
@@ -613,25 +612,31 @@ pub const Instance = struct {
         const i: u32 = @bitCast(self.stack.pop().value.asI32());
         if (i >= tab.elem.len)
             return Error.UndefinedElement;
-        const rx = tab.elem[i];
-        if (rx.isNull())
+        const r = tab.elem[i];
+        if (r.isNull())
             return Error.UninitializedElement;
-        const r = rx.func_ref.?;
-        std.debug.print("===============================''''''''''''''''{} {any}\n", .{ i, tab.elem });
-        std.debug.print("===============================''''''''''''''''{any} {}\n", .{ rx, r });
-        const f = self.store.funcs.items[@intCast(r)];
+        const a = r.func_ref.?;
+
+        std.debug.print("==============>>>> ta={} i={}\n", .{ ta, i });
+        std.debug.print("Table {} = [{}]{{", .{ ta, tab.elem.len });
+        for (tab.elem[0..@min(19, tab.elem.len)]) |e| {
+            std.debug.print("{any}, ", .{e.func_ref});
+        }
+        std.debug.print("}}\n", .{});
+
+        const f = self.store.funcs.items[@intCast(a)];
         const ft_actual = f.type;
         if (ft_expect.parameter_types.len != ft_actual.parameter_types.len or ft_expect.result_types.len != ft_actual.result_types.len)
             return Error.IndirectCallTypeMismatch;
 
-        for (ft_expect.parameter_types, ft_actual.parameter_types) |e, a| {
-            if (e != a) return Error.IndirectCallTypeMismatch;
+        for (ft_expect.parameter_types, ft_actual.parameter_types) |ex, ac| {
+            if (ex != ac) return Error.IndirectCallTypeMismatch;
         }
-        for (ft_expect.result_types, ft_actual.result_types) |e, a| {
-            if (e != a) return Error.IndirectCallTypeMismatch;
+        for (ft_expect.result_types, ft_actual.result_types) |ex, ac| {
+            if (ex != ac) return Error.IndirectCallTypeMismatch;
         }
 
-        return .{ .call = r };
+        return .{ .call = a };
     }
 
     // reference instructions
@@ -723,6 +728,7 @@ pub const Instance = struct {
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
 
+        std.debug.print("\t tbl_{}[{}] = {any}\n", .{ a, i, val });
         tab.elem[i] = types.RefValue.fromValue(val);
     }
 
@@ -737,13 +743,12 @@ pub const Instance = struct {
         var d = self.stack.pop().value.asI32();
 
         while (n > 0) : (n -= 1) {
-            std.debug.print("=== s={}, d={}, n={}    E={}, T={}\n", .{ s, d, n, elem.elem.len, tab.elem.len });
             if (s + n > elem.elem.len or d + n > tab.elem.len)
                 return Error.OutOfBoundsTableAccess;
 
-            const ref = elem.elem[@intCast(s)];
+            const ref_val = elem.elem[@intCast(s)];
             try self.stack.pushValueAs(i32, d);
-            try self.stack.push(.{ .value = types.Value.fromRefValue(ref) });
+            try self.stack.push(.{ .value = types.Value.fromRefValue(ref_val) });
             try self.execOneInstruction(.{ .table_set = arg.table_idx });
             d += 1;
             s += 1;
