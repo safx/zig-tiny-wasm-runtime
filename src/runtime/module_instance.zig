@@ -148,7 +148,7 @@ pub const ModuleInst = struct {
                 else => {},
             };
 
-        for (module.funcs, 0..) |func, i| {
+        for (module.funcs, num_import_funcs..) |func, i| {
             mod_inst.func_addrs[i] = try allocFunc(store, func, &mod_inst);
         }
         return mod_inst;
