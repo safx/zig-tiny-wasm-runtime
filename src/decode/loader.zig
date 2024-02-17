@@ -171,7 +171,7 @@ pub const ModuleLoader = struct {
         return .{ .type = gtype, .init = exp };
     }
 
-    fn @"export"(self: *Self) Error!wa.Export {
+    fn @"export"(self: *Self) (Error || error{OutOfMemory})!wa.Export {
         const nm = try self.name();
         const d = try self.exportdesc();
         return .{ .name = nm, .desc = d };
@@ -262,20 +262,20 @@ pub const ModuleLoader = struct {
             0 => {
                 const exp = try self.initExpr();
                 const len = try self.reader.readVarU32();
-                const init_array = try self.reader.readBytes(len);
+                const init_array = try self.readBytesWithCopy(len);
                 const mode = wa.DataMode{ .active = .{ .mem_idx = 0, .offset = exp } };
                 return .{ .init = init_array, .mode = mode };
             },
             1 => {
                 const len = try self.reader.readVarU32();
-                const init_array = try self.reader.readBytes(len);
+                const init_array = try self.readBytesWithCopy(len);
                 return .{ .init = init_array, .mode = .passive };
             },
             2 => {
                 const x = try self.reader.readVarU32();
                 const exp = try self.initExpr();
                 const len = try self.reader.readVarU32();
-                const init_array = try self.reader.readBytes(len);
+                const init_array = try self.readBytesWithCopy(len);
                 const mode = wa.DataMode{ .active = .{ .mem_idx = x, .offset = exp } };
                 return .{ .init = init_array, .mode = mode };
             },
@@ -387,12 +387,12 @@ pub const ModuleLoader = struct {
         return ret;
     }
 
-    fn name(self: *Self) Error![]const u8 {
+    fn name(self: *Self) (Error || error{OutOfMemory})![]const u8 {
         return self.nameWithLength(try self.reader.readVarU32());
     }
 
-    fn nameWithLength(self: *Self, len: u32) Error![]const u8 {
-        return try self.reader.readBytes(len);
+    fn nameWithLength(self: *Self, len: u32) (Error || error{OutOfMemory})![]const u8 {
+        return try self.readBytesWithCopy(len);
     }
 
     fn resultType(self: *Self) (Error || error{OutOfMemory})![]const wa.ValueType {
@@ -428,6 +428,13 @@ pub const ModuleLoader = struct {
             else => return Error.MalformedLimitId,
         };
         return .{ .min = min, .max = max };
+    }
+
+    fn readBytesWithCopy(self: *Self, size: usize) (error{EOF} || error{OutOfMemory})![]const u8 {
+        const copied_array = try self.allocator.alloc(u8, size);
+        const array = try self.reader.readBytes(size);
+        @memcpy(copied_array, array);
+        return copied_array;
     }
 
     fn createArray(self: *Self, comptime T: type, filler: fn (*Self) (Error || error{OutOfMemory})!T) (Error || error{OutOfMemory})![]const T {

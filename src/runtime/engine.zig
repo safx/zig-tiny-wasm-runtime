@@ -51,6 +51,7 @@ pub const Engine = struct {
         const file = try std.fs.cwd().openFile(file_name, .{ .mode = .read_only });
         defer file.close();
         const data = try file.readToEndAlloc(self.allocator, 10_000_000);
+        defer self.allocator.free(data);
         const module = try loader.parseAll(data);
         defer module.deinit();
 
@@ -58,7 +59,7 @@ pub const Engine = struct {
     }
 
     fn loadModule(self: *Self, module: wa.Module, module_name: []const u8) (Error || error{OutOfMemory})!*types.ModuleInst {
-        const extern_vals = try self.resolveImports(module, self.allocator);
+        const extern_vals = try self.resolveImports(module.imports, self.allocator);
         const mod_inst = try self.instance.instantiate(module, extern_vals);
         try self.registerModule(mod_inst, module_name);
         return mod_inst;
@@ -73,9 +74,9 @@ pub const Engine = struct {
         return try self.instance.invokeFunctionByAddr(func_addr, args);
     }
 
-    fn resolveImports(self: *Self, module: wa.Module, allocator: std.mem.Allocator) error{OutOfMemory}![]const types.ExternalValue {
-        var external_imports = try allocator.alloc(types.ExternalValue, module.imports.len);
-        for (module.imports, 0..) |imp, i| {
+    fn resolveImports(self: *Self, imports: []const wa.Import, allocator: std.mem.Allocator) error{OutOfMemory}![]const types.ExternalValue {
+        var external_imports = try allocator.alloc(types.ExternalValue, imports.len);
+        for (imports, 0..) |imp, i| {
             if (self.mod_insts.get(imp.module_name)) |mod_inst| {
                 for (mod_inst.exports) |exp| {
                     if (std.mem.eql(u8, imp.name, exp.name)) {
