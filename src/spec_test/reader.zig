@@ -60,7 +60,7 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
     } else if (strcmp(cmd_type, "assert_uninstantiable")) {
         return .assert_uninstantiable;
     } else {
-        std.debug.print("??? {s}\n", .{cmd_type});
+        std.debug.print("? Unknown command {s}\n", .{cmd_type});
         unreachable;
     }
 }
@@ -102,7 +102,7 @@ fn argFromJson(json: std.json.Value) !Value {
         }
         return Value{ .func_ref = num };
     } else {
-        std.debug.print("+++ {s}\n", .{type_});
+        std.debug.print("? Unknown arg {s}\n", .{type_});
         unreachable;
     }
 }
@@ -156,7 +156,7 @@ fn resultFromJson(json: std.json.Value) !Result {
         }
         return .{ .@"const" = .{ .func_ref = num } };
     } else {
-        std.debug.print("+++ {s}\n", .{type_});
+        std.debug.print("? Unknown result {s}\n", .{type_});
         unreachable;
     }
 }
@@ -174,7 +174,7 @@ fn actionFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Action {
         const field = json.object.get("field").?.string;
         return .{ .get = .{ .field = field, .module = module } };
     } else {
-        std.debug.print("unknown action type: {s}", .{cmd_type});
+        std.debug.print("? Unknown action type: {s}", .{cmd_type});
         unreachable;
     }
 }
@@ -200,7 +200,7 @@ fn errorFromString(str: []const u8) Error {
     } else if (strcmp(str, "invalid conversion to integer")) {
         return E.InvalidConversionToInteger;
     } else {
-        std.debug.print("??? {s}\n", .{str});
+        std.debug.print("? Unknown error \"{s}\"\n", .{str});
         unreachable;
     }
 }

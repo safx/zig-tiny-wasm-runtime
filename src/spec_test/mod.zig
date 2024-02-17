@@ -24,7 +24,6 @@ pub fn doWasmSpecTest() !void {
     while (try it.next()) |entry| {
         const ext = getExtention(entry.name);
         if (std.mem.eql(u8, ext, "json")) {
-            std.debug.print("=============================== {s}\n", .{entry.name});
             try execSpecTestsFromFile(entry.name);
         }
     }
@@ -50,7 +49,7 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
     var current_module: *types.ModuleInst = try engine.loadModuleFromPath("spectest.wasm", "spectest");
 
     for (commands) |cmd| {
-        std.debug.print("---------------------------------------------------------------\n", .{});
+        std.debug.print("-" ** 75 ++ "\n", .{});
         std.debug.print("{any}\n", .{cmd});
         //std.debug.print("{}\n", .{std.json.fmt(cmd, .{})});
 
@@ -62,16 +61,16 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
                 try engine.registerModule(current_module, arg.as_name);
             },
             .action => |arg| {
-                const ret = try doAction(arg.action, engine, current_module, allocator);
+                const ret = try doAction(arg.action, engine, current_module);
                 defer allocator.free(ret);
             },
             .assert_return => |arg| {
-                const ret = try doAction(arg.action, engine, current_module, allocator);
+                const ret = try doAction(arg.action, engine, current_module);
                 defer allocator.free(ret);
                 validateResult(arg.expected, ret, arg.line);
             },
             .assert_trap => |arg| {
-                _ = doAction(arg.action, engine, current_module, allocator) catch |err| {
+                _ = doAction(arg.action, engine, current_module) catch |err| {
                     validateCatchedError(arg.trap, err, arg.line);
                     continue;
                 };
@@ -83,18 +82,12 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
     }
 }
 
-fn doAction(action: types.Action, engine: *types.Engine, current_module: *types.ModuleInst, allocator: std.mem.Allocator) ![]const types.Value {
+fn doAction(action: types.Action, engine: *types.Engine, current_module: *types.ModuleInst) ![]const types.Value {
     switch (action) {
         .invoke => |arg| {
             const mod = if (arg.module) |name| engine.getModuleInstByName(name) orelse current_module else current_module;
-            const func_args = try allocator.alloc(types.Value, arg.args.len);
-            defer allocator.free(func_args);
-            for (arg.args, 0..) |a, i| {
-                func_args[i] = a;
-            }
             const func_addr = try getFunctionByName(mod, arg.field);
-            const ret = try engine.invokeFunctionByAddr(func_addr.value.function, func_args);
-            return ret;
+            return try engine.invokeFunctionByAddr(func_addr.value.function, arg.args);
         },
         .get => |arg| {
             const mod = if (arg.module) |name| engine.getModuleInstByName(name) orelse current_module else current_module;

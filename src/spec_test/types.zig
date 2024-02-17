@@ -22,11 +22,29 @@ pub const Command = union(enum) {
     assert_invalid,
     assert_unlinkable,
     assert_uninstantiable,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        switch (self) {
+            inline else => |val| if (@TypeOf(val) == void) {
+                try writer.print("{s}", .{@tagName(self)});
+            } else {
+                try writer.print("{s}: {any}", .{ @tagName(self), val });
+            },
+        }
+    }
 };
 
 pub const Action = union(enum) {
     invoke: InvokeCommandArg,
     get: GetCommandArg,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        switch (self) {
+            inline else => |val| {
+                try writer.print("{s}: {any}", .{ @tagName(self), val });
+            },
+        }
+    }
 };
 
 pub const Result = union(enum) {
@@ -36,11 +54,22 @@ pub const Result = union(enum) {
     f32_nan_arithmetic,
     f64_nan_canonical,
     f64_nan_arithmetic,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        switch (self) {
+            .@"const" => |val| try writer.print("{any}", .{val}),
+            inline else => try writer.print("{s}", .{@tagName(self)}),
+        }
+    }
 };
 
 pub const ActionCommandArg = struct {
     line: u32,
     action: Action,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = try writer.print("{any} (line:{})", .{ self.action, self.line });
+    }
 };
 
 pub const ModuleCommandArg = struct {
@@ -60,18 +89,34 @@ pub const ModuleCommandArg = struct {
 pub const RegisterCommandArg = struct {
     as_name: []const u8,
     name: ?[]const u8,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        if (self.name) |n| {
+            _ = try writer.print("{s} {s}", .{ self.as_name, n });
+        } else {
+            _ = try writer.print("{s}", .{self.as_name});
+        }
+    }
 };
 
 pub const AssertReturnCommandArg = struct {
     line: u32,
     action: Action,
     expected: []const Result,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = try writer.print("{any} (-> {any}) (line:{})", .{ self.action, self.expected, self.line });
+    }
 };
 
 pub const AssertTrapCommandArg = struct {
     line: u32,
     action: Action,
     trap: Error,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = try writer.print("{any} (-> {}) (line:{})", .{ self.action, self.trap, self.line });
+    }
 };
 
 pub const InvokeCommandArg = struct {
@@ -80,10 +125,14 @@ pub const InvokeCommandArg = struct {
     module: ?[]const u8,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = try writer.print("{s}", .{self.field});
+
+        if (self.args.len > 0) {
+            _ = try writer.print(" {any}", .{self.args});
+        }
+
         if (self.module) |m| {
-            _ = try writer.print("{s} {any} (module:{s})", .{ self.field, self.args, m });
-        } else {
-            _ = try writer.print("{s} {any}", .{ self.field, self.args });
+            _ = try writer.print(" (module:{s})", .{m});
         }
     }
 };
