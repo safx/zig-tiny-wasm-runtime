@@ -6,32 +6,37 @@ const utils = @import("./utils.zig");
 const Error = @import("./errors.zig").Error;
 
 pub const Decoder = struct {
+    const InstArray = std.ArrayList(Instruction);
+
     pub fn new() Decoder {
         return .{};
     }
 
-    pub fn parseAll(self: Decoder, buffer: []const u8, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator) (Error || error{OutOfMemory})!void {
+    pub fn parseAll(self: Decoder, buffer: []const u8, outputArray: *InstArray, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!void {
         var reader = BinaryReader.new(buffer);
         while (!reader.eof()) {
             const inst = try parse(&reader, allocator);
             try outputArray.append(inst);
-            try self.fillInfoIfBlockInstruction(&reader, outputArray, allocator, inst);
+
+            if (inst == .block or inst == .loop or inst == .@"if") {
+                try self.processControlBlock(&reader, outputArray, allocator, inst);
+            }
         }
     }
 
-    fn fillInfoIfBlockInstruction(self: Decoder, reader: *BinaryReader, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator, inst: Instruction) (Error || error{OutOfMemory})!void {
+    fn processControlBlock(self: Decoder, reader: *BinaryReader, outputArray: *InstArray, allocator: std.mem.Allocator, inst: Instruction) (Error || error{OutOfMemory})!void {
         const block_pos = outputArray.items.len - 1;
         switch (inst) {
             .block => {
-                const pos = try self.parseBlock(reader, outputArray, allocator);
+                const pos = try self.parseForBlockOrLoop(reader, outputArray, allocator);
                 outputArray.items[block_pos].block.end = pos;
             },
             .loop => {
-                const pos = try self.parseBlock(reader, outputArray, allocator);
+                const pos = try self.parseForBlockOrLoop(reader, outputArray, allocator);
                 outputArray.items[block_pos].loop.end = pos;
             },
             .@"if" => {
-                const val = try self.parseIfBlock(reader, outputArray, allocator);
+                const val = try self.parseForIf(reader, outputArray, allocator);
                 outputArray.items[block_pos].@"if".@"else" = val[0];
                 outputArray.items[block_pos].@"if".end = val[1].?;
             },
@@ -39,34 +44,37 @@ pub const Decoder = struct {
         }
     }
 
-    fn parseBlock(self: Decoder, reader: *BinaryReader, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator) (Error || error{OutOfMemory})!types.InstractionAddr {
+    fn parseForBlockOrLoop(self: Decoder, reader: *BinaryReader, outputArray: *InstArray, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!types.InstractionAddr {
         while (!reader.eof()) {
             const inst = try parse(reader, allocator);
             try outputArray.append(inst);
-            if (inst == .end) {
-                const pos1: types.InstractionAddr = @intCast(outputArray.items.len - 1);
-                return pos1;
-            } else {
-                try self.fillInfoIfBlockInstruction(reader, outputArray, allocator, inst);
+
+            switch (inst) {
+                .end => {
+                    return @intCast(outputArray.items.len - 1);
+                },
+                else => try self.processControlBlock(reader, outputArray, allocator, inst),
             }
         }
         unreachable;
     }
 
-    fn parseIfBlock(self: Decoder, reader: *BinaryReader, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const ?types.InstractionAddr {
+    fn parseForIf(self: Decoder, reader: *BinaryReader, outputArray: *InstArray, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const ?types.InstractionAddr {
         var pos1: ?types.InstractionAddr = null;
         while (!reader.eof()) {
             const inst = try parse(reader, allocator);
             try outputArray.append(inst);
-            if (inst == .@"else") {
-                std.debug.assert(pos1 == null);
-                pos1 = @intCast(outputArray.items.len);
-            }
-            if (inst == .end) {
-                const pos2: types.InstractionAddr = @intCast(outputArray.items.len - 1);
-                return &.{ pos1, pos2 };
-            } else {
-                try self.fillInfoIfBlockInstruction(reader, outputArray, allocator, inst);
+
+            switch (inst) {
+                .@"else" => {
+                    std.debug.assert(pos1 == null);
+                    pos1 = @intCast(outputArray.items.len);
+                },
+                .end => {
+                    const pos2: types.InstractionAddr = @intCast(outputArray.items.len - 1);
+                    return &.{ pos1, pos2 };
+                },
+                else => try self.processControlBlock(reader, outputArray, allocator, inst),
             }
         }
         unreachable;
@@ -340,83 +348,83 @@ pub const Decoder = struct {
         };
         return inst;
     }
-
-    fn memoryInit(reader: *BinaryReader) Error!Instruction {
-        const data_idx = try reader.readVarU32();
-        const zero = try reader.readVarU32();
-        std.debug.assert(zero == 0);
-        return .{ .memory_init = data_idx };
-    }
-
-    fn memArg(reader: *BinaryReader) Error!Instruction.MemArg {
-        const a = try reader.readVarU32();
-        const o = try reader.readVarU32();
-        return .{ .@"align" = a, .offset = o };
-    }
-
-    fn tableInitArg(reader: *BinaryReader) Error!Instruction.TableInitArg {
-        const elem = try reader.readVarU32();
-        const table = try reader.readVarU32();
-        return .{ .table_idx = table, .elem_idx = elem };
-    }
-
-    fn tableCopyArg(reader: *BinaryReader) Error!Instruction.TableCopyArg {
-        const dst = try reader.readVarU32();
-        const src = try reader.readVarU32();
-        return .{ .table_idx_dst = dst, .table_idx_src = src };
-    }
-
-    fn refType(reader: *BinaryReader) Error!types.RefType {
-        const byte = try reader.readU8();
-        return utils.refTypeFromNum(byte) orelse return Error.MalformedRefType;
-    }
-
-    fn valueType(reader: *BinaryReader) Error!types.ValueType {
-        const byte = try reader.readU8();
-        return utils.valueTypeFromNum(byte) orelse return Error.MalformedValueType;
-    }
-
-    fn block(reader: *BinaryReader) Error!Instruction.BlockInfo {
-        return .{ .type = try blockType(reader) }; // `end` is set at the end of block
-    }
-
-    fn selectv(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]types.ValueType {
-        const len = try reader.readVarU32();
-        var array = try allocator.alloc(types.ValueType, len);
-        for (0..len) |i| {
-            array[i] = try valueType(reader);
-        }
-        return array;
-    }
-
-    fn ifBlock(reader: *BinaryReader) Error!Instruction.IfBlockInfo {
-        return .{ .type = try blockType(reader) }; // `else` and `end` is set at the end of block
-    }
-
-    fn blockType(reader: *BinaryReader) Error!Instruction.BlockType {
-        const byte = try reader.readU8();
-        return switch (byte) {
-            0x40 => .empty,
-            0x6f...0x70, 0x7b...0x7f => .{ .value_type = utils.valueTypeFromNum(byte).? },
-            else => .{ .type_index = byte }, // TODO: handle s33
-        };
-    }
-
-    fn brTable(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction.BrTableType {
-        const size = try reader.readVarU32();
-        const label_idxs = try allocator.alloc(types.LabelIdx, size);
-
-        for (0..size) |i| {
-            label_idxs[i] = try reader.readVarU32();
-        }
-
-        const default = try reader.readVarU32();
-        return .{ .label_idxs = label_idxs, .default_label_idx = default };
-    }
-
-    fn callIndirect(reader: *BinaryReader) Error!Instruction.CallIndirectArg {
-        const y = try reader.readVarU32();
-        const x = try reader.readVarU32();
-        return .{ .type_idx = y, .table_idx = x };
-    }
 };
+
+fn memoryInit(reader: *BinaryReader) Error!Instruction {
+    const data_idx = try reader.readVarU32();
+    const zero = try reader.readVarU32();
+    std.debug.assert(zero == 0);
+    return .{ .memory_init = data_idx };
+}
+
+fn memArg(reader: *BinaryReader) Error!Instruction.MemArg {
+    const a = try reader.readVarU32();
+    const o = try reader.readVarU32();
+    return .{ .@"align" = a, .offset = o };
+}
+
+fn tableInitArg(reader: *BinaryReader) Error!Instruction.TableInitArg {
+    const elem = try reader.readVarU32();
+    const table = try reader.readVarU32();
+    return .{ .table_idx = table, .elem_idx = elem };
+}
+
+fn tableCopyArg(reader: *BinaryReader) Error!Instruction.TableCopyArg {
+    const dst = try reader.readVarU32();
+    const src = try reader.readVarU32();
+    return .{ .table_idx_dst = dst, .table_idx_src = src };
+}
+
+fn refType(reader: *BinaryReader) Error!types.RefType {
+    const byte = try reader.readU8();
+    return utils.refTypeFromNum(byte) orelse return Error.MalformedRefType;
+}
+
+fn valueType(reader: *BinaryReader) Error!types.ValueType {
+    const byte = try reader.readU8();
+    return utils.valueTypeFromNum(byte) orelse return Error.MalformedValueType;
+}
+
+fn block(reader: *BinaryReader) Error!Instruction.BlockInfo {
+    return .{ .type = try blockType(reader) }; // `end` is set at the end of block
+}
+
+fn selectv(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]types.ValueType {
+    const len = try reader.readVarU32();
+    var array = try allocator.alloc(types.ValueType, len);
+    for (0..len) |i| {
+        array[i] = try valueType(reader);
+    }
+    return array;
+}
+
+fn ifBlock(reader: *BinaryReader) Error!Instruction.IfBlockInfo {
+    return .{ .type = try blockType(reader) }; // `else` and `end` is set at the end of block
+}
+
+fn blockType(reader: *BinaryReader) Error!Instruction.BlockType {
+    const byte = try reader.readU8();
+    return switch (byte) {
+        0x40 => .empty,
+        0x6f...0x70, 0x7b...0x7f => .{ .value_type = utils.valueTypeFromNum(byte).? },
+        else => .{ .type_index = byte }, // TODO: handle s33
+    };
+}
+
+fn brTable(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction.BrTableType {
+    const size = try reader.readVarU32();
+    const label_idxs = try allocator.alloc(types.LabelIdx, size);
+
+    for (0..size) |i| {
+        label_idxs[i] = try reader.readVarU32();
+    }
+
+    const default = try reader.readVarU32();
+    return .{ .label_idxs = label_idxs, .default_label_idx = default };
+}
+
+fn callIndirect(reader: *BinaryReader) Error!Instruction.CallIndirectArg {
+    const y = try reader.readVarU32();
+    const x = try reader.readVarU32();
+    return .{ .type_idx = y, .table_idx = x };
+}

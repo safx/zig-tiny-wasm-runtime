@@ -45,12 +45,6 @@ pub const ModuleLoader = struct {
         var data_count: u32 = 0;
 
         while (self.section()) |sec| {
-            {
-                var out = std.ArrayList(u8).init(std.heap.c_allocator);
-                defer out.deinit();
-                try std.json.stringify(sec, .{}, out.writer());
-                std.debug.print("*** {s}\n", .{out.items});
-            }
             switch (sec) {
                 .type => |d| types_ = d,
                 .import => |d| imports = d,

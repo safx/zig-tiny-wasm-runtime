@@ -50,8 +50,9 @@ pub const BinaryReader = struct {
 
     pub fn readU8(self: *Self) error{EOF}!u8 {
         try self.ensureHasBytes(1);
-        defer self.position += 1;
-        return self.buffer[self.position];
+        const ch = self.buffer[self.position];
+        self.position += 1;
+        return ch;
     }
 
     pub fn readF32(self: *Self) error{EOF}!f32 {
@@ -102,8 +103,8 @@ pub const BinaryReader = struct {
             shift += 7;
         }
 
-        const integer_type = NumType == i32 or NumType == i64;
-        if (integer_type) {
+        const signed_integer_type = NumType == i32 or NumType == i64;
+        if (signed_integer_type) {
             const value: NumType = @bitCast(result);
             if (NumType == i32 and shift == 28 or NumType == i64 and shift == 63) {
                 return value;
