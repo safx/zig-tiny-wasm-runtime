@@ -3,7 +3,7 @@ const types = struct {
     usingnamespace @import("wasm-runtime");
     usingnamespace @import("./types.zig");
 };
-const Error = @import("./errors.zig").Error;
+const errors = @import("./errors.zig");
 const Action = types.Action;
 const Command = types.Command;
 const Result = types.Result;
@@ -48,7 +48,7 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
     } else if (strcmp(cmd_type, "assert_trap")) {
         const action = try actionFromJson(json.object.get("action").?, allocator);
         const text = json.object.get("text").?.string;
-        return .{ .assert_trap = .{ .line = line, .action = action, .trap = errorFromString(text) } };
+        return .{ .assert_trap = .{ .line = line, .action = action, .trap = errors.errorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_exhaustion")) {
         return .assert_exhaustion;
     } else if (strcmp(cmd_type, "assert_malformed")) {
@@ -179,36 +179,10 @@ fn actionFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Action {
     }
 }
 
-fn errorFromString(str: []const u8) Error {
-    const E = Error;
-    if (strcmp(str, "integer divide by zero")) {
-        return E.IntegerDivideByZero;
-    } else if (strcmp(str, "integer overflow")) {
-        return E.IntegerOverflow;
-    } else if (strcmp(str, "out of bounds memory access")) {
-        return E.OutOfBoundsMemoryAccess;
-    } else if (strcmp(str, "out of bounds table access")) {
-        return E.OutOfBoundsTableAccess;
-    } else if (strcmp(str, "undefined element")) {
-        return E.UndefinedElement;
-    } else if (strcmp(str, "uninitialized element")) {
-        return E.UninitializedElement;
-    } else if (strcmp(str, "uninitialized element 2")) {
-        return E.UninitializedElement;
-    } else if (strcmp(str, "indirect call type mismatch")) {
-        return E.IndirectCallTypeMismatch;
-    } else if (strcmp(str, "invalid conversion to integer")) {
-        return E.InvalidConversionToInteger;
-    } else {
-        std.debug.print("? Unknown error \"{s}\"\n", .{str});
-        unreachable;
-    }
-}
-
-fn strcmp(a: []const u8, b: []const u8) bool {
+inline fn strcmp(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
-fn getStringOrNull(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
+inline fn getStringOrNull(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {
     return if (obj.get(key)) |v| v.string else null;
 }

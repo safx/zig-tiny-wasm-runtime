@@ -8,4 +8,5 @@ pub const Error = error{
     UninitializedElement,
     IndirectCallTypeMismatch,
     InvalidConversionToInteger,
+    Unreachable,
 };
