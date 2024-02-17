@@ -105,7 +105,7 @@ pub const ModuleLoader = struct {
         const size = try self.reader.readVarU32();
         _ = size;
 
-        std.debug.print("* {}\n", .{sect});
+        //std.debug.print("* {}\n", .{sect});
         switch (sect) {
             .custom => return .custom,
             .type => return .{ .type = try self.createArray(types.FuncType, funcType) },

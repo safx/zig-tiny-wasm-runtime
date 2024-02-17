@@ -30,7 +30,7 @@ pub fn doWasmSpecTest() !void {
     }
 }
 
-pub fn execSpecTestsFromFile(file_name: []const u8) !void {
+pub fn execSpecTestsFromFile(file_name: []const u8, verbose: bool) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -42,11 +42,11 @@ pub fn execSpecTestsFromFile(file_name: []const u8) !void {
     defer file.close();
 
     const commands = try reader.readJsonFromFile(file, allocator);
-    try execSpecTests(commands, allocator);
+    var engine = types.Engine.new(allocator, verbose);
+    try execSpecTests(&engine, commands, allocator);
 }
 
-fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) !void {
-    var engine = types.Engine.new(allocator);
+fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocator: std.mem.Allocator) !void {
     var current_module: *types.ModuleInst = try engine.loadModuleFromPath("spectest.wasm", "spectest");
 
     for (commands) |cmd| {
@@ -62,16 +62,16 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
                 try engine.registerModule(current_module, arg.as_name);
             },
             .action => |arg| {
-                const ret = try doAction(arg.action, &engine, current_module, allocator);
+                const ret = try doAction(arg.action, engine, current_module, allocator);
                 defer allocator.free(ret);
             },
             .assert_return => |arg| {
-                const ret = try doAction(arg.action, &engine, current_module, allocator);
+                const ret = try doAction(arg.action, engine, current_module, allocator);
                 defer allocator.free(ret);
                 validateResult(arg.expected, ret, arg.line);
             },
             .assert_trap => |arg| {
-                _ = doAction(arg.action, &engine, current_module, allocator) catch |err| {
+                _ = doAction(arg.action, engine, current_module, allocator) catch |err| {
                     validateCatchedError(arg.trap, err, arg.line);
                     continue;
                 };

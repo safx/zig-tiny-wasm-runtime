@@ -15,10 +15,10 @@ pub const Engine = struct {
     instance: Instance,
     mod_insts: ModuleInstMap,
 
-    pub fn new(allocator: std.mem.Allocator) Self {
+    pub fn new(allocator: std.mem.Allocator, verbose: bool) Self {
         return .{
             .allocator = allocator,
-            .instance = Instance.new(allocator),
+            .instance = Instance.new(allocator, verbose),
             .mod_insts = ModuleInstMap.init(allocator),
         };
     }

@@ -19,13 +19,15 @@ pub const Instance = struct {
     modules: ModInstList,
     store: types.Store,
     stack: types.Stack,
+    trace_mode: bool,
 
-    pub fn new(allocator: std.mem.Allocator) Self {
+    pub fn new(allocator: std.mem.Allocator, trace_mode: bool) Self {
         return .{
             .allocator = allocator,
             .modules = .{},
             .store = types.Store.new(allocator),
             .stack = types.Stack.new(allocator),
+            .trace_mode = trace_mode,
         };
     }
 
@@ -64,11 +66,11 @@ pub const Instance = struct {
         try self.stack.push(.{ .label = .{ .arity = @intCast(num_returns), .type = .root } });
 
         // 5, 11: is done by execLoop
-        std.debug.print("---------------\n", .{});
+        self.debugPrint("---------------\n", .{});
         for (func_inst.code.body, 0..) |op, idx| {
-            std.debug.print("[{}] {}\n", .{ idx, op });
+            self.debugPrint("[{}] {}\n", .{ idx, op });
         }
-        std.debug.print("---------------\n", .{});
+        self.debugPrint("---------------\n", .{});
     }
 
     fn returnFunction(self: *Self) (Error || error{OutOfMemory})![]const types.Value {
@@ -122,12 +124,12 @@ pub const Instance = struct {
             const instr = instrs[ip];
 
             self.printStack();
-            std.debug.print("== [{}]: {}\n", .{ ip, instr });
+            self.debugPrint("== [{}]: {}\n", .{ ip, instr });
 
             const flow_ctrl = try self.execInstruction(ip, instr);
 
             if (flow_ctrl != .none) {
-                std.debug.print("\t===> {}\n", .{flow_ctrl});
+                self.debugPrint("\t===> {}\n", .{flow_ctrl});
             }
 
             switch (flow_ctrl) {
@@ -201,7 +203,7 @@ pub const Instance = struct {
         const mod_inst = try types.ModuleInst.allocateModule(&self.store, module, extern_vals, vals, refs, self.allocator);
         var node = ModInstList.Node{ .data = mod_inst.* };
         self.modules.prepend(&node);
-        //std.debug.print("\n---ModInst\n{}\n", .{std.json.fmt(mod_inst, .{})});
+        //self.debugPrint("\n---ModInst\n{}\n", .{std.json.fmt(mod_inst, .{})});
 
         // 12, 13: push aux frame
         const aux_frame = types.ActivationFrame{
@@ -214,7 +216,7 @@ pub const Instance = struct {
             switch (elem.mode) {
                 .active => |active_type| {
                     const n = elem.init.len;
-                    std.debug.print("======> Elem-{} {any}\n", .{ i, active_type });
+                    self.debugPrint("======> Elem-{} {any}\n", .{ i, active_type });
                     try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
@@ -260,27 +262,27 @@ pub const Instance = struct {
 
     fn printStack(self: *Self) void {
         // for (self.store.globals.items, 0..) |g, i| {
-        //     std.debug.print("{}={any}, ", .{ i, g.value });
+        //     self.debugPrint("{}={any}, ", .{ i, g.value });
         // }
-        // std.debug.print("\n", .{});
+        // self.debugPrint("\n", .{});
 
         const len = self.stack.array.items.len;
         const slice = if (len > 10) self.stack.array.items[len - 10 ..] else self.stack.array.items;
         if (len > 10) {
-            std.debug.print("  : ({} more items)\n  :\n", .{len - 10});
+            self.debugPrint("  : ({} more items)\n  :\n", .{len - 10});
         }
         for (slice) |i| {
             switch (i) {
-                .value => |v| std.debug.print("  V {}\n", .{v}),
-                .label => |v| std.debug.print("  L {}\n", .{v}),
-                .frame => |v| std.debug.print("  F {any}\n", .{v.locals}),
+                .value => |v| self.debugPrint("  V {}\n", .{v}),
+                .label => |v| self.debugPrint("  L {}\n", .{v}),
+                .frame => |v| self.debugPrint("  F {any}\n", .{v.locals}),
             }
         }
     }
 
     /// executes an instruction without control flow
     fn execOneInstruction(self: *Self, instr: Instruction) (Error || error{OutOfMemory})!void {
-        std.debug.print("== [_] {}\n", .{instr});
+        self.debugPrint("== [_] {}\n", .{instr});
         _ = try self.execInstruction(0, instr);
     }
 
@@ -579,7 +581,7 @@ pub const Instance = struct {
             self.stack.popValuesAndUppermostLabel();
         }
         try self.stack.appendSlice(copies);
-        std.debug.print("== br {any} \n", .{label});
+        self.debugPrint("== br {any} \n", .{label});
         self.printStack();
 
         return FlowControl.newAtOpBr(label);
@@ -603,7 +605,7 @@ pub const Instance = struct {
     }
 
     inline fn opCallIndirect(self: *Self, arg: Instruction.CallIndirectArg) (Error || error{OutOfMemory})!FlowControl {
-        std.debug.print("call_indirect: {any}\n", .{arg});
+        self.debugPrint("call_indirect: {any}\n", .{arg});
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[arg.table_idx];
         const tab = self.store.tables.items[ta];
@@ -618,12 +620,12 @@ pub const Instance = struct {
             return Error.UninitializedElement;
         const a = r.func_ref.?;
 
-        std.debug.print("==============>>>> ta={} i={}\n", .{ ta, i });
-        std.debug.print("Table {} = [{}]{{", .{ ta, tab.elem.len });
+        self.debugPrint("==============>>>> ta={} i={}\n", .{ ta, i });
+        self.debugPrint("Table {} = [{}]{{", .{ ta, tab.elem.len });
         for (tab.elem[0..@min(19, tab.elem.len)]) |e| {
-            std.debug.print("{any}, ", .{e.func_ref});
+            self.debugPrint("{any}, ", .{e.func_ref});
         }
-        std.debug.print("}}\n", .{});
+        self.debugPrint("}}\n", .{});
 
         const f = self.store.funcs.items[@intCast(a)];
         const ft_actual = f.type;
@@ -729,7 +731,7 @@ pub const Instance = struct {
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
 
-        std.debug.print("\t tbl_{}[{}] = {any}\n", .{ a, i, val });
+        self.debugPrint("\t tbl_{}[{}] = {any}\n", .{ a, i, val });
         tab.elem[i] = types.RefValue.fromValue(val);
     }
 
@@ -891,10 +893,10 @@ pub const Instance = struct {
             return Error.OutOfBoundsMemoryAccess;
         }
 
-        std.debug.print("=== {any} ==", .{mem.data[ea_start..ea_end]});
+        self.debugPrint("=== {any} ==", .{mem.data[ea_start..ea_end]});
         const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
 
-        std.debug.print("===> {}\n", .{val});
+        self.debugPrint("===> {}\n", .{val});
         try self.stack.pushValueAs(T, val);
     }
 
@@ -1110,6 +1112,12 @@ pub const Instance = struct {
             .value_type => |vt| .{ .parameter_types = &.{}, .result_types = &.{vt} },
             .type_index => |idx| module.types[idx],
         };
+    }
+
+    fn debugPrint(self: Self, comptime fmt: []const u8, args: anytype) void {
+        if (self.trace_mode) {
+            std.debug.print(fmt, args);
+        }
     }
 };
 
