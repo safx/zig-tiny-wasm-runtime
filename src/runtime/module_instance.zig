@@ -4,6 +4,7 @@ const types = @import("./types.zig");
 const Error = @import("./errors.zig").Error;
 const page_size = @import("./instance.zig").page_size;
 
+/// A Moudle Instance in wasm spec
 pub const ModuleInst = struct {
     types: []const wa.FuncType = &.{},
     func_addrs: []types.FuncAddr = &.{},
@@ -18,17 +19,13 @@ pub const ModuleInst = struct {
     /// https://webassembly.github.io/spec/core/exec/modules.html#alloc-module
     pub fn allocateModule(store: *types.Store, module: wa.Module, extern_vals: []const types.ExternalValue, values: []types.Value, refs: [][]types.RefValue, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!*types.ModuleInst {
         // 1: resolve imports
-        var num_import_funcs: u32 = 0;
-        var num_import_tables: u32 = 0;
-        var num_import_mems: u32 = 0;
-        var num_import_globals: u32 = 0;
-        for (extern_vals) |imp|
-            switch (imp) {
-                .function => num_import_funcs += 1,
-                .table => num_import_tables += 1,
-                .memory => num_import_mems += 1,
-                .global => num_import_globals += 1,
-            };
+        const externals = try ExternalValueGroup.new(extern_vals, allocator);
+        defer externals.deinit(allocator);
+
+        const num_import_funcs = externals.functions.len;
+        const num_import_tables = externals.tables.len;
+        const num_import_mems = externals.memories.len;
+        const num_import_globals = externals.globals.len;
 
         // 20: module instance
         var mod_inst = try allocator.create(types.ModuleInst);
@@ -42,31 +39,10 @@ pub const ModuleInst = struct {
         mod_inst.exports = try allocator.alloc(types.ExportInst, module.exports.len);
 
         // 14, 15, 16, 17: imports
-        var num_funcs: u32 = 0;
-        var num_tables: u32 = 0;
-        var num_mems: u32 = 0;
-        var num_globals: u32 = 0;
-        for (extern_vals) |imp| {
-            std.debug.print("==== {any}\n", .{imp});
-            switch (imp) {
-                .function => |idx| {
-                    mod_inst.func_addrs[num_funcs] = idx;
-                    num_funcs += 1;
-                },
-                .table => |idx| {
-                    mod_inst.table_addrs[num_tables] = idx;
-                    num_tables += 1;
-                },
-                .memory => |idx| {
-                    mod_inst.mem_addrs[num_mems] = idx;
-                    num_mems += 1;
-                },
-                .global => |idx| {
-                    mod_inst.global_addrs[num_globals] = idx;
-                    num_globals += 1;
-                },
-            }
-        }
+        @memcpy(mod_inst.func_addrs[0..num_import_funcs], externals.functions);
+        @memcpy(mod_inst.table_addrs[0..num_import_tables], externals.tables);
+        @memcpy(mod_inst.mem_addrs[0..num_import_mems], externals.memories);
+        @memcpy(mod_inst.global_addrs[0..num_import_globals], externals.globals);
 
         // 2, 8: function
         for (module.funcs, num_import_funcs..) |func, i| {
@@ -100,7 +76,7 @@ pub const ModuleInst = struct {
 
         // 18, 19: export
         for (module.exports, 0..) |exp, i| {
-            const ext_value: types.ExternalValue = switch (exp.desc) {
+            const exp_value: types.ExternalValue = switch (exp.desc) {
                 .func => |idx| .{ .function = mod_inst.func_addrs[idx] },
                 .table => |idx| .{ .table = mod_inst.table_addrs[idx] },
                 .memory => |idx| .{ .memory = mod_inst.mem_addrs[idx] },
@@ -108,7 +84,7 @@ pub const ModuleInst = struct {
             };
             const exp_inst = types.ExportInst{
                 .name = exp.name,
-                .value = ext_value,
+                .value = exp_value,
             };
             mod_inst.exports[i] = exp_inst;
         }
@@ -118,14 +94,9 @@ pub const ModuleInst = struct {
     }
 
     pub fn auxiliaryInstance(store: *types.Store, module: wa.Module, extern_vals: []const types.ExternalValue, allocator: std.mem.Allocator) error{OutOfMemory}!ModuleInst {
-        var num_import_funcs: u32 = 0;
-        var num_import_globals: u32 = 0;
-        for (extern_vals) |imp|
-            switch (imp) {
-                .function => num_import_funcs += 1,
-                .global => num_import_globals += 1,
-                else => {},
-            };
+        const externals = try ExternalValueGroup.new(extern_vals, allocator);
+        const num_import_funcs = externals.functions.len;
+        const num_import_globals = externals.globals.len;
 
         var mod_inst = ModuleInst{
             .types = module.types,
@@ -133,20 +104,8 @@ pub const ModuleInst = struct {
             .global_addrs = try allocator.alloc(types.GlobalAddr, num_import_globals),
         };
 
-        var num_funcs: u32 = 0;
-        var num_globals: u32 = 0;
-        for (extern_vals) |imp|
-            switch (imp) {
-                .function => |idx| {
-                    mod_inst.func_addrs[num_funcs] = idx;
-                    num_funcs += 1;
-                },
-                .global => |idx| {
-                    mod_inst.global_addrs[num_globals] = idx;
-                    num_globals += 1;
-                },
-                else => {},
-            };
+        @memcpy(mod_inst.func_addrs[0..num_import_funcs], externals.functions);
+        @memcpy(mod_inst.global_addrs[0..num_import_globals], externals.globals);
 
         for (module.funcs, num_import_funcs..) |func, i| {
             mod_inst.func_addrs[i] = try allocFunc(store, func, &mod_inst);
@@ -227,3 +186,42 @@ fn appendElement(comptime T: type, array: *std.ArrayList(T), elem: T) error{OutO
 fn nullFromReftype(ref_type: std.wasm.RefType) types.RefValue {
     return if (ref_type == std.wasm.RefType.funcref) .{ .func_ref = null } else .{ .extern_ref = null };
 }
+
+const ExternalValueGroup = struct {
+    const Self = @This();
+
+    functions: []types.FuncAddr,
+    tables: []types.TableAddr,
+    memories: []types.MemAddr,
+    globals: []types.GlobalAddr,
+
+    fn new(extern_values: []const types.ExternalValue, allocator: std.mem.Allocator) error{OutOfMemory}!Self {
+        var funcs = std.ArrayList(types.FuncAddr).init(allocator);
+        var tables = std.ArrayList(types.TableAddr).init(allocator);
+        var mems = std.ArrayList(types.MemAddr).init(allocator);
+        var globals = std.ArrayList(types.GlobalAddr).init(allocator);
+
+        for (extern_values) |imp| {
+            switch (imp) {
+                .function => |idx| try funcs.append(idx),
+                .table => |idx| try tables.append(idx),
+                .memory => |idx| try mems.append(idx),
+                .global => |idx| try globals.append(idx),
+            }
+        }
+
+        return .{
+            .functions = try funcs.toOwnedSlice(),
+            .tables = try tables.toOwnedSlice(),
+            .memories = try mems.toOwnedSlice(),
+            .globals = try globals.toOwnedSlice(),
+        };
+    }
+
+    fn deinit(self: Self, allocator: std.mem.Allocator) void {
+        allocator.free(self.functions);
+        allocator.free(self.tables);
+        allocator.free(self.memories);
+        allocator.free(self.globals);
+    }
+};
