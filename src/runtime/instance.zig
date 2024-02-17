@@ -484,7 +484,7 @@ pub const Instance = struct {
             .f64_copy_sign => try self.binOp(f64, opFloatCopySign),
 
             // numeric instructions (4)
-            .i32_wrap_i64 => try self.instrOp(i32, i64, opWrap),
+            .i32_wrap_i64 => try self.instrOp(u32, u64, opWrap),
             .i32_trunc_f32_s => try self.instrOp(i32, f32, opTrunc),
             .i32_trunc_f32_u => try self.instrOp(u32, f32, opTrunc),
             .i32_trunc_f64_s => try self.instrOp(i32, f64, opTrunc),
@@ -1212,7 +1212,7 @@ fn opPromote(comptime R: type, comptime T: type, value: T) R {
 }
 
 fn opWrap(comptime R: type, comptime T: type, value: T) R {
-    const result: i32 = @intCast(value & 0xffffffff);
+    const result: R = @intCast(value & 0xffffffff);
     return result;
 }
 
