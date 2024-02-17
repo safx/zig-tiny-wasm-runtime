@@ -158,7 +158,7 @@ pub const ModuleLoader = struct {
     fn table(self: *Self) Error!wa.TableType {
         const rtype = try self.refType();
         const limit = try self.limits();
-        return .{ .limit = limit, .ref_type = rtype };
+        return .{ .limits = limit, .ref_type = rtype };
     }
 
     fn memtype(self: *Self) Error!wa.MemoryType {
@@ -326,7 +326,7 @@ pub const ModuleLoader = struct {
         const op = try self.reader.readU8();
         const value = try self.initExprValue(op);
         const end = try self.reader.readU8();
-        _ = end; // TODO check
+        assert(end == 0x0b);
         return value;
     }
 

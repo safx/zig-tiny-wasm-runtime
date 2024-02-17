@@ -113,11 +113,11 @@ pub const ExportDesc = union(enum) {
 };
 
 pub const TableType = struct {
-    limit: Limits,
+    limits: Limits,
     ref_type: RefType,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{}:{}", .{ self.limit, self.ref_type });
+        _ = try writer.print("{}:{}", .{ self.limits, self.ref_type });
     }
 };
 

@@ -799,16 +799,21 @@ pub const Instance = struct {
         var n = self.stack.pop().value.asI32();
         const val = self.stack.pop().value;
 
-        if (tab.type.limit.max != null and @as(usize, @intCast(n)) + tab.elem.len > tab.type.limit.max.?) {
+        if (tab.type.limits.max != null and @as(usize, @intCast(n)) + tab.elem.len > tab.type.limits.max.?) {
             try self.stack.pushValueAs(i32, -1);
             return;
         }
 
         const sz = tab.elem.len;
 
-        const new_elem = try growtable(tab, n, types.RefValue.fromValue(val), self.allocator);
+        const new_elem = growtable(tab, n, types.RefValue.fromValue(val), self.allocator) catch |err| {
+            assert(err == std.mem.Allocator.Error.OutOfMemory);
+            try self.stack.pushValueAs(i32, -1);
+            return;
+        };
+
         self.store.tables.items[ta].elem = new_elem;
-        self.store.tables.items[ta].type.limit.min = @intCast(new_elem.len);
+        self.store.tables.items[ta].type.limits.min = @intCast(new_elem.len);
 
         try self.stack.pushValueAs(i32, @as(i32, @intCast(sz)));
     }
@@ -818,7 +823,7 @@ pub const Instance = struct {
         const data_len: i32 = @intCast(table_inst.elem.len);
         const len: i32 = data_len + n;
         if (len + n > 65536) {
-            return std.mem.Allocator.Error.OutOfMemory; // TODO: use another error
+            return std.mem.Allocator.Error.OutOfMemory;
         }
         const old_elem = table_inst.elem;
         const new_elem = try allocator.alloc(types.RefValue, @intCast(len));
@@ -945,7 +950,12 @@ pub const Instance = struct {
             }
         }
 
-        const new_data = try growmem(mem_inst, n, self.allocator);
+        const new_data = growmem(mem_inst, n, self.allocator) catch |err| {
+            assert(err == std.mem.Allocator.Error.OutOfMemory);
+            try self.stack.pushValueAs(i32, -1);
+            return;
+        };
+
         self.store.mems.items[mem_addr].data = new_data;
         self.store.mems.items[mem_addr].type.limits.min = @intCast(new_data.len);
         try self.stack.pushValueAs(i32, sz);
@@ -956,7 +966,7 @@ pub const Instance = struct {
         const data_len: i32 = @intCast(mem_inst.data.len / page_size);
         const len: i32 = data_len + n;
         if (len + n > 65536) {
-            return std.mem.Allocator.Error.OutOfMemory; // TODO: use another error
+            return std.mem.Allocator.Error.OutOfMemory;
         }
         const old_data = mem_inst.data;
         const new_data = try allocator.alloc(u8, @intCast(len * page_size));

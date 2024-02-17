@@ -59,7 +59,7 @@ pub const Decoder = struct {
             const inst = try parse(reader, allocator);
             try outputArray.append(inst);
             if (inst == .@"else") {
-                // TODO: check wheter the member variable is already set
+                std.debug.assert(pos1 == null);
                 pos1 = @intCast(outputArray.items.len);
             }
             if (inst == .end) {
@@ -343,7 +343,8 @@ pub const Decoder = struct {
 
     fn memoryInit(reader: *BinaryReader) Error!Instruction {
         const data_idx = try reader.readVarU32();
-        _ = try reader.readVarU32(); // TODO should be zero
+        const zero = try reader.readVarU32();
+        std.debug.assert(zero == 0);
         return .{ .memory_init = data_idx };
     }
 
