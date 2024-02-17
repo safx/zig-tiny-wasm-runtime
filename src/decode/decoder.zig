@@ -342,7 +342,7 @@ pub const Decoder = struct {
             n(.i64_trunc_sat_f64_u) => .i64_trunc_sat_f64_u,
 
             else => {
-                std.debug.print("?? 0xFC {x}\n", .{op_code});
+                std.debug.print("?? Unknown opcode: 0xFC {x}\n", .{op_code});
                 unreachable;
             },
         };

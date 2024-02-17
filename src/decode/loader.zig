@@ -103,11 +103,10 @@ pub const ModuleLoader = struct {
         const section_id = try self.reader.readU8();
         const sect = utils.sectionFromNum(section_id) orelse return Error.MalformedSectionId;
         const size = try self.reader.readVarU32();
-        _ = size;
 
-        //std.debug.print("* {}\n", .{sect});
+        //std.debug.print("* {} ({})\n", .{ sect, size });
         switch (sect) {
-            .custom => return .custom,
+            .custom => return .{ .custom = try self.custom(size) },
             .type => return .{ .type = try self.createArray(types.FuncType, funcType) },
             .import => return .{ .import = try self.createArray(types.Import, import) },
             .function => return .{ .function = try self.createArray(types.FuncIdx, funcidx) },
@@ -278,6 +277,15 @@ pub const ModuleLoader = struct {
         unreachable;
     }
 
+    fn custom(self: *Self, size: u32) (Error || error{OutOfMemory})!CustomInfo {
+        const start = self.reader.position;
+        const cname = try self.name();
+        const end = self.reader.position;
+        const len = size - (end - start);
+        const cdata = try self.reader.readBytes(len);
+        return .{ .name = cname, .data = cdata };
+    }
+
     fn skip(self: *Self, size: u32) Error!void {
         _ = try self.reader.readBytes(size);
     }
@@ -443,7 +451,7 @@ pub const ModuleLoader = struct {
 };
 
 const Section = union(enum) {
-    custom,
+    custom: CustomInfo,
     type: []const types.FuncType,
     import: []const types.Import,
     function: []const types.TypeIdx,
@@ -456,6 +464,11 @@ const Section = union(enum) {
     code: []const ModFunc,
     data: []const types.Data,
     data_count: u32,
+};
+
+const CustomInfo = struct {
+    name: []const u8,
+    data: []const u8,
 };
 
 const ModFunc = struct {
