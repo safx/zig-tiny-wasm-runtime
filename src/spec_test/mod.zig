@@ -1,7 +1,10 @@
 const std = @import("std");
-const wa = @import("wasm-core").types;
-const runtime = @import("wasm-runtime");
-const types = @import("./types.zig");
+const types = struct {
+    usingnamespace @import("wasm-core");
+    usingnamespace @import("wasm-runtime");
+    usingnamespace @import("./types.zig");
+};
+const Error = @import("./errors.zig").Error;
 const reader = @import("./reader.zig");
 
 test "Wasm spec test" {
@@ -43,8 +46,8 @@ pub fn execSpecTestsFromFile(file_name: []const u8) !void {
 }
 
 fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) !void {
-    var engine = runtime.Engine.new(allocator);
-    var current_module: *runtime.ModuleInst = try engine.loadModuleFromPath("spectest.wasm", "spectest");
+    var engine = types.Engine.new(allocator);
+    var current_module: *types.ModuleInst = try engine.loadModuleFromPath("spectest.wasm", "spectest");
 
     for (commands) |cmd| {
         std.debug.print("---------------------------------------------------------------\n", .{});
@@ -80,11 +83,11 @@ fn execSpecTests(commands: []const types.Command, allocator: std.mem.Allocator) 
     }
 }
 
-fn doAction(action: types.Action, engine: *runtime.Engine, current_module: *runtime.ModuleInst, allocator: std.mem.Allocator) ![]const runtime.Value {
+fn doAction(action: types.Action, engine: *types.Engine, current_module: *types.ModuleInst, allocator: std.mem.Allocator) ![]const types.Value {
     switch (action) {
         .invoke => |arg| {
             const mod = if (arg.module) |name| engine.getModuleInstByName(name) orelse current_module else current_module;
-            const func_args = try allocator.alloc(runtime.Value, arg.args.len);
+            const func_args = try allocator.alloc(types.Value, arg.args.len);
             defer allocator.free(func_args);
             for (arg.args, 0..) |a, i| {
                 func_args[i] = a;
@@ -101,7 +104,7 @@ fn doAction(action: types.Action, engine: *runtime.Engine, current_module: *runt
     }
 }
 
-fn validateResult(expected_value: []const types.Result, actual_result: []const runtime.Value, line: u32) void {
+fn validateResult(expected_value: []const types.Result, actual_result: []const types.Value, line: u32) void {
     if (actual_result.len != expected_value.len) {
         @panic("Test failed (length not match).");
     }
@@ -120,7 +123,7 @@ fn validateResult(expected_value: []const types.Result, actual_result: []const r
     std.debug.print("test pass (result = {any})\n", .{actual_result});
 }
 
-fn checkReturnValue(expected: types.Result, result: runtime.Value) bool {
+fn checkReturnValue(expected: types.Result, result: types.Value) bool {
     switch (expected) {
         .@"const" => |exp_const| {
             switch (exp_const) {
@@ -158,14 +161,14 @@ fn validateCatchedError(expected_error: anyerror, actual_error: anyerror, line: 
 }
 
 /// Returns function name by searching from the latest instaitiated modules.
-fn getFunctionByName(module: *runtime.ModuleInst, func_name: []const u8) error{ExportItemNotFound}!runtime.ExportInst {
+fn getFunctionByName(module: *types.ModuleInst, func_name: []const u8) error{ExportItemNotFound}!types.ExportInst {
     for (module.exports) |exp| {
         if (std.mem.eql(u8, exp.name, func_name)) {
             return exp;
         }
     }
     std.debug.print("ExportItemNotFound: {s}\n", .{func_name});
-    return runtime.Error.ExportItemNotFound;
+    return Error.ExportItemNotFound;
 }
 
 fn getExtention(filename: []const u8) []const u8 {

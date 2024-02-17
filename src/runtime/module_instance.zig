@@ -1,12 +1,14 @@
 const std = @import("std");
-const wa = @import("wasm-core");
-const types = @import("./types.zig");
+const types = struct {
+    usingnamespace @import("wasm-core");
+    usingnamespace @import("./types.zig");
+};
 const Error = @import("./errors.zig").Error;
 const page_size = @import("./instance.zig").page_size;
 
 /// A Moudle Instance in wasm spec
 pub const ModuleInst = struct {
-    types: []const wa.FuncType = &.{},
+    types: []const types.FuncType = &.{},
     func_addrs: []types.FuncAddr = &.{},
     table_addrs: []types.TableAddr = &.{},
     mem_addrs: []types.MemAddr = &.{},
@@ -17,7 +19,7 @@ pub const ModuleInst = struct {
 
     /// `allocmodule` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/modules.html#alloc-module
-    pub fn allocateModule(store: *types.Store, module: wa.Module, extern_vals: []const types.ExternalValue, values: []types.Value, refs: [][]types.RefValue, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!*types.ModuleInst {
+    pub fn allocateModule(store: *types.Store, module: types.Module, extern_vals: []const types.ExternalValue, values: []types.Value, refs: [][]types.RefValue, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!*types.ModuleInst {
         // 1: resolve imports
         const externals = try ExternalValueGroup.new(extern_vals, allocator);
         defer externals.deinit(allocator);
@@ -93,7 +95,7 @@ pub const ModuleInst = struct {
         return mod_inst;
     }
 
-    pub fn auxiliaryInstance(store: *types.Store, module: wa.Module, extern_vals: []const types.ExternalValue, allocator: std.mem.Allocator) error{OutOfMemory}!ModuleInst {
+    pub fn auxiliaryInstance(store: *types.Store, module: types.Module, extern_vals: []const types.ExternalValue, allocator: std.mem.Allocator) error{OutOfMemory}!ModuleInst {
         const externals = try ExternalValueGroup.new(extern_vals, allocator);
         const num_import_funcs = externals.functions.len;
         const num_import_globals = externals.globals.len;
@@ -116,7 +118,7 @@ pub const ModuleInst = struct {
 
 /// `allocfunc` in wasm spec
 /// https://webassembly.github.io/spec/core/exec/modules.html#functions
-fn allocFunc(store: *types.Store, func: wa.Func, mod_inst: *types.ModuleInst) error{OutOfMemory}!types.FuncAddr {
+fn allocFunc(store: *types.Store, func: types.Func, mod_inst: *types.ModuleInst) error{OutOfMemory}!types.FuncAddr {
     const inst = types.FuncInst{
         .type = mod_inst.types[func.type],
         .module = mod_inst,
@@ -127,7 +129,7 @@ fn allocFunc(store: *types.Store, func: wa.Func, mod_inst: *types.ModuleInst) er
 
 /// `alloctable` in wasm spec
 /// https://webassembly.github.io/spec/core/exec/modules.html#tables
-fn allocTable(store: *types.Store, table: wa.TableType, allocator: std.mem.Allocator) error{OutOfMemory}!types.TableAddr {
+fn allocTable(store: *types.Store, table: types.TableType, allocator: std.mem.Allocator) error{OutOfMemory}!types.TableAddr {
     var elem = try allocator.alloc(types.RefValue, table.limits.min);
     @memset(elem, nullFromReftype(table.ref_type));
     const inst = types.TableInst{
@@ -139,7 +141,7 @@ fn allocTable(store: *types.Store, table: wa.TableType, allocator: std.mem.Alloc
 
 /// `allocmemory` in wasm spec
 /// https://webassembly.github.io/spec/core/exec/modules.html#memories
-fn allocMemory(store: *types.Store, mem: wa.MemoryType, allocator: std.mem.Allocator) error{OutOfMemory}!types.MemAddr {
+fn allocMemory(store: *types.Store, mem: types.MemoryType, allocator: std.mem.Allocator) error{OutOfMemory}!types.MemAddr {
     const inst = types.MemInst{
         .type = mem,
         .data = try allocator.alloc(u8, mem.limits.min * page_size),
@@ -150,7 +152,7 @@ fn allocMemory(store: *types.Store, mem: wa.MemoryType, allocator: std.mem.Alloc
 
 /// `allocglobal` in wasm spec
 /// https://webassembly.github.io/spec/core/exec/modules.html#globals
-fn allocGlobal(store: *types.Store, global: wa.Global, value: types.Value) error{OutOfMemory}!types.MemAddr {
+fn allocGlobal(store: *types.Store, global: types.Global, value: types.Value) error{OutOfMemory}!types.MemAddr {
     const inst = types.GlobalInst{
         .type = global.type,
         .value = value,
@@ -160,7 +162,7 @@ fn allocGlobal(store: *types.Store, global: wa.Global, value: types.Value) error
 
 /// `allocelem` in wasm spec
 /// https://webassembly.github.io/spec/core/exec/modules.html#element-segments
-fn allocElement(store: *types.Store, elememt: wa.Element, refs: []types.RefValue) error{OutOfMemory}!types.ElemAddr {
+fn allocElement(store: *types.Store, elememt: types.Element, refs: []types.RefValue) error{OutOfMemory}!types.ElemAddr {
     const inst = types.ElemInst{
         .type = elememt.type,
         .elem = refs,
@@ -170,7 +172,7 @@ fn allocElement(store: *types.Store, elememt: wa.Element, refs: []types.RefValue
 
 /// `allocdata` in wasm spec
 /// https://webassembly.github.io/spec/core/exec/modules.html#alloc-data
-fn allocData(store: *types.Store, data: wa.Data) error{OutOfMemory}!types.DataAddr {
+fn allocData(store: *types.Store, data: types.Data) error{OutOfMemory}!types.DataAddr {
     const inst = types.DataInst{
         .data = data.init,
     };

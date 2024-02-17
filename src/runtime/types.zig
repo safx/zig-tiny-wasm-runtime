@@ -1,5 +1,5 @@
 const std = @import("std");
-const wa = @import("wasm-core");
+const core = @import("wasm-core");
 pub const ModuleInst = @import("./module_instance.zig").ModuleInst;
 
 pub const Store = struct {
@@ -181,28 +181,28 @@ pub const DataAddr = u32;
 pub const ExternAddr = u32;
 
 pub const FuncInst = struct {
-    type: wa.FuncType,
+    type: core.FuncType,
     module: *ModuleInst,
-    code: wa.Func,
+    code: core.Func,
 };
 
 pub const TableInst = struct {
-    type: wa.TableType,
+    type: core.TableType,
     elem: []RefValue,
 };
 
 pub const MemInst = struct {
-    type: wa.MemoryType,
+    type: core.MemoryType,
     data: []u8,
 };
 
 pub const GlobalInst = struct {
-    type: wa.GlobalType,
+    type: core.GlobalType,
     value: Value,
 };
 
 pub const ElemInst = struct {
-    type: wa.RefType,
+    type: core.RefType,
     elem: []RefValue,
 };
 
@@ -215,7 +215,7 @@ pub const ExportInst = struct {
     value: ExternalValue,
 };
 
-pub const Value = union(wa.ValueType) {
+pub const Value = union(core.ValueType) {
     const Self = @This();
 
     // num
@@ -394,10 +394,10 @@ pub const Label = struct {
 
 pub const LabelType = union(enum) {
     root,
-    func: wa.InstractionAddr,
-    block: wa.InstractionAddr,
-    @"if": wa.InstractionAddr,
-    loop: wa.InstractionAddr,
+    func: core.InstractionAddr,
+    block: core.InstractionAddr,
+    @"if": core.InstractionAddr,
+    loop: core.InstractionAddr,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
@@ -414,6 +414,6 @@ pub const ActivationFrame = struct {
     locals: []Value = &.{},
     arity: usize = 0,
     module: *ModuleInst,
-    instructions: []const wa.Instruction = &.{},
+    instructions: []const core.Instruction = &.{},
     ip: u32 = 0,
 };

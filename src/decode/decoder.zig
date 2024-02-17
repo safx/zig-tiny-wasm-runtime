@@ -1,6 +1,6 @@
 const std = @import("std");
-const wa = @import("wasm-core");
-const Instruction = wa.Instruction;
+const types = @import("wasm-core");
+const Instruction = types.Instruction;
 const BinaryReader = @import("./binary_reader.zig").BinaryReader;
 const utils = @import("./utils.zig");
 const Error = @import("./errors.zig").Error;
@@ -39,12 +39,12 @@ pub const Decoder = struct {
         }
     }
 
-    fn parseBlock(self: Decoder, reader: *BinaryReader, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator) (Error || error{OutOfMemory})!wa.InstractionAddr {
+    fn parseBlock(self: Decoder, reader: *BinaryReader, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator) (Error || error{OutOfMemory})!types.InstractionAddr {
         while (!reader.eof()) {
             const inst = try parse(reader, allocator);
             try outputArray.append(inst);
             if (inst == .end) {
-                const pos1: wa.InstractionAddr = @intCast(outputArray.items.len - 1);
+                const pos1: types.InstractionAddr = @intCast(outputArray.items.len - 1);
                 return pos1;
             } else {
                 try self.fillInfoIfBlockInstruction(reader, outputArray, allocator, inst);
@@ -53,8 +53,8 @@ pub const Decoder = struct {
         unreachable;
     }
 
-    fn parseIfBlock(self: Decoder, reader: *BinaryReader, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const ?wa.InstractionAddr {
-        var pos1: ?wa.InstractionAddr = null;
+    fn parseIfBlock(self: Decoder, reader: *BinaryReader, outputArray: *std.ArrayList(Instruction), allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const ?types.InstractionAddr {
+        var pos1: ?types.InstractionAddr = null;
         while (!reader.eof()) {
             const inst = try parse(reader, allocator);
             try outputArray.append(inst);
@@ -63,7 +63,7 @@ pub const Decoder = struct {
                 pos1 = @intCast(outputArray.items.len);
             }
             if (inst == .end) {
-                const pos2: wa.InstractionAddr = @intCast(outputArray.items.len - 1);
+                const pos2: types.InstractionAddr = @intCast(outputArray.items.len - 1);
                 return &.{ pos1, pos2 };
             } else {
                 try self.fillInfoIfBlockInstruction(reader, outputArray, allocator, inst);
@@ -366,12 +366,12 @@ pub const Decoder = struct {
         return .{ .table_idx_dst = dst, .table_idx_src = src };
     }
 
-    fn refType(reader: *BinaryReader) Error!wa.RefType {
+    fn refType(reader: *BinaryReader) Error!types.RefType {
         const byte = try reader.readU8();
         return utils.refTypeFromNum(byte) orelse return Error.MalformedRefType;
     }
 
-    fn valueType(reader: *BinaryReader) Error!wa.ValueType {
+    fn valueType(reader: *BinaryReader) Error!types.ValueType {
         const byte = try reader.readU8();
         return utils.valueTypeFromNum(byte) orelse return Error.MalformedValueType;
     }
@@ -380,9 +380,9 @@ pub const Decoder = struct {
         return .{ .type = try blockType(reader) }; // `end` is set at the end of block
     }
 
-    fn selectv(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]wa.ValueType {
+    fn selectv(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]types.ValueType {
         const len = try reader.readVarU32();
-        var array = try allocator.alloc(wa.ValueType, len);
+        var array = try allocator.alloc(types.ValueType, len);
         for (0..len) |i| {
             array[i] = try valueType(reader);
         }
@@ -397,15 +397,14 @@ pub const Decoder = struct {
         const byte = try reader.readU8();
         return switch (byte) {
             0x40 => .empty,
-            0x6f...0x70 => .{ .value_type = utils.valueTypeFromNum(byte) orelse return Error.MalformedBlockType },
-            0x7b...0x7f => .{ .value_type = utils.valueTypeFromNum(byte) orelse return Error.MalformedBlockType },
+            0x6f...0x70, 0x7b...0x7f => .{ .value_type = utils.valueTypeFromNum(byte).? },
             else => .{ .type_index = byte }, // TODO: handle s33
         };
     }
 
     fn brTable(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction.BrTableType {
         const size = try reader.readVarU32();
-        const label_idxs = try allocator.alloc(wa.LabelIdx, size);
+        const label_idxs = try allocator.alloc(types.LabelIdx, size);
 
         for (0..size) |i| {
             label_idxs[i] = try reader.readVarU32();

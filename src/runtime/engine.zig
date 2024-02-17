@@ -1,8 +1,10 @@
 const std = @import("std");
-const wa = @import("wasm-core");
+const types = struct {
+    usingnamespace @import("wasm-core");
+    usingnamespace @import("./types.zig");
+};
 pub const Instance = @import("./instance.zig").Instance;
 pub const Error = @import("./errors.zig").Error;
-pub const types = @import("./types.zig");
 
 /// A type of WebAssembly runtime engine, which wraps `Instance`.
 pub const Engine = struct {
@@ -58,7 +60,7 @@ pub const Engine = struct {
         return try self.loadModule(module, if (module_name) |n| n else getFilename(file_name));
     }
 
-    fn loadModule(self: *Self, module: wa.Module, module_name: []const u8) (Error || error{OutOfMemory})!*types.ModuleInst {
+    fn loadModule(self: *Self, module: types.Module, module_name: []const u8) (Error || error{OutOfMemory})!*types.ModuleInst {
         const extern_vals = try self.resolveImports(module.imports, self.allocator);
         const mod_inst = try self.instance.instantiate(module, extern_vals);
         try self.registerModule(mod_inst, module_name);
@@ -74,7 +76,7 @@ pub const Engine = struct {
         return try self.instance.invokeFunctionByAddr(func_addr, args);
     }
 
-    fn resolveImports(self: *Self, imports: []const wa.Import, allocator: std.mem.Allocator) error{OutOfMemory}![]const types.ExternalValue {
+    fn resolveImports(self: *Self, imports: []const types.Import, allocator: std.mem.Allocator) error{OutOfMemory}![]const types.ExternalValue {
         var external_imports = try allocator.alloc(types.ExternalValue, imports.len);
         for (imports, 0..) |imp, i| {
             if (self.mod_insts.get(imp.module_name)) |mod_inst| {

@@ -1,7 +1,7 @@
 const std = @import("std");
 const decode = @import("wasm-decode");
 const runtime = @import("wasm-runtime");
-pub const Error = decode.Error || runtime.Error;
+const Error = @import("./errors.zig").Error;
 
 // https://github.com/WebAssembly/spec/tree/master/interpreter#scripts
 

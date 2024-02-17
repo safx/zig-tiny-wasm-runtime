@@ -1,19 +1,19 @@
 const std = @import("std");
-const wa = @import("wasm-core");
+const types = @import("wasm-core");
 
 pub fn sectionFromNum(section_id: u8) ?std.wasm.Section {
     return if (0 <= section_id and section_id <= 12) @enumFromInt(section_id) else null;
 }
 
-pub fn valueTypeFromNum(byte: u8) ?wa.ValueType {
+pub fn valueTypeFromNum(byte: u8) ?types.ValueType {
     return switch (byte) {
-        0x7b...0x7f => @enumFromInt(byte),
         0x6f...0x70 => @enumFromInt(byte),
+        0x7b...0x7f => @enumFromInt(byte),
         else => null,
     };
 }
 
-pub fn refTypeFromNum(byte: u8) ?wa.RefType {
+pub fn refTypeFromNum(byte: u8) ?types.RefType {
     return switch (byte) {
         0x6f...0x70 => @enumFromInt(byte),
         else => null,

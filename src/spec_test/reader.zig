@@ -1,11 +1,13 @@
 const std = @import("std");
-const wa = @import("wasm-runtime");
-const types = @import("./types.zig");
+const types = struct {
+    usingnamespace @import("wasm-runtime");
+    usingnamespace @import("./types.zig");
+};
+const Error = @import("./errors.zig").Error;
 const Action = types.Action;
 const Command = types.Command;
 const Result = types.Result;
-const Value = wa.Value;
-const Failure = types.Failure;
+const Value = types.Value;
 
 pub fn readJsonFromFile(file: std.fs.File, allocator: std.mem.Allocator) ![]const types.Command {
     const buffer = try file.reader().readAllAlloc(allocator, 10_000_000);
@@ -88,15 +90,15 @@ fn argFromJson(json: std.json.Value) !Value {
         const num = try std.fmt.parseInt(u64, value, 10);
         return Value{ .f64 = num };
     } else if (strcmp(type_, "externref")) {
-        var num: ?wa.ExternAddr = null;
+        var num: ?types.ExternAddr = null;
         if (!strcmp(value, "null")) {
-            num = try std.fmt.parseInt(wa.ExternAddr, value, 10);
+            num = try std.fmt.parseInt(types.ExternAddr, value, 10);
         }
         return Value{ .extern_ref = num };
     } else if (strcmp(type_, "funcref")) {
-        var num: ?wa.ExternAddr = null;
+        var num: ?types.ExternAddr = null;
         if (!strcmp(value, "null")) {
-            num = try std.fmt.parseInt(wa.ExternAddr, value, 10);
+            num = try std.fmt.parseInt(types.ExternAddr, value, 10);
         }
         return Value{ .func_ref = num };
     } else {
@@ -142,15 +144,15 @@ fn resultFromJson(json: std.json.Value) !Result {
         const num = try std.fmt.parseInt(u64, value, 10);
         return .{ .@"const" = .{ .f64 = num } };
     } else if (strcmp(type_, "externref")) {
-        var num: ?wa.ExternAddr = null;
+        var num: ?types.ExternAddr = null;
         if (!strcmp(value, "null")) {
-            num = try std.fmt.parseInt(wa.ExternAddr, value, 10);
+            num = try std.fmt.parseInt(types.ExternAddr, value, 10);
         }
         return .{ .@"const" = .{ .extern_ref = num } };
     } else if (strcmp(type_, "funcref")) {
-        var num: ?wa.ExternAddr = null;
+        var num: ?types.ExternAddr = null;
         if (!strcmp(value, "null")) {
-            num = try std.fmt.parseInt(wa.ExternAddr, value, 10);
+            num = try std.fmt.parseInt(types.ExternAddr, value, 10);
         }
         return .{ .@"const" = .{ .func_ref = num } };
     } else {
@@ -177,8 +179,8 @@ fn actionFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Action {
     }
 }
 
-fn errorFromString(str: []const u8) types.Error {
-    const E = types.Error;
+fn errorFromString(str: []const u8) Error {
+    const E = Error;
     if (strcmp(str, "integer divide by zero")) {
         return E.IntegerDivideByZero;
     } else if (strcmp(str, "integer overflow")) {

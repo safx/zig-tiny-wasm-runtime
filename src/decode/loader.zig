@@ -1,5 +1,5 @@
 const std = @import("std");
-const wa = @import("wasm-core");
+const types = @import("wasm-core");
 const BinaryReader = @import("./binary_reader.zig").BinaryReader;
 const Decoder = @import("./decoder.zig").Decoder;
 const utils = @import("./utils.zig");
@@ -21,7 +21,7 @@ pub const ModuleLoader = struct {
         };
     }
 
-    pub fn parseAll(self: *Self, buffer: []const u8) (Error || error{OutOfMemory})!wa.Module {
+    pub fn parseAll(self: *Self, buffer: []const u8) (Error || error{OutOfMemory})!types.Module {
         var arena = std.heap.ArenaAllocator.init(self.baseAllocator);
         self.allocator = arena.allocator();
 
@@ -31,17 +31,17 @@ pub const ModuleLoader = struct {
             return Error.UnknownBinaryVersion;
         }
 
-        var types_: []const wa.FuncType = &.{};
-        var imports: []const wa.Import = &.{};
-        var func_idxs: []const wa.FuncIdx = &.{};
-        var tables: []const wa.TableType = &.{};
-        var memories: []const wa.MemoryType = &.{};
-        var globals: []const wa.Global = &.{};
-        var exports: []const wa.Export = &.{};
-        var start: ?wa.FuncIdx = null;
-        var elements: []const wa.Element = &.{};
+        var types_: []const types.FuncType = &.{};
+        var imports: []const types.Import = &.{};
+        var func_idxs: []const types.FuncIdx = &.{};
+        var tables: []const types.TableType = &.{};
+        var memories: []const types.MemoryType = &.{};
+        var globals: []const types.Global = &.{};
+        var exports: []const types.Export = &.{};
+        var start: ?types.FuncIdx = null;
+        var elements: []const types.Element = &.{};
         var codes: []const ModFunc = &.{};
-        var datas: []const wa.Data = &.{};
+        var datas: []const types.Data = &.{};
         var data_count: u32 = 0;
 
         while (self.section()) |sec| {
@@ -72,16 +72,16 @@ pub const ModuleLoader = struct {
             }
         }
 
-        const funcs = try self.allocator.alloc(wa.Func, func_idxs.len);
+        const funcs = try self.allocator.alloc(types.Func, func_idxs.len);
         for (func_idxs, codes, 0..) |func_idx, f, i| {
-            funcs[i] = wa.Func{
+            funcs[i] = types.Func{
                 .type = func_idx,
                 .locals = f.locals,
                 .body = f.body,
             };
         }
 
-        return wa.Module{
+        return types.Module{
             .types = types_,
             .funcs = funcs,
             .tables = tables,
@@ -114,24 +114,24 @@ pub const ModuleLoader = struct {
         std.debug.print("* {}\n", .{sect});
         switch (sect) {
             .custom => return .custom,
-            .type => return .{ .type = try self.createArray(wa.FuncType, funcType) },
-            .import => return .{ .import = try self.createArray(wa.Import, import) },
-            .function => return .{ .function = try self.createArray(wa.FuncIdx, funcidx) },
-            .table => return .{ .table = try self.createArray(wa.TableType, table) },
-            .memory => return .{ .memory = try self.createArray(wa.MemoryType, memtype) },
-            .global => return .{ .global = try self.createArray(wa.Global, global) },
-            .@"export" => return .{ .@"export" = try self.createArray(wa.Export, @"export") },
+            .type => return .{ .type = try self.createArray(types.FuncType, funcType) },
+            .import => return .{ .import = try self.createArray(types.Import, import) },
+            .function => return .{ .function = try self.createArray(types.FuncIdx, funcidx) },
+            .table => return .{ .table = try self.createArray(types.TableType, table) },
+            .memory => return .{ .memory = try self.createArray(types.MemoryType, memtype) },
+            .global => return .{ .global = try self.createArray(types.Global, global) },
+            .@"export" => return .{ .@"export" = try self.createArray(types.Export, @"export") },
             .start => return .{ .start = try self.reader.readVarU32() },
-            .element => return .{ .element = try self.createArray(wa.Element, elem) },
+            .element => return .{ .element = try self.createArray(types.Element, elem) },
             .code => return .{ .code = try self.createArray(ModFunc, code) },
-            .data => return .{ .data = try self.createArray(wa.Data, data) },
+            .data => return .{ .data = try self.createArray(types.Data, data) },
             .data_count => return .{ .data_count = try self.reader.readVarU32() },
             _ => return Error.MalformedSectionId,
         }
     }
 
     // section
-    fn funcType(self: *Self) (Error || error{OutOfMemory})!wa.FuncType {
+    fn funcType(self: *Self) (Error || error{OutOfMemory})!types.FuncType {
         const marker = try self.reader.readU8();
         if (marker != std.wasm.function_type) {
             return Error.MalformedFunctypeMagicNumber;
@@ -144,59 +144,59 @@ pub const ModuleLoader = struct {
         };
     }
 
-    fn import(self: *Self) (Error || error{OutOfMemory})!wa.Import {
+    fn import(self: *Self) (Error || error{OutOfMemory})!types.Import {
         const mod = try self.name();
         const nm = try self.name();
         const desc = try self.importdesc();
         return .{ .module_name = mod, .name = nm, .desc = desc };
     }
 
-    fn funcidx(self: *Self) Error!wa.FuncIdx {
+    fn funcidx(self: *Self) Error!types.FuncIdx {
         return self.reader.readVarU32();
     }
 
-    fn table(self: *Self) Error!wa.TableType {
+    fn table(self: *Self) Error!types.TableType {
         const rtype = try self.refType();
         const limit = try self.limits();
         return .{ .limits = limit, .ref_type = rtype };
     }
 
-    fn memtype(self: *Self) Error!wa.MemoryType {
+    fn memtype(self: *Self) Error!types.MemoryType {
         return .{ .limits = try self.limits() };
     }
 
-    fn global(self: *Self) Error!wa.Global {
+    fn global(self: *Self) Error!types.Global {
         const gtype = try self.globalType();
         const exp = try self.initExpr();
         return .{ .type = gtype, .init = exp };
     }
 
-    fn @"export"(self: *Self) (Error || error{OutOfMemory})!wa.Export {
+    fn @"export"(self: *Self) (Error || error{OutOfMemory})!types.Export {
         const nm = try self.name();
         const d = try self.exportdesc();
         return .{ .name = nm, .desc = d };
     }
 
-    fn elem(self: *Self) (Error || error{OutOfMemory})!wa.Element {
+    fn elem(self: *Self) (Error || error{OutOfMemory})!types.Element {
         const kind = try self.reader.readVarU32();
         switch (kind) {
             0 => {
                 const expr = try self.initExpr();
                 const ys = try self.funcidxs();
-                const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
+                const init_array = try self.allocator.alloc(types.InitExpression, ys.len);
                 for (ys, 0..) |y, i| {
-                    init_array[i] = wa.InitExpression{ .ref_func = y };
+                    init_array[i] = types.InitExpression{ .ref_func = y };
                 }
-                const mode = wa.ElementMode{ .active = .{ .table_idx = 0, .offset = expr } };
+                const mode = types.ElementMode{ .active = .{ .table_idx = 0, .offset = expr } };
                 return .{ .type = .funcref, .init = init_array, .mode = mode };
             },
             1 => {
                 const et = try self.reader.readU8();
                 assert(et == 0);
                 const ys = try self.funcidxs();
-                const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
+                const init_array = try self.allocator.alloc(types.InitExpression, ys.len);
                 for (ys, 0..) |y, i| {
-                    init_array[i] = wa.InitExpression{ .ref_func = y };
+                    init_array[i] = types.InitExpression{ .ref_func = y };
                 }
                 return .{ .type = .funcref, .init = init_array, .mode = .passive };
             },
@@ -206,27 +206,27 @@ pub const ModuleLoader = struct {
                 const et = try self.reader.readU8();
                 assert(et == 0);
                 const ys = try self.funcidxs();
-                const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
+                const init_array = try self.allocator.alloc(types.InitExpression, ys.len);
                 for (ys, 0..) |y, i| {
-                    init_array[i] = wa.InitExpression{ .ref_func = y };
+                    init_array[i] = types.InitExpression{ .ref_func = y };
                 }
-                const mode = wa.ElementMode{ .active = .{ .table_idx = x, .offset = expr } };
+                const mode = types.ElementMode{ .active = .{ .table_idx = x, .offset = expr } };
                 return .{ .type = .funcref, .init = init_array, .mode = mode };
             },
             3 => {
                 const et = try self.reader.readU8();
                 assert(et == 0);
                 const ys = try self.funcidxs();
-                const init_array = try self.allocator.alloc(wa.InitExpression, ys.len);
+                const init_array = try self.allocator.alloc(types.InitExpression, ys.len);
                 for (ys, 0..) |y, i| {
-                    init_array[i] = wa.InitExpression{ .ref_func = y };
+                    init_array[i] = types.InitExpression{ .ref_func = y };
                 }
                 return .{ .type = .funcref, .init = init_array, .mode = .declarative };
             },
             4 => {
                 const expr = try self.initExpr();
                 const init_array = try self.initExprVec();
-                const mode = wa.ElementMode{ .active = .{ .table_idx = 0, .offset = expr } };
+                const mode = types.ElementMode{ .active = .{ .table_idx = 0, .offset = expr } };
                 return .{ .type = .funcref, .init = init_array, .mode = mode };
             },
             5 => {
@@ -239,7 +239,7 @@ pub const ModuleLoader = struct {
                 const expr = try self.initExpr();
                 const et = try self.refType();
                 const init_array = try self.initExprVec();
-                const mode = wa.ElementMode{ .active = .{ .table_idx = x, .offset = expr } };
+                const mode = types.ElementMode{ .active = .{ .table_idx = x, .offset = expr } };
                 return .{ .type = et, .init = init_array, .mode = mode };
             },
             7 => {
@@ -256,14 +256,14 @@ pub const ModuleLoader = struct {
         return try self.func();
     }
 
-    fn data(self: *Self) (Error || error{OutOfMemory})!wa.Data {
+    fn data(self: *Self) (Error || error{OutOfMemory})!types.Data {
         const kind = try self.reader.readVarU32();
         switch (kind) {
             0 => {
                 const exp = try self.initExpr();
                 const len = try self.reader.readVarU32();
                 const init_array = try self.readBytesWithCopy(len);
-                const mode = wa.DataMode{ .active = .{ .mem_idx = 0, .offset = exp } };
+                const mode = types.DataMode{ .active = .{ .mem_idx = 0, .offset = exp } };
                 return .{ .init = init_array, .mode = mode };
             },
             1 => {
@@ -276,7 +276,7 @@ pub const ModuleLoader = struct {
                 const exp = try self.initExpr();
                 const len = try self.reader.readVarU32();
                 const init_array = try self.readBytesWithCopy(len);
-                const mode = wa.DataMode{ .active = .{ .mem_idx = x, .offset = exp } };
+                const mode = types.DataMode{ .active = .{ .mem_idx = x, .offset = exp } };
                 return .{ .init = init_array, .mode = mode };
             },
             else => unreachable,
@@ -290,7 +290,7 @@ pub const ModuleLoader = struct {
 
     // types
 
-    fn importdesc(self: *Self) Error!wa.ImportDesc {
+    fn importdesc(self: *Self) Error!types.ImportDesc {
         const kind = try self.reader.readU8();
         return switch (kind) {
             0 => .{ .func = try self.reader.readVarU32() },
@@ -301,7 +301,7 @@ pub const ModuleLoader = struct {
         };
     }
 
-    fn exportdesc(self: *Self) Error!wa.ExportDesc {
+    fn exportdesc(self: *Self) Error!types.ExportDesc {
         const kind = try self.reader.readU8();
         return switch (kind) {
             0 => .{ .func = try self.reader.readVarU32() },
@@ -312,17 +312,17 @@ pub const ModuleLoader = struct {
         };
     }
 
-    fn funcidxs(self: *Self) (Error || error{OutOfMemory})![]const wa.FuncIdx {
-        return try self.createArray(wa.FuncIdx, funcidx);
+    fn funcidxs(self: *Self) (Error || error{OutOfMemory})![]const types.FuncIdx {
+        return try self.createArray(types.FuncIdx, funcidx);
     }
 
-    fn globalType(self: *Self) Error!wa.GlobalType {
+    fn globalType(self: *Self) Error!types.GlobalType {
         const vtype = try self.valueType();
         const m = try self.mut();
         return .{ .mutability = m, .value_type = vtype };
     }
 
-    fn initExpr(self: *Self) Error!wa.InitExpression {
+    fn initExpr(self: *Self) Error!types.InitExpression {
         const op = try self.reader.readU8();
         const value = try self.initExprValue(op);
         const end = try self.reader.readU8();
@@ -330,7 +330,7 @@ pub const ModuleLoader = struct {
         return value;
     }
 
-    fn initExprValue(self: *Self, op: u8) Error!wa.InitExpression {
+    fn initExprValue(self: *Self, op: u8) Error!types.InitExpression {
         const n = std.wasm.opcode;
         return switch (op) {
             n(.i32_const) => .{ .i32_const = try self.reader.readVarI32() },
@@ -344,11 +344,11 @@ pub const ModuleLoader = struct {
         };
     }
 
-    fn initExprVec(self: *Self) (Error || error{OutOfMemory})![]const wa.InitExpression {
-        return try self.createArray(wa.InitExpression, initExpr);
+    fn initExprVec(self: *Self) (Error || error{OutOfMemory})![]const types.InitExpression {
+        return try self.createArray(types.InitExpression, initExpr);
     }
 
-    fn mut(self: *Self) Error!wa.Mutability {
+    fn mut(self: *Self) Error!types.Mutability {
         const kind = try self.reader.readU8();
         return switch (kind) {
             0 => .immutable,
@@ -366,19 +366,19 @@ pub const ModuleLoader = struct {
 
         var decoder = Decoder.new();
         const code_buf = try self.reader.readBytes(actual_body_size);
-        var array = std.ArrayList(wa.Instruction).init(self.allocator);
+        var array = std.ArrayList(types.Instruction).init(self.allocator);
         try decoder.parseAll(code_buf, &array, self.allocator);
         return .{ .locals = try self.createLocals(localses), .body = try array.toOwnedSlice() };
     }
 
-    fn createLocals(self: *Self, vec: []const Locals) (Error || error{OutOfMemory})![]const wa.ValueType {
+    fn createLocals(self: *Self, vec: []const Locals) (Error || error{OutOfMemory})![]const types.ValueType {
         var total: u32 = 0;
         for (vec) |v| total += v.size;
         if (total == 0) {
             return &.{};
         }
 
-        const ret = try self.allocator.alloc(wa.ValueType, total);
+        const ret = try self.allocator.alloc(types.ValueType, total);
         var p: u32 = 0;
         for (vec) |v| {
             @memset(ret[p .. p + v.size], v.type);
@@ -395,8 +395,8 @@ pub const ModuleLoader = struct {
         return try self.readBytesWithCopy(len);
     }
 
-    fn resultType(self: *Self) (Error || error{OutOfMemory})![]const wa.ValueType {
-        return try self.createArray(wa.ValueType, valueType);
+    fn resultType(self: *Self) (Error || error{OutOfMemory})![]const types.ValueType {
+        return try self.createArray(types.ValueType, valueType);
     }
 
     fn locals(self: *Self) Error!Locals {
@@ -405,7 +405,7 @@ pub const ModuleLoader = struct {
         return Locals{ .size = n, .type = t };
     }
 
-    fn valueType(self: *Self) Error!wa.ValueType {
+    fn valueType(self: *Self) Error!types.ValueType {
         const byte = try self.reader.readU8();
         return utils.valueTypeFromNum(byte) orelse {
             std.debug.dumpCurrentStackTrace(null);
@@ -414,12 +414,12 @@ pub const ModuleLoader = struct {
         };
     }
 
-    fn refType(self: *Self) Error!wa.RefType {
+    fn refType(self: *Self) Error!types.RefType {
         const byte = try self.reader.readU8();
         return utils.refTypeFromNum(byte) orelse return Error.MalformedRefType;
     }
 
-    fn limits(self: *Self) Error!wa.Limits {
+    fn limits(self: *Self) Error!types.Limits {
         const kind = try self.reader.readU8();
         const min = try self.reader.readVarU32();
         const max = switch (kind) {
@@ -450,26 +450,26 @@ pub const ModuleLoader = struct {
 
 const Section = union(enum) {
     custom,
-    type: []const wa.FuncType,
-    import: []const wa.Import,
-    function: []const wa.TypeIdx,
-    table: []const wa.TableType,
-    memory: []const wa.MemoryType,
-    global: []const wa.Global,
-    @"export": []const wa.Export,
-    start: wa.FuncIdx,
-    element: []const wa.Element,
+    type: []const types.FuncType,
+    import: []const types.Import,
+    function: []const types.TypeIdx,
+    table: []const types.TableType,
+    memory: []const types.MemoryType,
+    global: []const types.Global,
+    @"export": []const types.Export,
+    start: types.FuncIdx,
+    element: []const types.Element,
     code: []const ModFunc,
-    data: []const wa.Data,
+    data: []const types.Data,
     data_count: u32,
 };
 
 const ModFunc = struct {
-    locals: []const wa.ValueType,
-    body: []const wa.Instruction,
+    locals: []const types.ValueType,
+    body: []const types.Instruction,
 };
 
 const Locals = struct {
     size: u32,
-    type: wa.ValueType,
+    type: types.ValueType,
 };

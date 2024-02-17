@@ -1,8 +1,10 @@
 const std = @import("std");
-const wa = @import("wasm-core");
-const Instruction = wa.Instruction;
+const types = struct {
+    usingnamespace @import("wasm-core");
+    usingnamespace @import("./types.zig");
+};
+const Instruction = types.Instruction;
 const decode = @import("wasm-decode");
-pub const types = @import("./types.zig");
 pub const Error = @import("./errors.zig").Error;
 
 pub const page_size = 65_536;
@@ -148,7 +150,7 @@ pub const Instance = struct {
 
     /// `instantiate` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/modules.html#instantiation
-    pub fn instantiate(self: *Self, module: wa.Module, extern_vals: []const types.ExternalValue) (Error || error{OutOfMemory})!*types.ModuleInst {
+    pub fn instantiate(self: *Self, module: types.Module, extern_vals: []const types.ExternalValue) (Error || error{OutOfMemory})!*types.ModuleInst {
         // 1: validate
         // 2: assert
         // 3: check length
@@ -283,7 +285,7 @@ pub const Instance = struct {
     }
 
     /// executes an instruction and returns control flow
-    fn execInstruction(self: *Self, ip: wa.InstractionAddr, instr: Instruction) (Error || error{OutOfMemory})!FlowControl {
+    fn execInstruction(self: *Self, ip: types.InstractionAddr, instr: Instruction) (Error || error{OutOfMemory})!FlowControl {
         switch (instr) {
             .end => return self.opEnd(),
             .@"else" => return self.opElse(),
@@ -543,7 +545,7 @@ pub const Instance = struct {
         try self.insertLabel(block_info.type, .{ .block = block_info.end });
     }
 
-    inline fn opLoop(self: *Self, block_info: Instruction.BlockInfo, ip: wa.InstractionAddr) error{OutOfMemory}!void {
+    inline fn opLoop(self: *Self, block_info: Instruction.BlockInfo, ip: types.InstractionAddr) error{OutOfMemory}!void {
         try self.insertLabel(block_info.type, .{ .loop = ip });
     }
 
@@ -564,7 +566,7 @@ pub const Instance = struct {
         try self.stack.insertAt(func_type.parameter_types.len, label);
     }
 
-    inline fn opBr(self: *Self, label_idx: wa.LabelIdx) error{OutOfMemory}!FlowControl {
+    inline fn opBr(self: *Self, label_idx: types.LabelIdx) error{OutOfMemory}!FlowControl {
         const label = self.stack.getNthLabelFromTop(label_idx);
         const vals = try self.stack.popValues(label.arity);
 
@@ -583,7 +585,7 @@ pub const Instance = struct {
         return FlowControl.newAtOpBr(label);
     }
 
-    inline fn opBrIf(self: *Self, label_idx: wa.LabelIdx) error{OutOfMemory}!FlowControl {
+    inline fn opBrIf(self: *Self, label_idx: types.LabelIdx) error{OutOfMemory}!FlowControl {
         const value = self.stack.pop().value;
         return if (value.i32 == 0) FlowControl.none else self.opBr(label_idx);
     }
@@ -595,7 +597,7 @@ pub const Instance = struct {
         return self.opBr(label_idx);
     }
 
-    inline fn opCall(self: *Self, func_idx: wa.FuncIdx) (Error || error{OutOfMemory})!FlowControl {
+    inline fn opCall(self: *Self, func_idx: types.FuncIdx) (Error || error{OutOfMemory})!FlowControl {
         const module = self.stack.topFrame().module;
         return .{ .call = module.func_addrs[func_idx] };
     }
@@ -639,7 +641,7 @@ pub const Instance = struct {
     }
 
     // reference instructions
-    inline fn opRefNull(self: *Self, ref_type: wa.RefType) error{OutOfMemory}!void {
+    inline fn opRefNull(self: *Self, ref_type: types.RefType) error{OutOfMemory}!void {
         const val: types.Value = switch (ref_type) {
             .funcref => .{ .func_ref = null },
             .externref => .{ .extern_ref = null },
@@ -653,7 +655,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(i32, v);
     }
 
-    inline fn opRefFunc(self: *Self, func_idx: wa.FuncIdx) error{OutOfMemory}!void {
+    inline fn opRefFunc(self: *Self, func_idx: types.FuncIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const a = module.func_addrs[func_idx];
         try self.stack.push(.{ .value = .{ .func_ref = a } });
@@ -672,31 +674,31 @@ pub const Instance = struct {
     }
 
     // variable instructions
-    inline fn opLocalGet(self: *Self, local_idx: wa.LocalIdx) error{OutOfMemory}!void {
+    inline fn opLocalGet(self: *Self, local_idx: types.LocalIdx) error{OutOfMemory}!void {
         const frame = self.stack.topFrame();
         const val = frame.locals[local_idx];
         try self.stack.push(.{ .value = val });
     }
 
-    inline fn opLocalSet(self: *Self, local_idx: wa.LocalIdx) void {
+    inline fn opLocalSet(self: *Self, local_idx: types.LocalIdx) void {
         const frame = self.stack.topFrame();
         const val = self.stack.pop().value;
         frame.locals[local_idx] = val;
     }
 
-    inline fn opLocalTee(self: *Self, local_idx: wa.LocalIdx) error{OutOfMemory}!void {
+    inline fn opLocalTee(self: *Self, local_idx: types.LocalIdx) error{OutOfMemory}!void {
         const value = self.stack.pop();
         try self.stack.push(value);
         try self.stack.push(value);
         self.opLocalSet(local_idx);
     }
-    inline fn opGlobalGet(self: *Self, global_idx: wa.GlobalIdx) error{OutOfMemory}!void {
+    inline fn opGlobalGet(self: *Self, global_idx: types.GlobalIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const a = module.global_addrs[global_idx];
         const glob = self.store.globals.items[a];
         try self.stack.push(.{ .value = glob.value });
     }
-    inline fn opGlobalSet(self: *Self, global_idx: wa.GlobalIdx) void {
+    inline fn opGlobalSet(self: *Self, global_idx: types.GlobalIdx) void {
         const module = self.stack.topFrame().module;
         const a = module.global_addrs[global_idx];
         const value = self.stack.pop().value;
@@ -704,7 +706,7 @@ pub const Instance = struct {
     }
 
     // table instructions
-    inline fn opTableGet(self: *Self, table_idx: wa.TableIdx) (error{OutOfBoundsTableAccess} || error{OutOfMemory})!void {
+    inline fn opTableGet(self: *Self, table_idx: types.TableIdx) (error{OutOfBoundsTableAccess} || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
@@ -717,7 +719,7 @@ pub const Instance = struct {
         try self.stack.push(.{ .value = types.Value.fromRefValue(val) });
     }
 
-    inline fn opTableSet(self: *Self, table_idx: wa.TableIdx) error{OutOfBoundsTableAccess}!void {
+    inline fn opTableSet(self: *Self, table_idx: types.TableIdx) error{OutOfBoundsTableAccess}!void {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
@@ -754,7 +756,7 @@ pub const Instance = struct {
         }
     }
 
-    inline fn opElemDrop(self: *Self, elem_idx: wa.ElemIdx) void {
+    inline fn opElemDrop(self: *Self, elem_idx: types.ElemIdx) void {
         const module = self.stack.topFrame().module;
         const a = module.elem_addrs[elem_idx];
         self.store.elems.items[a].elem = &.{};
@@ -791,7 +793,7 @@ pub const Instance = struct {
         }
     }
 
-    inline fn opTableGrow(self: *Self, table_idx: wa.TableIdx) error{OutOfMemory}!void {
+    inline fn opTableGrow(self: *Self, table_idx: types.TableIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
@@ -833,7 +835,7 @@ pub const Instance = struct {
         return new_elem;
     }
 
-    inline fn opTableSize(self: *Self, table_idx: wa.TableIdx) error{OutOfMemory}!void {
+    inline fn opTableSize(self: *Self, table_idx: types.TableIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
@@ -841,7 +843,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(i32, val);
     }
 
-    inline fn opTableFill(self: *Self, table_idx: wa.TableIdx) error{OutOfBoundsTableAccess}!void {
+    inline fn opTableFill(self: *Self, table_idx: types.TableIdx) error{OutOfBoundsTableAccess}!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
@@ -917,7 +919,7 @@ pub const Instance = struct {
         }
     }
 
-    inline fn opDataDrop(self: *Self, data_idx: wa.DataIdx) void {
+    inline fn opDataDrop(self: *Self, data_idx: types.DataIdx) void {
         const module = self.stack.topFrame().module;
         const a = module.data_addrs[data_idx];
         const data = &self.store.datas.items[a];
@@ -978,7 +980,7 @@ pub const Instance = struct {
 
     /// `memory.init x` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-init-x
-    inline fn opMemoryInit(self: *Self, data_idx: wa.DataIdx) (Error || error{OutOfMemory})!void {
+    inline fn opMemoryInit(self: *Self, data_idx: types.DataIdx) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
         const mem = self.store.mems.items[mem_addr];
@@ -1102,7 +1104,7 @@ pub const Instance = struct {
 
     /// `expand_F` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/runtime.html#exec-expand
-    inline fn expandToFuncType(module: *types.ModuleInst, block_type: Instruction.BlockType) wa.FuncType {
+    inline fn expandToFuncType(module: *types.ModuleInst, block_type: Instruction.BlockType) types.FuncType {
         return switch (block_type) {
             .empty => .{ .parameter_types = &.{}, .result_types = &.{} },
             .value_type => |vt| .{ .parameter_types = &.{}, .result_types = &.{vt} },
@@ -1111,7 +1113,7 @@ pub const Instance = struct {
     }
 };
 
-pub fn instractionFromInitExpr(init_expr: wa.InitExpression) Instruction {
+pub fn instractionFromInitExpr(init_expr: types.InitExpression) Instruction {
     return switch (init_expr) {
         .i32_const => |val| .{ .i32_const = val },
         .i64_const => |val| .{ .i64_const = val },
@@ -1126,7 +1128,7 @@ pub fn instractionFromInitExpr(init_expr: wa.InitExpression) Instruction {
 
 const FlowControl = union(enum) {
     none,
-    jump: wa.InstractionAddr,
+    jump: types.InstractionAddr,
     exit,
     call: types.FuncAddr,
 
