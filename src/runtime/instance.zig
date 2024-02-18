@@ -294,7 +294,7 @@ pub const Instance = struct {
 
             // contronl instructions
             .nop => {},
-            // .@"unreachable",
+            .@"unreachable" => return Error.Unreachable,
             .block => |block_info| try self.opBlock(block_info),
             .loop => |block_info| try self.opLoop(block_info, ip),
             .@"if" => |block_info| return self.opIf(block_info),
