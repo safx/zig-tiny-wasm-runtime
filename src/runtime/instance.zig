@@ -840,8 +840,9 @@ pub const Instance = struct {
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-tables
     inline fn growtable(table_inst: types.TableInst, n: u32, val: types.RefValue, allocator: std.mem.Allocator) error{OutOfMemory}![]types.RefValue {
         const data_len: u32 = @intCast(table_inst.elem.len);
-        const len: u32 = data_len + n;
-        if (len + n > 65536) {
+        const len_with_overflow = @addWithOverflow(data_len, n);
+        const len = len_with_overflow[0];
+        if (len_with_overflow[1] == 1 or len + n > 65536) {
             return std.mem.Allocator.Error.OutOfMemory;
         }
         const old_elem = table_inst.elem;
