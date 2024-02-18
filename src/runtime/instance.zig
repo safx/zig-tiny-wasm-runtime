@@ -1016,7 +1016,17 @@ pub const Instance = struct {
         var s: u32 = @bitCast(self.stack.pop().value.asI32());
         var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
-        if (d + n > mem_inst.data.len) {
+        const s_plus_n = @addWithOverflow(s, n);
+        if (s_plus_n[1] == 1) {
+            return Error.OutOfBoundsMemoryAccess;
+        }
+
+        const d_plus_n = @addWithOverflow(d, n);
+        if (d_plus_n[1] == 1) {
+            return Error.OutOfBoundsMemoryAccess;
+        }
+
+        if (s_plus_n[0] > mem_inst.data.len or d_plus_n[0] > mem_inst.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
 
