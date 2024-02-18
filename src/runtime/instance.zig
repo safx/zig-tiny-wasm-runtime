@@ -490,7 +490,7 @@ pub const Instance = struct {
             .i32_trunc_f64_s => try self.instrEOp(i32, f64, opTrunc),
             .i32_trunc_f64_u => try self.instrEOp(u32, f64, opTrunc),
             .i64_extend_i32_s => try self.instrOp(i64, i32, opExtend32),
-            .i64_extend_i32_u => try self.instrOp(i64, i32, opExtend32),
+            .i64_extend_i32_u => try self.instrOp(u64, u32, opExtend32),
             .i64_trunc_f32_s => try self.instrEOp(i64, f32, opTrunc),
             .i64_trunc_f32_u => try self.instrEOp(i64, f32, opTrunc),
             .i64_trunc_f64_s => try self.instrEOp(i64, f64, opTrunc),
@@ -1264,7 +1264,7 @@ fn opExtend16(comptime R: type, comptime T: type, value: T) R {
 }
 
 fn opExtend32(comptime R: type, comptime T: type, value: T) R {
-    const result: i32 = @truncate(value);
+    const result: T = @truncate(value);
     return result;
 }
 
