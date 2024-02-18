@@ -741,16 +741,17 @@ pub const Instance = struct {
         const tab = self.store.tables.items[ta];
         const ea = module.elem_addrs[arg.elem_idx];
         const elem = self.store.elems.items[ea];
-        var n = self.stack.pop().value.asI32();
-        var s = self.stack.pop().value.asI32();
-        var d = self.stack.pop().value.asI32();
+
+        var n: u32 = @bitCast(self.stack.pop().value.asI32());
+        var s: u32 = @bitCast(self.stack.pop().value.asI32());
+        var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
         while (n > 0) : (n -= 1) {
             if (s + n > elem.elem.len or d + n > tab.elem.len)
                 return Error.OutOfBoundsTableAccess;
 
-            const ref_val = elem.elem[@intCast(s)];
-            try self.stack.pushValueAs(i32, d);
+            const ref_val = elem.elem[s];
+            try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
             try self.stack.push(.{ .value = types.Value.fromRefValue(ref_val) });
             try self.execOneInstruction(.{ .table_set = arg.table_idx });
             d += 1;
@@ -771,24 +772,24 @@ pub const Instance = struct {
         const ta_s = module.table_addrs[arg.table_idx_src];
         const tab_s = self.store.tables.items[ta_s];
 
-        var n = self.stack.pop().value.asI32();
-        var s = self.stack.pop().value.asI32();
-        var d = self.stack.pop().value.asI32();
+        var n: u32 = @bitCast(self.stack.pop().value.asI32());
+        var s: u32 = @bitCast(self.stack.pop().value.asI32());
+        var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
         while (n > 0) : (n -= 1) {
             if (s + n > tab_d.elem.len or s + n > tab_s.elem.len)
                 return Error.OutOfBoundsTableAccess;
 
             if (d <= s) {
-                try self.stack.pushValueAs(i32, d);
-                try self.stack.pushValueAs(i32, s);
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s)));
                 try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
                 try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
                 d += 1;
                 s += 1;
             } else {
-                try self.stack.pushValueAs(i32, d + n - 1);
-                try self.stack.pushValueAs(i32, s + n - 1);
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d + n - 1)));
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s + n - 1)));
                 try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
                 try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
             }
@@ -800,7 +801,7 @@ pub const Instance = struct {
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
 
-        var n = self.stack.pop().value.asI32();
+        var n: u32 = @bitCast(self.stack.pop().value.asI32());
         const val = self.stack.pop().value;
 
         if (tab.type.limits.max != null and @as(usize, @intCast(n)) + tab.elem.len > tab.type.limits.max.?) {
@@ -823,9 +824,9 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-tables
-    inline fn growtable(table_inst: types.TableInst, n: i32, val: types.RefValue, allocator: std.mem.Allocator) error{OutOfMemory}![]types.RefValue {
-        const data_len: i32 = @intCast(table_inst.elem.len);
-        const len: i32 = data_len + n;
+    inline fn growtable(table_inst: types.TableInst, n: u32, val: types.RefValue, allocator: std.mem.Allocator) error{OutOfMemory}![]types.RefValue {
+        const data_len: u32 = @intCast(table_inst.elem.len);
+        const len: u32 = data_len + n;
         if (len + n > 65536) {
             return std.mem.Allocator.Error.OutOfMemory;
         }
@@ -850,9 +851,9 @@ pub const Instance = struct {
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
 
-        var n = self.stack.pop().value.asI32();
+        var n: u32 = @bitCast(self.stack.pop().value.asI32());
         const val = self.stack.pop().value;
-        var i = self.stack.pop().value.asI32();
+        var i: u32 = @bitCast(self.stack.pop().value.asI32());
 
         while (n > 0) {
             if (i + n > tab.elem.len)
@@ -906,10 +907,9 @@ pub const Instance = struct {
         const mem = &self.store.mems.items[a];
 
         const c = self.stack.pop().value.as(T);
-        const i = self.stack.pop().value.asI32();
+        const i: u32 = @bitCast(self.stack.pop().value.asI32());
 
-        var ea: u32 = @intCast(i);
-        ea += mem_arg.offset;
+        const ea: u32 = i + mem_arg.offset;
         const byte_size = bit_size / 8;
 
         if (ea + byte_size > mem.data.len) {
@@ -990,16 +990,16 @@ pub const Instance = struct {
         const data_addr = module.data_addrs[data_idx];
         const data = self.store.datas.items[data_addr];
 
-        var n = self.stack.pop().value.asI32();
-        var s = self.stack.pop().value.asI32();
-        var d = self.stack.pop().value.asI32();
+        var n: u32 = @bitCast(self.stack.pop().value.asI32());
+        var s: u32 = @bitCast(self.stack.pop().value.asI32());
+        var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
         //const ea1: u64 = @intCast(s);
         //const ea2: u64 = @intCast(d);
 
         while (n > 0) : (n -= 1) {
-            const b = data.data[@intCast(s)];
-            try self.stack.pushValueAs(i32, d);
+            const b = data.data[s];
+            try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
             try self.stack.pushValueAs(i32, b);
             try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
             s += 1;
@@ -1012,9 +1012,9 @@ pub const Instance = struct {
         const mem_addr = module.mem_addrs[0];
         const mem_inst = self.store.mems.items[mem_addr];
 
-        var n = self.stack.pop().value.asI32();
-        var s = self.stack.pop().value.asI32();
-        var d = self.stack.pop().value.asI32();
+        var n: u32 = @bitCast(self.stack.pop().value.asI32());
+        var s: u32 = @bitCast(self.stack.pop().value.asI32());
+        var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
         if (d + n > mem_inst.data.len) {
             return Error.OutOfBoundsMemoryAccess;
@@ -1022,15 +1022,15 @@ pub const Instance = struct {
 
         while (n > 0) : (n -= 1) {
             if (d <= s) {
-                try self.stack.pushValueAs(i32, d);
-                try self.stack.pushValueAs(i32, s);
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s)));
                 try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0 } });
                 try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
                 d += 1;
                 s += 1;
             } else {
-                try self.stack.pushValueAs(i32, d + n - 1);
-                try self.stack.pushValueAs(i32, s + n - 1);
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d + n - 1)));
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s + n - 1)));
                 try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0 } });
                 try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
             }
@@ -1042,16 +1042,16 @@ pub const Instance = struct {
         const mem_addr = module.mem_addrs[0];
         const mem_inst = self.store.mems.items[mem_addr];
 
-        var n = self.stack.pop().value.asI32();
+        var n: u32 = @bitCast(self.stack.pop().value.asI32());
         const val = self.stack.pop();
-        var d = self.stack.pop().value.asI32();
+        var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
         if (d + n > mem_inst.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
 
         while (n > 0) : (n -= 1) {
-            try self.stack.pushValueAs(i32, d);
+            try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
             try self.stack.push(val);
             try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
             d += 1;
