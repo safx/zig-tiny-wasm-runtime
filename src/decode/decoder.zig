@@ -315,7 +315,7 @@ pub const Decoder = struct {
 
     fn miscOpcode(reader: *BinaryReader) (Error || error{OutOfMemory})!Instruction {
         const n = std.wasm.miscOpcode;
-        const op_code = try reader.readU8();
+        const op_code = try reader.readVarU32();
         const inst: Instruction = switch (op_code) {
             // table instructions
             n(.table_init) => .{ .table_init = try tableInitArg(reader) },
