@@ -986,7 +986,6 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
         const mem = self.store.mems.items[mem_addr];
-        _ = mem;
         const data_addr = module.data_addrs[data_idx];
         const data = self.store.datas.items[data_addr];
 
@@ -994,8 +993,19 @@ pub const Instance = struct {
         var s: u32 = @bitCast(self.stack.pop().value.asI32());
         var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
-        //const ea1: u64 = @intCast(s);
-        //const ea2: u64 = @intCast(d);
+        const s_plus_n = @addWithOverflow(s, n);
+        if (s_plus_n[1] == 1) {
+            return Error.OutOfBoundsMemoryAccess;
+        }
+
+        const d_plus_n = @addWithOverflow(d, n);
+        if (d_plus_n[1] == 1) {
+            return Error.OutOfBoundsMemoryAccess;
+        }
+
+        if (s_plus_n[0] > data.data.len or d_plus_n[0] > mem.data.len) {
+            return Error.OutOfBoundsMemoryAccess;
+        }
 
         while (n > 0) : (n -= 1) {
             const b = data.data[s];
