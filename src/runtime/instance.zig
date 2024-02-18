@@ -735,7 +735,7 @@ pub const Instance = struct {
         tab.elem[i] = types.RefValue.fromValue(val);
     }
 
-    fn opTableInit(self: *Self, arg: Instruction.TableInitArg) (Error || error{OutOfMemory})!void {
+    inline fn opTableInit(self: *Self, arg: Instruction.TableInitArg) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[arg.table_idx];
         const tab = self.store.tables.items[ta];
@@ -746,10 +746,17 @@ pub const Instance = struct {
         var s: u32 = @bitCast(self.stack.pop().value.asI32());
         var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
-        while (n > 0) : (n -= 1) {
-            if (s + n > elem.elem.len or d + n > tab.elem.len)
-                return Error.OutOfBoundsTableAccess;
+        const s_plus_n = @addWithOverflow(s, n);
+        if (s_plus_n[1] == 1 or s_plus_n[0] > elem.elem.len) {
+            return Error.OutOfBoundsTableAccess;
+        }
 
+        const d_plus_n = @addWithOverflow(d, n);
+        if (d_plus_n[1] == 1 or d_plus_n[0] > tab.elem.len) {
+            return Error.OutOfBoundsTableAccess;
+        }
+
+        while (n > 0) : (n -= 1) {
             const ref_val = elem.elem[s];
             try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
             try self.stack.push(.{ .value = types.Value.fromRefValue(ref_val) });
@@ -776,10 +783,12 @@ pub const Instance = struct {
         var s: u32 = @bitCast(self.stack.pop().value.asI32());
         var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
-        while (n > 0) : (n -= 1) {
-            if (s + n > tab_d.elem.len or s + n > tab_s.elem.len)
-                return Error.OutOfBoundsTableAccess;
+        const s_plus_n = @addWithOverflow(s, n);
+        if (s_plus_n[1] == 1 or s_plus_n[0] > tab_d.elem.len or s_plus_n[0] > tab_s.elem.len) {
+            return Error.OutOfBoundsTableAccess;
+        }
 
+        while (n > 0) : (n -= 1) {
             if (d <= s) {
                 try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
                 try self.stack.pushValueAs(i32, @as(i32, @bitCast(s)));
@@ -855,10 +864,11 @@ pub const Instance = struct {
         const val = self.stack.pop().value;
         var i: u32 = @bitCast(self.stack.pop().value.asI32());
 
-        while (n > 0) {
-            if (i + n > tab.elem.len)
-                return Error.OutOfBoundsTableAccess;
+        const i_plus_n = @addWithOverflow(i, n);
+        if (i_plus_n[1] == 1 or i_plus_n[0] > tab.elem.len)
+            return Error.OutOfBoundsTableAccess;
 
+        while (n > 0) {
             tab.elem[@intCast(i)] = types.RefValue.fromValue(val);
             i += 1;
             n -= 1;
@@ -874,25 +884,17 @@ pub const Instance = struct {
         const ea: u32 = @bitCast(self.stack.pop().value.asI32());
 
         const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
-        if (ea_start_with_overflow[1] == 1) {
+        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
 
         const ea_start = ea_start_with_overflow[0];
-        if (ea_start > mem.data.len) {
-            return Error.OutOfBoundsMemoryAccess;
-        }
-
         const size = @sizeOf(N);
         const ea_end_with_overflow = @addWithOverflow(ea_start, size);
-        if (ea_end_with_overflow[1] == 1) {
+        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
-
         const ea_end = ea_end_with_overflow[0];
-        if (ea_end > mem.data.len) {
-            return Error.OutOfBoundsMemoryAccess;
-        }
 
         self.debugPrint("=== {any} ==", .{mem.data[ea_start..ea_end]});
         const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
@@ -912,7 +914,8 @@ pub const Instance = struct {
         const ea: u32 = i + mem_arg.offset;
         const byte_size = bit_size / 8;
 
-        if (ea + byte_size > mem.data.len) {
+        const ea_plus_byte_size = @addWithOverflow(ea, byte_size);
+        if (ea_plus_byte_size[1] == 1 or ea_plus_byte_size[0] > mem.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
 
@@ -994,16 +997,12 @@ pub const Instance = struct {
         var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
         const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1) {
+        if (s_plus_n[1] == 1 or s_plus_n[0] > data.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
 
         const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1) {
-            return Error.OutOfBoundsMemoryAccess;
-        }
-
-        if (s_plus_n[0] > data.data.len or d_plus_n[0] > mem.data.len) {
+        if (d_plus_n[1] == 1 or d_plus_n[0] > mem.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
 
@@ -1027,16 +1026,12 @@ pub const Instance = struct {
         var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
         const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1) {
+        if (s_plus_n[1] == 1 or s_plus_n[0] > mem_inst.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
 
         const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1) {
-            return Error.OutOfBoundsMemoryAccess;
-        }
-
-        if (s_plus_n[0] > mem_inst.data.len or d_plus_n[0] > mem_inst.data.len) {
+        if (d_plus_n[1] == 1 or d_plus_n[0] > mem_inst.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
 
@@ -1066,7 +1061,8 @@ pub const Instance = struct {
         const val = self.stack.pop();
         var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
-        if (d + n > mem_inst.data.len) {
+        const d_plus_n = @addWithOverflow(d, n);
+        if (d_plus_n[1] == 1 or d_plus_n[0] > mem_inst.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
 
