@@ -492,7 +492,7 @@ pub const Instance = struct {
             .i64_extend_i32_s => try self.instrOp(i64, i32, opExtend32),
             .i64_extend_i32_u => try self.instrOp(u64, u32, opExtend32),
             .i64_trunc_f32_s => try self.instrEOp(i64, f32, opTrunc),
-            .i64_trunc_f32_u => try self.instrEOp(i64, f32, opTrunc),
+            .i64_trunc_f32_u => try self.instrEOp(u64, f32, opTrunc),
             .i64_trunc_f64_s => try self.instrEOp(i64, f64, opTrunc),
             .i64_trunc_f64_u => try self.instrEOp(u64, f64, opTrunc),
             .f32_convert_i32_s => try self.instrOp(f32, i32, opConvert),
@@ -1219,14 +1219,65 @@ fn opIntPopcnt(comptime T: type, value: T) T {
 }
 
 fn opTrunc(comptime R: type, comptime T: type, value: T) Error!R {
-    if (R != i32 and R != u32 and R != i64 and R != u64 and T != f32 and T != f64)
-        @compileError("Invalid Number Type");
-
     if (std.math.isNan(value))
         return Error.InvalidConversionToInteger;
+    if (std.math.isNegativeInf(value))
+        return Error.IntegerOverflow;
+    if (std.math.isPositiveInf(value))
+        return Error.IntegerOverflow;
+
+    if (!canConvert(R, T, value)) {
+        return Error.IntegerOverflow;
+    }
 
     const result: R = @intFromFloat(value);
     return result;
+}
+
+// https://github.com/WebAssembly/wabt/blob/main/include/wabt/interp/interp-math.h#L299-L306
+fn canConvert(comptime R: type, comptime T: type, value: T) bool {
+    if (R == i32 and T == f32) {
+        return value >= -2147483648.0 and value < 2147483648.0;
+    } else if (R == i32 and T == f64) {
+        return value > -2147483649.0 and value < 2147483648.0;
+    } else if (R == u32 and T == f32) {
+        return value > -1.0 and value < 4294967296.0;
+    } else if (R == u32 and T == f64) {
+        return value > -1.0 and value < 4294967296.0;
+    } else if (R == i64 and T == f32) {
+        return value >= -9223372036854775808.0 and value < 9223372036854775808.0;
+    } else if (R == i64 and T == f64) {
+        return value >= -9223372036854775808.0 and value < 9223372036854775808.0;
+    } else if (R == u64 and T == f32) {
+        return value > -1.0 and value < 18446744073709551616.0;
+    } else if (R == u64 and T == f64) {
+        return value > -1.0 and value < 18446744073709551616.0;
+    } else {
+        @compileError("Invalid Number Type");
+    }
+}
+
+fn opTruncSat(comptime R: type, comptime T: type, value: T) Error!R {
+    if (R != i32 and R != u32 and R != i64 and R != u64 and T != f32 and T != f64)
+        @compileError("Invalid Number Type");
+
+    const max = std.math.maxInt(R);
+    const min = std.math.minInt(R);
+
+    if (std.math.isNan(value))
+        return 0;
+    if (std.math.isNegativeInf(value))
+        return min;
+    if (std.math.isPositiveInf(value))
+        return max;
+
+    const tval = @trunc(value);
+    if (tval > max)
+        return max;
+    if (tval < min)
+        return min;
+
+    return @as(R, @intFromFloat(tval));
 }
 
 fn opConvert(comptime R: type, comptime T: type, value: T) R {
@@ -1525,26 +1576,6 @@ fn opFloatMax(comptime T: type, lhs: T, rhs: T) Error!T {
 
 fn opFloatCopySign(comptime T: type, lhs: T, rhs: T) Error!T {
     return std.math.copysign(lhs, rhs);
-}
-
-fn opTruncSat(comptime T2: type, comptime T1: type, value: T1) Error!T2 {
-    const max = std.math.maxInt(T2);
-    const min = std.math.minInt(T2);
-
-    if (std.math.isNan(value))
-        return 0;
-    if (std.math.isNegativeInf(value))
-        return min;
-    if (std.math.isPositiveInf(value))
-        return max;
-
-    const tval = @trunc(value);
-    if (tval > max)
-        return max;
-    if (tval < min)
-        return min;
-
-    return @as(T2, @intFromFloat(tval));
 }
 
 fn canonNan(comptime T: type) T {
