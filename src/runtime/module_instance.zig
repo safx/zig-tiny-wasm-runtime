@@ -186,7 +186,10 @@ fn appendElement(comptime T: type, array: *std.ArrayList(T), elem: T) error{OutO
 }
 
 fn nullFromReftype(ref_type: std.wasm.RefType) types.RefValue {
-    return if (ref_type == std.wasm.RefType.funcref) .{ .func_ref = null } else .{ .extern_ref = null };
+    return switch (ref_type) {
+        .funcref => .{ .func_ref = null },
+        .externref => .{ .extern_ref = null },
+    };
 }
 
 const ExternalValueGroup = struct {
