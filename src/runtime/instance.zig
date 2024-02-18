@@ -784,7 +784,12 @@ pub const Instance = struct {
         var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
         const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > tab_d.elem.len or s_plus_n[0] > tab_s.elem.len) {
+        if (s_plus_n[1] == 1 or s_plus_n[0] > tab_s.elem.len) {
+            return Error.OutOfBoundsTableAccess;
+        }
+
+        const d_plus_n = @addWithOverflow(d, n);
+        if (d_plus_n[1] == 1 or d_plus_n[0] > tab_d.elem.len) {
             return Error.OutOfBoundsTableAccess;
         }
 
