@@ -61,16 +61,16 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
                 try engine.registerModule(current_module, arg.as_name);
             },
             .action => |arg| {
-                const ret = try doAction(arg.action, engine, current_module);
+                const ret = try doAction(arg.action, engine, current_module, allocator);
                 defer allocator.free(ret);
             },
             .assert_return => |arg| {
-                const ret = try doAction(arg.action, engine, current_module);
-                defer allocator.free(ret);
+                const ret = try doAction(arg.action, engine, current_module, allocator);
                 validateResult(arg.expected, ret, arg.line);
+                defer allocator.free(ret);
             },
             .assert_trap => |arg| {
-                _ = doAction(arg.action, engine, current_module) catch |err| {
+                _ = doAction(arg.action, engine, current_module, allocator) catch |err| {
                     validateCatchedError(arg.trap, err, arg.line);
                     continue;
                 };
@@ -82,7 +82,7 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
     }
 }
 
-fn doAction(action: types.Action, engine: *types.Engine, current_module: *types.ModuleInst) ![]const types.Value {
+fn doAction(action: types.Action, engine: *types.Engine, current_module: *types.ModuleInst, allocator: std.mem.Allocator) ![]const types.Value {
     switch (action) {
         .invoke => |arg| {
             const mod = if (arg.module) |name| engine.getModuleInstByName(name) orelse current_module else current_module;
@@ -92,7 +92,9 @@ fn doAction(action: types.Action, engine: *types.Engine, current_module: *types.
         .get => |arg| {
             const mod = if (arg.module) |name| engine.getModuleInstByName(name) orelse current_module else current_module;
             const gval = engine.getValueFromGlobal(mod, arg.field).?;
-            return &.{gval};
+            const array = try allocator.alloc(types.Value, 1);
+            array[0] = gval;
+            return array;
         },
     }
 }
