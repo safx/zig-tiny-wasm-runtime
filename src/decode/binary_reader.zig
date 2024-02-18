@@ -86,7 +86,7 @@ pub const BinaryReader = struct {
 
     fn readLeb(self: *Self, comptime NumType: type) error{EOF}!NumType {
         if (NumType != i32 and NumType != u32 and NumType != i64 and NumType != u64) {
-            @compileLog("Unknown Number Type");
+            @compileError("Unknown Number Type");
         }
 
         const BaseType = if (@bitSizeOf(NumType) == 32) u32 else u64;

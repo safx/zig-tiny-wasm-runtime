@@ -485,16 +485,16 @@ pub const Instance = struct {
 
             // numeric instructions (4)
             .i32_wrap_i64 => try self.instrOp(u32, u64, opWrap),
-            .i32_trunc_f32_s => try self.instrOp(i32, f32, opTrunc),
-            .i32_trunc_f32_u => try self.instrOp(u32, f32, opTrunc),
-            .i32_trunc_f64_s => try self.instrOp(i32, f64, opTrunc),
-            .i32_trunc_f64_u => try self.instrOp(u32, f64, opTrunc),
+            .i32_trunc_f32_s => try self.instrEOp(i32, f32, opTrunc),
+            .i32_trunc_f32_u => try self.instrEOp(u32, f32, opTrunc),
+            .i32_trunc_f64_s => try self.instrEOp(i32, f64, opTrunc),
+            .i32_trunc_f64_u => try self.instrEOp(u32, f64, opTrunc),
             .i64_extend_i32_s => try self.instrOp(i64, i32, opExtend32),
             .i64_extend_i32_u => try self.instrOp(i64, i32, opExtend32),
-            .i64_trunc_f32_s => try self.instrOp(i64, f32, opTrunc),
-            .i64_trunc_f32_u => try self.instrOp(i64, f32, opTrunc),
-            .i64_trunc_f64_s => try self.instrOp(i64, f64, opTrunc),
-            .i64_trunc_f64_u => try self.instrOp(u64, f64, opTrunc),
+            .i64_trunc_f32_s => try self.instrEOp(i64, f32, opTrunc),
+            .i64_trunc_f32_u => try self.instrEOp(i64, f32, opTrunc),
+            .i64_trunc_f64_s => try self.instrEOp(i64, f64, opTrunc),
+            .i64_trunc_f64_u => try self.instrEOp(u64, f64, opTrunc),
             .f32_convert_i32_s => try self.instrOp(f32, i32, opConvert),
             .f32_convert_i32_u => try self.instrOp(f32, u32, opConvert),
             .f32_convert_i64_s => try self.instrOp(f32, i64, opConvert),
@@ -1062,9 +1062,17 @@ pub const Instance = struct {
         return if (T == u32) i32 else if (T == u64) i64 else T;
     }
 
-    inline fn instrOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) (Error || error{OutOfMemory})!void {
+    inline fn instrOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) R) error{OutOfMemory}!void {
         const value: T = @bitCast(self.stack.pop().value.as(basetype(T)));
         const result: R = f(R, T, value);
+        const B = basetype(R);
+        const converted_result: B = @bitCast(result);
+        try self.stack.pushValueAs(B, converted_result);
+    }
+
+    inline fn instrEOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) (Error || error{OutOfMemory})!void {
+        const value: T = @bitCast(self.stack.pop().value.as(basetype(T)));
+        const result: R = try f(R, T, value);
         const B = basetype(R);
         const converted_result: B = @bitCast(result);
         try self.stack.pushValueAs(B, converted_result);
@@ -1174,7 +1182,9 @@ const FlowControl = union(enum) {
 };
 
 inline fn unsignedTypeOf(comptime T: type) type {
-    std.debug.assert(T == i32 or T == i64);
+    if (T != i32 and T != i64)
+        @compileError("Invalid Number Type");
+
     return if (T == i32) u32 else u64;
 }
 
@@ -1192,7 +1202,13 @@ fn opIntPopcnt(comptime T: type, value: T) T {
     return @popCount(value);
 }
 
-fn opTrunc(comptime R: type, comptime T: type, value: T) R {
+fn opTrunc(comptime R: type, comptime T: type, value: T) Error!R {
+    if (R != i32 and R != u32 and R != i64 and R != u64 and T != f32 and T != f64)
+        @compileError("Invalid Number Type");
+
+    if (std.math.isNan(value))
+        return Error.InvalidConversionToInteger;
+
     const result: R = @intFromFloat(value);
     return result;
 }
