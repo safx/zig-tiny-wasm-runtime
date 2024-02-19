@@ -12,26 +12,27 @@ pub const Decoder = struct {
         return .{};
     }
 
-    pub fn parseAll(_: Decoder, buffer: []const u8, outputArray: *InstArray, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!void {
+    pub fn parseAll(_: Decoder, buffer: []const u8, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const types.Instruction {
         var reader = BinaryReader.new(buffer);
+        var instArray = std.ArrayList(types.Instruction).init(allocator);
         var nested_blocks = std.ArrayList(u32).init(allocator);
 
         while (!reader.eof()) {
             const inst = try parse(&reader, allocator);
-            const pos: u32 = @intCast(outputArray.items.len);
-            try outputArray.append(inst);
+            const pos: u32 = @intCast(instArray.items.len);
+            try instArray.append(inst);
 
             if (inst == .block or inst == .loop or inst == .@"if") {
                 try nested_blocks.append(pos);
             } else if (inst == .@"else") {
                 const idx = nested_blocks.getLast();
-                try fillElse(&outputArray.items[idx], pos);
+                try fillElse(&instArray.items[idx], pos);
             } else if (inst == .end) {
                 if (nested_blocks.items.len == 0)
-                    return; // success
+                    return instArray.toOwnedSlice();
 
                 const idx = nested_blocks.pop();
-                try fillEnd(&outputArray.items[idx], pos);
+                try fillEnd(&instArray.items[idx], pos);
             }
         }
 

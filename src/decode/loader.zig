@@ -384,9 +384,8 @@ pub const ModuleLoader = struct {
 
         var decoder = Decoder.new();
         const code_buf = try self.reader.readBytes(actual_body_size);
-        var array = std.ArrayList(types.Instruction).init(self.allocator);
-        try decoder.parseAll(code_buf, &array, self.allocator);
-        return .{ .locals = try self.createLocals(localses), .body = try array.toOwnedSlice() };
+        const body = try decoder.parseAll(code_buf, self.allocator);
+        return .{ .locals = try self.createLocals(localses), .body = body };
     }
 
     fn createLocals(self: *Self, vec: []const Locals) (Error || error{OutOfMemory})![]const types.ValueType {
