@@ -35,23 +35,24 @@ pub const Instance = struct {
     /// https://webassembly.github.io/spec/core/exec/instructions.html#function-calls
     fn invokeFunction(self: *Self, func_addr: types.FuncAddr) (Error || error{OutOfMemory})!void {
         // 1:
+        assert(func_addr < self.store.funcs.items.len);
 
         // 2, 3:
         const func_inst = self.store.funcs.items[func_addr];
         const func_type = func_inst.type;
 
-        // 4:
+        // 4, 8:
         const p_len = func_type.parameter_types.len;
         const num_locals = p_len + func_inst.code.locals.len;
         const locals = try self.allocator.alloc(types.Value, num_locals);
         @memset(locals[p_len..num_locals], .{ .i64 = 0 }); // TODO: should be assign actual type?
 
-        // 6: assert
-
-        // 7:
+        // 6, 7:
         var i = p_len;
         while (i > 0) : (i -= 1) {
-            locals[i - 1] = self.stack.pop().value;
+            const item = self.stack.pop();
+            assert(item == .value);
+            locals[i - 1] = item.value;
         }
 
         // 8, 9, 10:
@@ -65,7 +66,6 @@ pub const Instance = struct {
         try self.stack.push(.{ .frame = frame });
         try self.stack.push(.{ .label = .{ .arity = @intCast(num_returns), .type = .root } });
 
-        // 5, 11: is done by execLoop
         self.debugPrint("---------------\n", .{});
         for (func_inst.code.body, 0..) |op, idx| {
             self.debugPrint("[{}] {}\n", .{ idx, op });
@@ -73,19 +73,19 @@ pub const Instance = struct {
         self.debugPrint("---------------\n", .{});
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#returning-from-a-function
     fn returnFunction(self: *Self) (Error || error{OutOfMemory})![]const types.Value {
+        // 1, 2, 3
         const num_returns = self.stack.topFrame().arity;
 
-        // 1, 2, 3: assert
-
-        // 4: pop frames etc
+        // 4, 5:
         const ret = try self.allocator.alloc(types.Value, num_returns);
         var i = num_returns;
         while (i > 0) : (i -= 1) {
-            ret[i - 1] = self.stack.pop().value;
+            const item = self.stack.pop();
+            assert(item == .value);
+            ret[i - 1] = item.value;
         }
-
-        // 5:
 
         // 6:
         self.stack.popValuesAndLabelsUntilFrame();
@@ -98,16 +98,38 @@ pub const Instance = struct {
         return ret;
     }
 
+    /// https://webassembly.github.io/spec/core/exec/modules.html#invocation
     pub fn invokeFunctionByAddr(self: *Self, func_addr: types.FuncAddr, args: []const types.Value) (Error || error{OutOfMemory})![]const types.Value {
-        // TODO: args check
+        // 1:
+        assert(func_addr < self.store.funcs.items.len);
 
-        // TODO: push args
+        // 2, 3:
+        const func_inst = self.store.funcs.items[func_addr];
+        const func_type = func_inst.type;
+
+        // 4:
+        if (func_type.parameter_types.len != args.len) {
+            return Error.InvocationParameterMismatch;
+        }
+
+        // 5:
+        for (func_type.parameter_types, args) |p, a| {
+            if (p != valueTypeFromValue(a)) {
+                return Error.InvocationParameterMismatch;
+            }
+        }
+
+        // 8:
         for (args) |arg| {
             try self.stack.push(.{ .value = arg });
         }
 
+        // 9:
         try self.invokeFunction(func_addr);
         const return_values = try self.execLoop(); // TODO
+
+        // 1:
+        assert(return_values.len == func_type.result_types.len);
 
         // pop value : FIXME
         for (return_values) |_| {
@@ -1607,4 +1629,16 @@ test opFloatNe {
     try expectEqual(@as(i32, 0), opFloatNe(f32, -0.0, -0.0));
     try expectEqual(@as(i32, 0), opFloatNe(f32, 1.0, 1.0));
     try expectEqual(@as(i32, 1), opFloatNe(f32, 1.0, 0.0));
+}
+
+fn valueTypeFromValue(value: types.Value) types.ValueType {
+    return switch (value) {
+        .i32 => .i32,
+        .i64 => .i64,
+        .f32 => .f32,
+        .f64 => .f64,
+        .v128 => .v128,
+        .func_ref => .func_ref,
+        .extern_ref => .extern_ref,
+    };
 }

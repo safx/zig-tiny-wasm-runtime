@@ -7,6 +7,7 @@ pub const Error = error{
     UndefinedElement,
     UninitializedElement,
     IndirectCallTypeMismatch,
+    InvocationParameterMismatch,
     InvalidConversionToInteger,
     Unreachable,
 };
