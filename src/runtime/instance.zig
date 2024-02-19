@@ -167,7 +167,7 @@ pub const Instance = struct {
                         return ret;
                     }
 
-                    // FIXME: function called from `start` needs this
+                    // FIXME: the function called from `start` needs this check
                     if (self.stack.topFrame().instructions.len == 0) {
                         return &.{};
                     }
@@ -578,14 +578,17 @@ pub const Instance = struct {
         return FlowControl.newAtOpElse(label);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-block-xref-syntax-instructions-syntax-blocktype-mathit-blocktype-xref-syntax-instructions-syntax-instr-mathit-instr-ast-xref-syntax-instructions-syntax-instr-control-mathsf-end
     inline fn opBlock(self: *Self, block_info: Instruction.BlockInfo) error{OutOfMemory}!void {
         try self.insertLabel(block_info.type, .{ .block = block_info.end });
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-loop-xref-syntax-instructions-syntax-blocktype-mathit-blocktype-xref-syntax-instructions-syntax-instr-mathit-instr-ast-xref-syntax-instructions-syntax-instr-control-mathsf-end
     inline fn opLoop(self: *Self, block_info: Instruction.BlockInfo, ip: types.InstractionAddr) error{OutOfMemory}!void {
         try self.insertLabel(block_info.type, .{ .loop = ip });
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-if-xref-syntax-instructions-syntax-blocktype-mathit-blocktype-xref-syntax-instructions-syntax-instr-mathit-instr-1-ast-xref-syntax-instructions-syntax-instr-control-mathsf-else-xref-syntax-instructions-syntax-instr-mathit-instr-2-ast-xref-syntax-instructions-syntax-instr-control-mathsf-end
     inline fn opIf(self: *Self, block_info: Instruction.IfBlockInfo) error{OutOfMemory}!FlowControl {
         const cond = self.stack.pop().value.i32;
         try self.insertLabel(block_info.type, .{ .@"if" = block_info.end });
@@ -603,6 +606,7 @@ pub const Instance = struct {
         try self.stack.insertAt(func_type.parameter_types.len, label);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-br-l
     inline fn opBr(self: *Self, label_idx: types.LabelIdx) error{OutOfMemory}!FlowControl {
         const label = self.stack.getNthLabelFromTop(label_idx);
         const vals = try self.stack.popValues(label.arity);
@@ -622,11 +626,13 @@ pub const Instance = struct {
         return FlowControl.newAtOpBr(label);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-br-if-l
     inline fn opBrIf(self: *Self, label_idx: types.LabelIdx) error{OutOfMemory}!FlowControl {
         const value = self.stack.pop().value;
         return if (value.i32 == 0) FlowControl.none else self.opBr(label_idx);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-br-table-l-ast-l-n
     inline fn opBrTable(self: *Self, table_info: Instruction.BrTableType) error{OutOfMemory}!FlowControl {
         const value = self.stack.pop().value.i32;
         const pos: u32 = @bitCast(value);
@@ -634,11 +640,13 @@ pub const Instance = struct {
         return self.opBr(label_idx);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-call-x
     inline fn opCall(self: *Self, func_idx: types.FuncIdx) (Error || error{OutOfMemory})!FlowControl {
         const module = self.stack.topFrame().module;
         return .{ .call = module.func_addrs[func_idx] };
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-call-indirect-x-y
     inline fn opCallIndirect(self: *Self, arg: Instruction.CallIndirectArg) (Error || error{OutOfMemory})!FlowControl {
         self.debugPrint("call_indirect: {any}\n", .{arg});
         const module = self.stack.topFrame().module;
@@ -678,6 +686,8 @@ pub const Instance = struct {
     }
 
     // reference instructions
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-ref-mathsf-ref-null-t
     inline fn opRefNull(self: *Self, ref_type: types.RefType) error{OutOfMemory}!void {
         const val: types.Value = switch (ref_type) {
             .funcref => .{ .func_ref = null },
@@ -686,12 +696,14 @@ pub const Instance = struct {
         try self.stack.push(.{ .value = val });
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-ref-mathsf-ref-is-null
     inline fn opIsNull(self: *Self) error{OutOfMemory}!void {
         const val = self.stack.pop().value;
         const v: i32 = if (val.isNull()) 1 else 0;
         try self.stack.pushValueAs(i32, v);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-ref-mathsf-ref-func-x
     inline fn opRefFunc(self: *Self, func_idx: types.FuncIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const a = module.func_addrs[func_idx];
@@ -699,6 +711,8 @@ pub const Instance = struct {
     }
 
     // parametric instructions
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-parametric-mathsf-select-t-ast
     inline fn opSelect(self: *Self) error{OutOfMemory}!void {
         const c = self.stack.pop().value.asI32();
         const val2 = self.stack.pop();
@@ -711,30 +725,38 @@ pub const Instance = struct {
     }
 
     // variable instructions
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-local-get-x
     inline fn opLocalGet(self: *Self, local_idx: types.LocalIdx) error{OutOfMemory}!void {
         const frame = self.stack.topFrame();
         const val = frame.locals[local_idx];
         try self.stack.push(.{ .value = val });
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-local-set-x
     inline fn opLocalSet(self: *Self, local_idx: types.LocalIdx) void {
         const frame = self.stack.topFrame();
         const val = self.stack.pop().value;
         frame.locals[local_idx] = val;
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-local-tee-x
     inline fn opLocalTee(self: *Self, local_idx: types.LocalIdx) error{OutOfMemory}!void {
         const value = self.stack.pop();
         try self.stack.push(value);
         try self.stack.push(value);
         self.opLocalSet(local_idx);
     }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-global-get-x
     inline fn opGlobalGet(self: *Self, global_idx: types.GlobalIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const a = module.global_addrs[global_idx];
         const glob = self.store.globals.items[a];
         try self.stack.push(.{ .value = glob.value });
     }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-global-set-x
     inline fn opGlobalSet(self: *Self, global_idx: types.GlobalIdx) void {
         const module = self.stack.topFrame().module;
         const a = module.global_addrs[global_idx];
@@ -743,6 +765,8 @@ pub const Instance = struct {
     }
 
     // table instructions
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-get-x
     inline fn opTableGet(self: *Self, table_idx: types.TableIdx) (error{OutOfBoundsTableAccess} || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
@@ -756,6 +780,7 @@ pub const Instance = struct {
         try self.stack.push(.{ .value = types.Value.fromRefValue(val) });
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-set-x
     inline fn opTableSet(self: *Self, table_idx: types.TableIdx) error{OutOfBoundsTableAccess}!void {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
@@ -770,81 +795,16 @@ pub const Instance = struct {
         tab.elem[i] = types.RefValue.fromValue(val);
     }
 
-    inline fn opTableInit(self: *Self, arg: Instruction.TableInitArg) (Error || error{OutOfMemory})!void {
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-size-x
+    inline fn opTableSize(self: *Self, table_idx: types.TableIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
-        const ta = module.table_addrs[arg.table_idx];
+        const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
-        const ea = module.elem_addrs[arg.elem_idx];
-        const elem = self.store.elems.items[ea];
-
-        var n: u32 = @bitCast(self.stack.pop().value.asI32());
-        var s: u32 = @bitCast(self.stack.pop().value.asI32());
-        var d: u32 = @bitCast(self.stack.pop().value.asI32());
-
-        const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > elem.elem.len) {
-            return Error.OutOfBoundsTableAccess;
-        }
-
-        const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > tab.elem.len) {
-            return Error.OutOfBoundsTableAccess;
-        }
-
-        while (n > 0) : (n -= 1) {
-            const ref_val = elem.elem[s];
-            try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
-            try self.stack.push(.{ .value = types.Value.fromRefValue(ref_val) });
-            try self.execOneInstruction(.{ .table_set = arg.table_idx });
-            d += 1;
-            s += 1;
-        }
+        const val: i32 = @intCast(tab.elem.len);
+        try self.stack.pushValueAs(i32, val);
     }
 
-    inline fn opElemDrop(self: *Self, elem_idx: types.ElemIdx) void {
-        const module = self.stack.topFrame().module;
-        const a = module.elem_addrs[elem_idx];
-        self.store.elems.items[a].elem = &.{};
-    }
-
-    inline fn opTableCopy(self: *Self, arg: Instruction.TableCopyArg) (Error || error{OutOfMemory})!void {
-        const module = self.stack.topFrame().module;
-        const ta_d = module.table_addrs[arg.table_idx_dst];
-        const tab_d = self.store.tables.items[ta_d];
-        const ta_s = module.table_addrs[arg.table_idx_src];
-        const tab_s = self.store.tables.items[ta_s];
-
-        var n: u32 = @bitCast(self.stack.pop().value.asI32());
-        var s: u32 = @bitCast(self.stack.pop().value.asI32());
-        var d: u32 = @bitCast(self.stack.pop().value.asI32());
-
-        const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > tab_s.elem.len) {
-            return Error.OutOfBoundsTableAccess;
-        }
-
-        const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > tab_d.elem.len) {
-            return Error.OutOfBoundsTableAccess;
-        }
-
-        while (n > 0) : (n -= 1) {
-            if (d <= s) {
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s)));
-                try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
-                try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
-                d += 1;
-                s += 1;
-            } else {
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d + n - 1)));
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s + n - 1)));
-                try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
-                try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
-            }
-        }
-    }
-
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-grow-x
     inline fn opTableGrow(self: *Self, table_idx: types.TableIdx) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
@@ -888,14 +848,7 @@ pub const Instance = struct {
         return new_elem;
     }
 
-    inline fn opTableSize(self: *Self, table_idx: types.TableIdx) error{OutOfMemory}!void {
-        const module = self.stack.topFrame().module;
-        const ta = module.table_addrs[table_idx];
-        const tab = self.store.tables.items[ta];
-        const val: i32 = @intCast(tab.elem.len);
-        try self.stack.pushValueAs(i32, val);
-    }
-
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-fill-x
     inline fn opTableFill(self: *Self, table_idx: types.TableIdx) error{OutOfBoundsTableAccess}!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
@@ -916,7 +869,87 @@ pub const Instance = struct {
         }
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-copy-x-y
+    inline fn opTableCopy(self: *Self, arg: Instruction.TableCopyArg) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        const ta_d = module.table_addrs[arg.table_idx_dst];
+        const tab_d = self.store.tables.items[ta_d];
+        const ta_s = module.table_addrs[arg.table_idx_src];
+        const tab_s = self.store.tables.items[ta_s];
+
+        var n: u32 = @bitCast(self.stack.pop().value.asI32());
+        var s: u32 = @bitCast(self.stack.pop().value.asI32());
+        var d: u32 = @bitCast(self.stack.pop().value.asI32());
+
+        const s_plus_n = @addWithOverflow(s, n);
+        if (s_plus_n[1] == 1 or s_plus_n[0] > tab_s.elem.len) {
+            return Error.OutOfBoundsTableAccess;
+        }
+
+        const d_plus_n = @addWithOverflow(d, n);
+        if (d_plus_n[1] == 1 or d_plus_n[0] > tab_d.elem.len) {
+            return Error.OutOfBoundsTableAccess;
+        }
+
+        while (n > 0) : (n -= 1) {
+            if (d <= s) {
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s)));
+                try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
+                try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
+                d += 1;
+                s += 1;
+            } else {
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d + n - 1)));
+                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s + n - 1)));
+                try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
+                try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
+            }
+        }
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-init-x-y
+    inline fn opTableInit(self: *Self, arg: Instruction.TableInitArg) (Error || error{OutOfMemory})!void {
+        const module = self.stack.topFrame().module;
+        const ta = module.table_addrs[arg.table_idx];
+        const tab = self.store.tables.items[ta];
+        const ea = module.elem_addrs[arg.elem_idx];
+        const elem = self.store.elems.items[ea];
+
+        var n: u32 = @bitCast(self.stack.pop().value.asI32());
+        var s: u32 = @bitCast(self.stack.pop().value.asI32());
+        var d: u32 = @bitCast(self.stack.pop().value.asI32());
+
+        const s_plus_n = @addWithOverflow(s, n);
+        if (s_plus_n[1] == 1 or s_plus_n[0] > elem.elem.len) {
+            return Error.OutOfBoundsTableAccess;
+        }
+
+        const d_plus_n = @addWithOverflow(d, n);
+        if (d_plus_n[1] == 1 or d_plus_n[0] > tab.elem.len) {
+            return Error.OutOfBoundsTableAccess;
+        }
+
+        while (n > 0) : (n -= 1) {
+            const ref_val = elem.elem[s];
+            try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
+            try self.stack.push(.{ .value = types.Value.fromRefValue(ref_val) });
+            try self.execOneInstruction(.{ .table_set = arg.table_idx });
+            d += 1;
+            s += 1;
+        }
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-elem-drop-x
+    inline fn opElemDrop(self: *Self, elem_idx: types.ElemIdx) void {
+        const module = self.stack.topFrame().module;
+        const a = module.elem_addrs[elem_idx];
+        self.store.elems.items[a].elem = &.{};
+    }
+
     // memory instructions
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-xref-syntax-instructions-syntax-memarg-mathit-memarg-and-t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-n-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opLoad(self: *Self, comptime T: type, comptime N: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
@@ -944,6 +977,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, val);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-xref-syntax-instructions-syntax-memarg-mathit-memarg-and-t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-n-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opStore(self: *Self, comptime T: type, comptime bit_size: u32, mem_arg: Instruction.MemArg) error{OutOfBoundsMemoryAccess}!void {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
@@ -965,13 +999,7 @@ pub const Instance = struct {
         }
     }
 
-    inline fn opDataDrop(self: *Self, data_idx: types.DataIdx) void {
-        const module = self.stack.topFrame().module;
-        const a = module.data_addrs[data_idx];
-        const data = &self.store.datas.items[a];
-        data.data = &.{};
-    }
-
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-size
     inline fn opMemorySize(self: *Self) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
@@ -981,7 +1009,6 @@ pub const Instance = struct {
         try self.stack.pushValueAs(i32, sz);
     }
 
-    /// `memory.grow` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-grow
     inline fn opMemoryGrow(self: *Self) error{OutOfMemory}!void {
         const module = self.stack.topFrame().module;
@@ -1024,39 +1051,30 @@ pub const Instance = struct {
         return new_data;
     }
 
-    /// `memory.init x` in wasm spec
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-init-x
-    inline fn opMemoryInit(self: *Self, data_idx: types.DataIdx) (Error || error{OutOfMemory})!void {
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-fill
+    inline fn opMemoryFill(self: *Self) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
-        const mem = self.store.mems.items[mem_addr];
-        const data_addr = module.data_addrs[data_idx];
-        const data = self.store.datas.items[data_addr];
+        const mem_inst = self.store.mems.items[mem_addr];
 
         var n: u32 = @bitCast(self.stack.pop().value.asI32());
-        var s: u32 = @bitCast(self.stack.pop().value.asI32());
+        const val = self.stack.pop();
         var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
-        const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > data.data.len) {
-            return Error.OutOfBoundsMemoryAccess;
-        }
-
         const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > mem.data.len) {
+        if (d_plus_n[1] == 1 or d_plus_n[0] > mem_inst.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
 
         while (n > 0) : (n -= 1) {
-            const b = data.data[s];
             try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
-            try self.stack.pushValueAs(i32, b);
+            try self.stack.push(val);
             try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
-            s += 1;
             d += 1;
         }
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-copy
     inline fn opMemoryCopy(self: *Self) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
@@ -1093,26 +1111,44 @@ pub const Instance = struct {
         }
     }
 
-    inline fn opMemoryFill(self: *Self) (Error || error{OutOfMemory})!void {
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-init-x
+    inline fn opMemoryInit(self: *Self, data_idx: types.DataIdx) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
-        const mem_inst = self.store.mems.items[mem_addr];
+        const mem = self.store.mems.items[mem_addr];
+        const data_addr = module.data_addrs[data_idx];
+        const data = self.store.datas.items[data_addr];
 
         var n: u32 = @bitCast(self.stack.pop().value.asI32());
-        const val = self.stack.pop();
+        var s: u32 = @bitCast(self.stack.pop().value.asI32());
         var d: u32 = @bitCast(self.stack.pop().value.asI32());
 
+        const s_plus_n = @addWithOverflow(s, n);
+        if (s_plus_n[1] == 1 or s_plus_n[0] > data.data.len) {
+            return Error.OutOfBoundsMemoryAccess;
+        }
+
         const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > mem_inst.data.len) {
+        if (d_plus_n[1] == 1 or d_plus_n[0] > mem.data.len) {
             return Error.OutOfBoundsMemoryAccess;
         }
 
         while (n > 0) : (n -= 1) {
+            const b = data.data[s];
             try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
-            try self.stack.push(val);
+            try self.stack.pushValueAs(i32, b);
             try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
+            s += 1;
             d += 1;
         }
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-data-drop-x
+    inline fn opDataDrop(self: *Self, data_idx: types.DataIdx) void {
+        const module = self.stack.topFrame().module;
+        const a = module.data_addrs[data_idx];
+        const data = &self.store.datas.items[a];
+        data.data = &.{};
     }
 
     inline fn basetype(comptime T: type) type {
@@ -1143,12 +1179,14 @@ pub const Instance = struct {
         try self.stack.pushValueAs(B, converted_result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-unop-mathit-unop
     inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) error{OutOfMemory}!void {
         const value = self.stack.pop().value.as(T);
         const result = f(T, value);
         try self.stack.pushValueAs(T, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-binop-mathit-binop
     inline fn binOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) (Error || error{OutOfMemory})!void {
         const B = basetype(T);
         const rhs: T = @bitCast(self.stack.pop().value.as(B));
@@ -1157,12 +1195,14 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-testop-mathit-testop
     inline fn testOp(self: *Self, comptime T: type, comptime f: fn (type, T) i32) error{OutOfMemory}!void {
         const value = self.stack.pop().value.as(T);
         const result = f(T, value);
         try self.stack.pushValueAs(i32, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-relop-mathit-relop
     inline fn relOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) i32) error{OutOfMemory}!void {
         const B = basetype(T);
         const rhs: T = @bitCast(self.stack.pop().value.as(B));
@@ -1171,6 +1211,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(i32, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-xref-syntax-instructions-syntax-cvtop-mathit-cvtop-mathsf-t-1-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
     inline fn cvtOp(self: *Self, comptime T2: type, comptime T1: type, comptime f: fn (type, type, T1) Error!T2) (Error || error{OutOfMemory})!void {
         const value = self.stack.pop().value.as(T1);
         const result: T2 = try f(T2, T1, value);
