@@ -1292,7 +1292,7 @@ const FlowControl = union(enum) {
         if (cond != 0) {
             return .none;
         } else if (info.@"else" != null) {
-            return .{ .jump = info.@"else".? };
+            return .{ .jump = info.@"else".? + 1 }; // jump next to `else`
         } else {
             return .{ .jump = info.end };
         }

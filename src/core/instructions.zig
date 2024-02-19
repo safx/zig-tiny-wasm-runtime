@@ -30,7 +30,7 @@ pub const Instruction = union(enum) {
 
     pub const IfBlockInfo = struct {
         type: BlockType,
-        @"else": ?InstractionAddr = 0,
+        @"else": ?InstractionAddr = null,
         end: InstractionAddr = 0,
     };
 

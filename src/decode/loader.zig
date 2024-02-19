@@ -104,23 +104,39 @@ pub const ModuleLoader = struct {
         const sect = utils.sectionFromNum(section_id) orelse return Error.MalformedSectionId;
         const size = try self.reader.readVarU32();
 
-        //std.debug.print("* {} ({})\n", .{ sect, size });
-        switch (sect) {
-            .custom => return .{ .custom = try self.custom(size) },
-            .type => return .{ .type = try self.createArray(types.FuncType, funcType) },
-            .import => return .{ .import = try self.createArray(types.Import, import) },
-            .function => return .{ .function = try self.createArray(types.FuncIdx, funcidx) },
-            .table => return .{ .table = try self.createArray(types.TableType, table) },
-            .memory => return .{ .memory = try self.createArray(types.MemoryType, memtype) },
-            .global => return .{ .global = try self.createArray(types.Global, global) },
-            .@"export" => return .{ .@"export" = try self.createArray(types.Export, @"export") },
-            .start => return .{ .start = try self.reader.readVarU32() },
-            .element => return .{ .element = try self.createArray(types.Element, elem) },
-            .code => return .{ .code = try self.createArray(ModFunc, code) },
-            .data => return .{ .data = try self.createArray(types.Data, data) },
-            .data_count => return .{ .data_count = try self.reader.readVarU32() },
-            _ => return Error.MalformedSectionId,
+        const start_pos = self.reader.position;
+        const sec = self.sectionInternal(sect, size);
+        const pos = self.reader.position;
+        if (pos - start_pos != size) {
+            _ = sec catch |err| {
+                if (err == Error.EndOpcodeExpected) {
+                    return Error.SectionSizeMismatch;
+                }
+                return err;
+            };
+            return Error.SectionSizeMismatch;
         }
+
+        return try sec;
+    }
+
+    fn sectionInternal(self: *Self, sect: std.wasm.Section, size: u32) (Error || error{OutOfMemory})!Section {
+        return switch (sect) {
+            .custom => .{ .custom = try self.custom(size) },
+            .type => .{ .type = try self.createArray(types.FuncType, funcType) },
+            .import => .{ .import = try self.createArray(types.Import, import) },
+            .function => .{ .function = try self.createArray(types.FuncIdx, funcidx) },
+            .table => .{ .table = try self.createArray(types.TableType, table) },
+            .memory => .{ .memory = try self.createArray(types.MemoryType, memtype) },
+            .global => .{ .global = try self.createArray(types.Global, global) },
+            .@"export" => .{ .@"export" = try self.createArray(types.Export, @"export") },
+            .start => .{ .start = try self.reader.readVarU32() },
+            .element => .{ .element = try self.createArray(types.Element, elem) },
+            .code => .{ .code = try self.createArray(ModFunc, code) },
+            .data => .{ .data = try self.createArray(types.Data, data) },
+            .data_count => .{ .data_count = try self.reader.readVarU32() },
+            _ => Error.MalformedSectionId,
+        };
     }
 
     // section

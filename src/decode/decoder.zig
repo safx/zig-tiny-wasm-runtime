@@ -12,72 +12,46 @@ pub const Decoder = struct {
         return .{};
     }
 
-    pub fn parseAll(self: Decoder, buffer: []const u8, outputArray: *InstArray, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!void {
+    pub fn parseAll(_: Decoder, buffer: []const u8, outputArray: *InstArray, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!void {
         var reader = BinaryReader.new(buffer);
+        var nested_blocks = std.ArrayList(u32).init(allocator);
+
         while (!reader.eof()) {
             const inst = try parse(&reader, allocator);
+            const pos: u32 = @intCast(outputArray.items.len);
             try outputArray.append(inst);
 
             if (inst == .block or inst == .loop or inst == .@"if") {
-                try self.processControlBlock(&reader, outputArray, allocator, inst);
+                try nested_blocks.append(pos);
+            } else if (inst == .@"else") {
+                const idx = nested_blocks.getLast();
+                try fillElse(&outputArray.items[idx], pos);
+            } else if (inst == .end) {
+                if (nested_blocks.items.len == 0)
+                    return; // success
+
+                const idx = nested_blocks.pop();
+                try fillEnd(&outputArray.items[idx], pos);
             }
+        }
+
+        return Error.EndOpcodeExpected;
+    }
+
+    fn fillEnd(inst: *Instruction, pos: u32) Error!void {
+        switch (inst.*) {
+            .block => inst.block.end = pos,
+            .loop => inst.loop.end = pos,
+            .@"if" => inst.@"if".end = pos,
+            else => return Error.OtherError,
         }
     }
 
-    fn processControlBlock(self: Decoder, reader: *BinaryReader, outputArray: *InstArray, allocator: std.mem.Allocator, inst: Instruction) (Error || error{OutOfMemory})!void {
-        const block_pos = outputArray.items.len - 1;
-        switch (inst) {
-            .block => {
-                const pos = try self.parseForBlockOrLoop(reader, outputArray, allocator);
-                outputArray.items[block_pos].block.end = pos;
-            },
-            .loop => {
-                const pos = try self.parseForBlockOrLoop(reader, outputArray, allocator);
-                outputArray.items[block_pos].loop.end = pos;
-            },
-            .@"if" => {
-                const val = try self.parseForIf(reader, outputArray, allocator);
-                outputArray.items[block_pos].@"if".@"else" = val[0];
-                outputArray.items[block_pos].@"if".end = val[1].?;
-            },
-            else => return,
+    fn fillElse(inst: *Instruction, pos: u32) Error!void {
+        switch (inst.*) {
+            .@"if" => inst.@"if".@"else" = pos,
+            else => return Error.OtherError,
         }
-    }
-
-    fn parseForBlockOrLoop(self: Decoder, reader: *BinaryReader, outputArray: *InstArray, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!types.InstractionAddr {
-        while (!reader.eof()) {
-            const inst = try parse(reader, allocator);
-            try outputArray.append(inst);
-
-            switch (inst) {
-                .end => {
-                    return @intCast(outputArray.items.len - 1);
-                },
-                else => try self.processControlBlock(reader, outputArray, allocator, inst),
-            }
-        }
-        unreachable;
-    }
-
-    fn parseForIf(self: Decoder, reader: *BinaryReader, outputArray: *InstArray, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const ?types.InstractionAddr {
-        var pos1: ?types.InstractionAddr = null;
-        while (!reader.eof()) {
-            const inst = try parse(reader, allocator);
-            try outputArray.append(inst);
-
-            switch (inst) {
-                .@"else" => {
-                    std.debug.assert(pos1 == null);
-                    pos1 = @intCast(outputArray.items.len);
-                },
-                .end => {
-                    const pos2: types.InstractionAddr = @intCast(outputArray.items.len - 1);
-                    return &.{ pos1, pos2 };
-                },
-                else => try self.processControlBlock(reader, outputArray, allocator, inst),
-            }
-        }
-        unreachable;
     }
 
     fn parse(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction {

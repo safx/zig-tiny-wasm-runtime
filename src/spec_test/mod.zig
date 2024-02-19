@@ -78,7 +78,7 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
                 @panic("Test failed.");
             },
             // .assert_exhaustion =>
-            // .assert_malformed => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
+            .assert_malformed => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
             // .assert_invalid => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
             .assert_unlinkable => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
             .assert_uninstantiable => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
