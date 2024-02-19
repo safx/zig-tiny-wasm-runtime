@@ -511,8 +511,8 @@ pub const Instance = struct {
             .i32_trunc_f32_u => try self.instrEOp(u32, f32, opTrunc),
             .i32_trunc_f64_s => try self.instrEOp(i32, f64, opTrunc),
             .i32_trunc_f64_u => try self.instrEOp(u32, f64, opTrunc),
-            .i64_extend_i32_s => try self.instrOp(i64, i32, opExtend32),
-            .i64_extend_i32_u => try self.instrOp(u64, u32, opExtend32),
+            .i64_extend_i32_s => try self.instrExtOp(i64, i32, i32, opExtend),
+            .i64_extend_i32_u => try self.instrExtOp(u64, u32, u32, opExtend),
             .i64_trunc_f32_s => try self.instrEOp(i64, f32, opTrunc),
             .i64_trunc_f32_u => try self.instrEOp(u64, f32, opTrunc),
             .i64_trunc_f64_s => try self.instrEOp(i64, f64, opTrunc),
@@ -533,11 +533,11 @@ pub const Instance = struct {
             .f64_reinterpret_i64 => try self.instrOp(f64, i64, opReinterpret),
 
             // numeric instructions (5)
-            .i32_extend8_s => try self.instrOp(i32, i32, opExtend8),
-            .i32_extend16_s => try self.instrOp(i32, i32, opExtend16),
-            .i64_extend8_s => try self.instrOp(i64, i64, opExtend8),
-            .i64_extend16_s => try self.instrOp(i64, i64, opExtend16),
-            .i64_extend32_s => try self.instrOp(i64, i64, opExtend32),
+            .i32_extend8_s => try self.instrExtOp(i32, i32, i8, opExtend),
+            .i32_extend16_s => try self.instrExtOp(i32, i32, i16, opExtend),
+            .i64_extend8_s => try self.instrExtOp(i64, i64, i8, opExtend),
+            .i64_extend16_s => try self.instrExtOp(i64, i64, i16, opExtend),
+            .i64_extend32_s => try self.instrExtOp(i64, i64, i32, opExtend),
 
             // saturating truncation instructions
             .i32_trunc_sat_f32_s => try self.cvtOp(i32, f32, opTruncSat),
@@ -1114,6 +1114,14 @@ pub const Instance = struct {
         try self.stack.pushValueAs(B, converted_result);
     }
 
+    inline fn instrExtOp(self: *Self, comptime R: type, comptime T: type, comptime S: type, comptime f: fn (type, type, type, T) R) error{OutOfMemory}!void {
+        const value: T = @bitCast(self.stack.pop().value.as(basetype(T)));
+        const result: R = f(R, T, S, value);
+        const B = basetype(R);
+        const converted_result: B = @bitCast(result);
+        try self.stack.pushValueAs(B, converted_result);
+    }
+
     inline fn instrEOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) (Error || error{OutOfMemory})!void {
         const value: T = @bitCast(self.stack.pop().value.as(basetype(T)));
         const result: R = try f(R, T, value);
@@ -1332,18 +1340,8 @@ fn opDemote(comptime R: type, comptime T: type, value: T) R {
     return result;
 }
 
-fn opExtend8(comptime R: type, comptime T: type, value: T) R {
-    const result: i8 = @truncate(value);
-    return result;
-}
-
-fn opExtend16(comptime R: type, comptime T: type, value: T) R {
-    const result: i16 = @truncate(value);
-    return result;
-}
-
-fn opExtend32(comptime R: type, comptime T: type, value: T) R {
-    const result: T = @truncate(value);
+fn opExtend(comptime R: type, comptime T: type, comptime S: type, value: T) R {
+    const result: S = @truncate(value);
     return result;
 }
 
@@ -1613,6 +1611,18 @@ fn canonNan(comptime T: type) T {
     return @bitCast(v);
 }
 
+fn valueTypeFromValue(value: types.Value) types.ValueType {
+    return switch (value) {
+        .i32 => .i32,
+        .i64 => .i64,
+        .f32 => .f32,
+        .f64 => .f64,
+        .v128 => .v128,
+        .func_ref => .func_ref,
+        .extern_ref => .extern_ref,
+    };
+}
+
 test opFloatEq {
     const expectEqual = std.testing.expectEqual;
     try expectEqual(@as(i32, 0), opFloatEq(f32, std.math.nan_f32, 1));
@@ -1631,14 +1641,7 @@ test opFloatNe {
     try expectEqual(@as(i32, 1), opFloatNe(f32, 1.0, 0.0));
 }
 
-fn valueTypeFromValue(value: types.Value) types.ValueType {
-    return switch (value) {
-        .i32 => .i32,
-        .i64 => .i64,
-        .f32 => .f32,
-        .f64 => .f64,
-        .v128 => .v128,
-        .func_ref => .func_ref,
-        .extern_ref => .extern_ref,
-    };
+test opExtend {
+    const expectEqual = std.testing.expectEqual;
+    try expectEqual(@as(i64, -2147483648), opExtend(i64, i64, i32, 2147483648));
 }
