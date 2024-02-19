@@ -49,8 +49,8 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
     var current_module: *types.ModuleInst = try engine.loadModuleFromPath("spectest.wasm", "spectest");
 
     for (commands) |cmd| {
-        // std.debug.print("-" ** 75 ++ "\n", .{});
-        // std.debug.print("{any}\n", .{cmd});
+        std.debug.print("-" ** 75 ++ "\n", .{});
+        std.debug.print("{any}\n", .{cmd});
         //std.debug.print("{}\n", .{std.json.fmt(cmd, .{})});
 
         switch (cmd) {

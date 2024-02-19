@@ -6,58 +6,58 @@ pub const RuntimeError = @import("wasm-runtime").Error;
 pub fn decodeErrorFromString(str: []const u8) DecodeError {
     const E = DecodeError;
 
-    if (strcmp(str, "END opcode expected")) return E.EOF; // FIXME
-    if (strcmp(str, "alignment")) return E.EOF; // FIXME
-    if (strcmp(str, "constant out of range")) return E.EOF; // FIXME
-    if (strcmp(str, "data count and data section have inconsistent lengths")) return E.EOF; // FIXME
-    if (strcmp(str, "data count section required")) return E.EOF; // FIXME
-    if (strcmp(str, "duplicate func")) return E.EOF; // FIXME
-    if (strcmp(str, "duplicate global")) return E.EOF; // FIXME
-    if (strcmp(str, "duplicate local")) return E.EOF; // FIXME
-    if (strcmp(str, "duplicate memory")) return E.EOF; // FIXME
-    if (strcmp(str, "duplicate table")) return E.EOF; // FIXME
-    if (strcmp(str, "function and code section have inconsistent lengths")) return E.EOF; // FIXME
-    if (strcmp(str, "i32 constant out of range")) return E.EOF; // FIXME
-    if (strcmp(str, "i32 constant")) return E.EOF; // FIXME
-    if (strcmp(str, "illegal opcode")) return E.EOF; // FIXME
-    if (strcmp(str, "import after function")) return E.EOF; // FIXME
-    if (strcmp(str, "import after global")) return E.EOF; // FIXME
-    if (strcmp(str, "import after memory")) return E.EOF; // FIXME
-    if (strcmp(str, "import after table")) return E.EOF; // FIXME
-    if (strcmp(str, "inline function type")) return E.EOF; // FIXME
-    if (strcmp(str, "integer representation too long")) return E.EOF; // FIXME
-    if (strcmp(str, "integer too large")) return E.EOF; // FIXME
-    if (strcmp(str, "length out of bounds")) return E.EOF; // FIXME
-    if (strcmp(str, "magic header not detected")) return E.EOF; // FIXME
-    if (strcmp(str, "malformed UTF-8 encoding")) return E.EOF; // FIXME
-    if (strcmp(str, "malformed import kind")) return E.EOF; // FIXME
-    if (strcmp(str, "malformed mutability")) return E.EOF; // FIXME
-    if (strcmp(str, "malformed reference type")) return E.EOF; // FIXME
-    if (strcmp(str, "malformed section id")) return E.EOF; // FIXME
-    if (strcmp(str, "mismatching label")) return E.EOF; // FIXME
-    if (strcmp(str, "multiple start sections")) return E.EOF; // FIXME
-    if (strcmp(str, "section size mismatch")) return E.EOF; // FIXME
-    if (strcmp(str, "too many locals")) return E.EOF; // FIXME
-    if (strcmp(str, "unexpected content after last section")) return E.EOF; // FIXME
-    if (strcmp(str, "unexpected end of section or function")) return E.EOF; // FIXME
-    if (strcmp(str, "unexpected end")) return E.EOF; // FIXME
-    if (strcmp(str, "unexpected token")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown binary version")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown label")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator anyfunc")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator current_memory")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator f32x4.convert_s/i32x4")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator get_global")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator get_local")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator grow_memory")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator i32.trunc_s:sat/f32")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator i32.wrap/i64")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator set_global")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator set_local")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator tee_local")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown operator")) return E.EOF; // FIXME
-    if (strcmp(str, "unknown type")) return E.EOF; // FIXME
-    if (strcmp(str, "zero byte expected")) return E.EOF; // FIXME
+    if (strcmp(str, "END opcode expected")) return E.EndOpcodeExpected;
+    if (strcmp(str, "alignment")) return E.OtherError; // FIXME
+    if (strcmp(str, "constant out of range")) return E.OtherError; // FIXME
+    if (strcmp(str, "data count and data section have inconsistent lengths")) return E.OtherError; // FIXME
+    if (strcmp(str, "data count section required")) return E.OtherError; // FIXME
+    if (strcmp(str, "duplicate func")) return E.OtherError; // FIXME
+    if (strcmp(str, "duplicate global")) return E.OtherError; // FIXME
+    if (strcmp(str, "duplicate local")) return E.OtherError; // FIXME
+    if (strcmp(str, "duplicate memory")) return E.OtherError; // FIXME
+    if (strcmp(str, "duplicate table")) return E.OtherError; // FIXME
+    if (strcmp(str, "function and code section have inconsistent lengths")) return E.OtherError; // FIXME
+    if (strcmp(str, "i32 constant out of range")) return E.OtherError; // FIXME
+    if (strcmp(str, "i32 constant")) return E.MagicHeaderNotDetected; // TODO: address.1.wat failed to decode
+    if (strcmp(str, "illegal opcode")) return E.OtherError; // FIXME
+    if (strcmp(str, "import after function")) return E.OtherError; // FIXME
+    if (strcmp(str, "import after global")) return E.OtherError; // FIXME
+    if (strcmp(str, "import after memory")) return E.OtherError; // FIXME
+    if (strcmp(str, "import after table")) return E.OtherError; // FIXME
+    if (strcmp(str, "inline function type")) return E.OtherError; // FIXME
+    if (strcmp(str, "integer representation too long")) return E.OtherError; // FIXME
+    if (strcmp(str, "integer too large")) return E.OtherError; // FIXME
+    if (strcmp(str, "length out of bounds")) return E.OtherError; // FIXME
+    if (strcmp(str, "magic header not detected")) return E.MagicHeaderNotDetected;
+    if (strcmp(str, "malformed UTF-8 encoding")) return E.OtherError; // FIXME
+    if (strcmp(str, "malformed import kind")) return E.MalformedImportKind;
+    if (strcmp(str, "malformed mutability")) return E.OtherError; // FIXME
+    if (strcmp(str, "malformed reference type")) return E.MalformedRefType;
+    if (strcmp(str, "malformed section id")) return E.MalformedSectionId;
+    if (strcmp(str, "mismatching label")) return E.OtherError; // FIXME
+    if (strcmp(str, "multiple start sections")) return E.OtherError; // FIXME
+    if (strcmp(str, "section size mismatch")) return E.SectionSizeMismatch;
+    if (strcmp(str, "too many locals")) return E.OtherError; // FIXME
+    if (strcmp(str, "unexpected content after last section")) return E.OtherError; // FIXME
+    if (strcmp(str, "unexpected end of section or function")) return E.UnexpectedEndOfSectionFunction;
+    if (strcmp(str, "unexpected end")) return E.EOF;
+    if (strcmp(str, "unexpected token")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown binary version")) return E.UnknownBinaryVersion;
+    if (strcmp(str, "unknown label")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator anyfunc")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator current_memory")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator f32x4.convert_s/i32x4")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator get_global")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator get_local")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator grow_memory")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator i32.trunc_s:sat/f32")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator i32.wrap/i64")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator set_global")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator set_local")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator tee_local")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown operator")) return E.OtherError; // FIXME
+    if (strcmp(str, "unknown type")) return E.OtherError; // FIXME
+    if (strcmp(str, "zero byte expected")) return E.OtherError; // FIXME
 
     std.debug.print("? Unknown validation error \"{s}\" {any}\n", .{ str, str });
     unreachable;
