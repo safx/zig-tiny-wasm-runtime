@@ -378,6 +378,13 @@ pub const RefValue = union(enum) {
             inline else => |val| val == null,
         };
     }
+
+    pub fn format(self: Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        switch (self) {
+            .func_ref => |val| if (val) |v| try writer.print("{}_ref", .{v}) else try writer.print("null_ref", .{}),
+            .extern_ref => |val| if (val) |v| try writer.print("{}_extref", .{v}) else try writer.print("null_extref", .{}),
+        }
+    }
 };
 
 pub const ExternalValue = union(std.wasm.ExternalKind) {

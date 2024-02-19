@@ -6,10 +6,11 @@ pub fn build(b: *std.Build) void {
 
     const core = ModuleInfo.init(b, "wasm-core", "src/core/mod.zig", &.{});
     const decode = ModuleInfo.init(b, "wasm-decode", "src/decode/mod.zig", &.{core});
+    const validate = ModuleInfo.init(b, "wasm-validate", "src/validate/mod.zig", &.{core});
     const runtime = ModuleInfo.init(b, "wasm-runtime", "src/runtime/mod.zig", &.{ core, decode });
-    const spec = ModuleInfo.init(b, "wasm-spec-test", "src/spec_test/mod.zig", &.{ core, decode, runtime });
+    const spec = ModuleInfo.init(b, "wasm-spec-test", "src/spec_test/mod.zig", &.{ core, decode, validate, runtime });
 
-    const moduleInfos = .{ core, decode, runtime, spec };
+    const moduleInfos = .{ core, decode, validate, runtime, spec };
 
     const exe = b.addExecutable(.{
         .name = "zwasmi",

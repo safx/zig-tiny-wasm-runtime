@@ -264,6 +264,15 @@ pub const Instance = struct {
                 .declarative => try self.execOneInstruction(.{ .elem_drop = @intCast(i) }),
                 else => continue,
             }
+
+            self.debugPrint("==============>>>>>>>>>>>>>>>>>>>>\n", .{});
+            for (self.store.tables.items, 0..) |item, j| {
+                self.debugPrint("Table {} = [{}]{{", .{ j, item.elem.len });
+                for (item.elem[0..@min(19, item.elem.len)]) |e| {
+                    self.debugPrint("{any}, ", .{e});
+                }
+                self.debugPrint("}}\n", .{});
+            }
         }
 
         // 16: data segment
@@ -658,17 +667,20 @@ pub const Instance = struct {
         const i: u32 = @bitCast(self.stack.pop().value.asI32());
         if (i >= tab.elem.len)
             return Error.UndefinedElement;
+
+        self.debugPrint("==============>>>> ta={} i={}\n", .{ ta, i });
+        for (self.store.tables.items, 0..) |item, j| {
+            self.debugPrint("Table {} = [{}]{{", .{ j, item.elem.len });
+            for (item.elem[0..@min(19, item.elem.len)]) |e| {
+                self.debugPrint("{any}, ", .{e});
+            }
+            self.debugPrint("}}\n", .{});
+        }
+
         const r = tab.elem[i];
         if (r.isNull())
             return Error.UninitializedElement;
         const a = r.func_ref.?;
-
-        self.debugPrint("==============>>>> ta={} i={}\n", .{ ta, i });
-        self.debugPrint("Table {} = [{}]{{", .{ ta, tab.elem.len });
-        for (tab.elem[0..@min(19, tab.elem.len)]) |e| {
-            self.debugPrint("{any}, ", .{e.func_ref});
-        }
-        self.debugPrint("}}\n", .{});
 
         const f = self.store.funcs.items[@intCast(a)];
         const ft_actual = f.type;

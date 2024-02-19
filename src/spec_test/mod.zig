@@ -4,7 +4,7 @@ const types = struct {
     usingnamespace @import("wasm-runtime");
     usingnamespace @import("./types.zig");
 };
-const Error = @import("./errors.zig").Error;
+const Error = @import("./errors.zig").RuntimeError;
 const reader = @import("./reader.zig");
 
 test "Wasm spec test" {
@@ -49,8 +49,8 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
     var current_module: *types.ModuleInst = try engine.loadModuleFromPath("spectest.wasm", "spectest");
 
     for (commands) |cmd| {
-        std.debug.print("-" ** 75 ++ "\n", .{});
-        std.debug.print("{any}\n", .{cmd});
+        // std.debug.print("-" ** 75 ++ "\n", .{});
+        // std.debug.print("{any}\n", .{cmd});
         //std.debug.print("{}\n", .{std.json.fmt(cmd, .{})});
 
         switch (cmd) {
@@ -77,6 +77,9 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
                 std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
                 @panic("Test failed.");
             },
+            // .assert_invalid => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
+            .assert_unlinkable => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
+            .assert_uninstantiable => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
             else => {},
         }
     }
@@ -97,6 +100,15 @@ fn doAction(action: types.Action, engine: *types.Engine, current_module: *types.
             return array;
         },
     }
+}
+
+fn exepecError(engine: *types.Engine, file_name: []const u8, trap: anyerror, line: u32) !void {
+    _ = engine.loadModuleFromPath(file_name, null) catch |err| {
+        validateCatchedError(trap, err, line);
+        return;
+    };
+    std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{trap});
+    @panic("Test failed.");
 }
 
 fn validateResult(expected_value: []const types.Result, actual_result: []const types.Value, line: u32) void {

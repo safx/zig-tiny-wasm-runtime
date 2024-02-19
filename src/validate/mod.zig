@@ -1,5 +1,6 @@
 pub const std = @import("std");
 pub const wa = @import("wasm-core");
+pub const Error = @import("./errors.zig").Error;
 
 pub fn validate(module: wa.Module) void {
     _ = module;

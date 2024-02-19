@@ -1,7 +1,7 @@
 const std = @import("std");
 const decode = @import("wasm-decode");
 const runtime = @import("wasm-runtime");
-const Error = @import("./errors.zig").Error;
+const errors = @import("./errors.zig");
 
 // https://github.com/WebAssembly/spec/tree/master/interpreter#scripts
 
@@ -19,9 +19,9 @@ pub const Command = union(enum) {
     assert_trap: AssertTrapCommandArg,
     assert_exhaustion,
     assert_malformed,
-    assert_invalid,
-    assert_unlinkable,
-    assert_uninstantiable,
+    assert_invalid: AssertInvalidCommandArg,
+    assert_unlinkable: AssertUnlinkableCommandArg,
+    assert_uninstantiable: AssertUninstantiableCommandArg,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
@@ -112,10 +112,40 @@ pub const AssertReturnCommandArg = struct {
 pub const AssertTrapCommandArg = struct {
     line: u32,
     action: Action,
-    trap: Error,
+    trap: errors.RuntimeError,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         _ = try writer.print("{any} (-> {}) (line:{})", .{ self.action, self.trap, self.line });
+    }
+};
+
+pub const AssertInvalidCommandArg = struct {
+    line: u32,
+    file_name: []const u8,
+    trap: errors.ValidationError,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = try writer.print("{s} (-> {}) (line:{})", .{ self.file_name, self.trap, self.line });
+    }
+};
+
+pub const AssertUnlinkableCommandArg = struct {
+    line: u32,
+    file_name: []const u8,
+    trap: errors.DecodeError,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = try writer.print("{s} (-> {}) (line:{})", .{ self.file_name, self.trap, self.line });
+    }
+};
+
+pub const AssertUninstantiableCommandArg = struct {
+    line: u32,
+    file_name: []const u8,
+    trap: errors.RuntimeError,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = try writer.print("{s} (-> {}) (line:{})", .{ self.file_name, self.trap, self.line });
     }
 };
 

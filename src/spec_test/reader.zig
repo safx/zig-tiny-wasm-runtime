@@ -48,17 +48,23 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
     } else if (strcmp(cmd_type, "assert_trap")) {
         const action = try actionFromJson(json.object.get("action").?, allocator);
         const text = json.object.get("text").?.string;
-        return .{ .assert_trap = .{ .line = line, .action = action, .trap = errors.errorFromString(text) } };
+        return .{ .assert_trap = .{ .line = line, .action = action, .trap = errors.runtimeErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_exhaustion")) {
         return .assert_exhaustion;
     } else if (strcmp(cmd_type, "assert_malformed")) {
         return .assert_malformed;
     } else if (strcmp(cmd_type, "assert_invalid")) {
-        return .assert_invalid;
+        const file_name = json.object.get("filename").?.string;
+        const text = json.object.get("text").?.string;
+        return .{ .assert_invalid = .{ .line = line, .file_name = file_name, .trap = errors.validationErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_unlinkable")) {
-        return .assert_unlinkable;
+        const file_name = json.object.get("filename").?.string;
+        const text = json.object.get("text").?.string;
+        return .{ .assert_unlinkable = .{ .line = line, .file_name = file_name, .trap = errors.decodeErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_uninstantiable")) {
-        return .assert_uninstantiable;
+        const file_name = json.object.get("filename").?.string;
+        const text = json.object.get("text").?.string;
+        return .{ .assert_uninstantiable = .{ .line = line, .file_name = file_name, .trap = errors.runtimeErrorFromString(text) } };
     } else {
         std.debug.print("? Unknown command {s}\n", .{cmd_type});
         unreachable;
