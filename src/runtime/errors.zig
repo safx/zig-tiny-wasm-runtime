@@ -9,5 +9,6 @@ pub const Error = error{
     IndirectCallTypeMismatch,
     InvocationParameterMismatch,
     InvalidConversionToInteger,
+    InstantiationFailed,
     Unreachable,
 };

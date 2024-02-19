@@ -166,6 +166,11 @@ pub const Instance = struct {
                     if (!self.stack.hasFrame()) {
                         return ret;
                     }
+
+                    // FIXME: function called from `start` needs this
+                    if (self.stack.topFrame().instructions.len == 0) {
+                        return &.{};
+                    }
                 },
             }
         }
@@ -178,11 +183,16 @@ pub const Instance = struct {
         // 1: validate
         // 2: assert
         // 3: check length
-        // 4: verify external value
-        // 5: ????
+        if (module.imports.len != extern_vals.len) {
+            return Error.InstantiationFailed;
+        }
 
-        // 6, 7: push init frame to stack
+        // 4: verify external value
+
+        // 5: aux module
         var aux_module = try types.ModuleInst.auxiliaryInstance(&self.store, module, extern_vals, self.allocator);
+
+        // 6, 7: push aux frame to stack
         const aux_frame_init = types.ActivationFrame{
             .module = &aux_module,
         };
@@ -273,11 +283,14 @@ pub const Instance = struct {
         }
 
         // 17: start function
+        if (module.start) |s| {
+            try self.invokeFunction(mod_inst.func_addrs[s]);
+            _ = try self.execLoop();
+        }
 
-        // 18: assert
-
-        // 19: pop aux frame
-        _ = self.stack.pop();
+        // 18, 19: pop aux frame
+        const popped_value = self.stack.pop();
+        assert(popped_value == .frame);
 
         return mod_inst;
     }
