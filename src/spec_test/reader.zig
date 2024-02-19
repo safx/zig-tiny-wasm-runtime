@@ -52,7 +52,9 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
     } else if (strcmp(cmd_type, "assert_exhaustion")) {
         return .assert_exhaustion;
     } else if (strcmp(cmd_type, "assert_malformed")) {
-        return .assert_malformed;
+        const file_name = json.object.get("filename").?.string;
+        const text = json.object.get("text").?.string;
+        return .{ .assert_malformed = .{ .line = line, .file_name = file_name, .trap = errors.decodeErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_invalid")) {
         const file_name = json.object.get("filename").?.string;
         const text = json.object.get("text").?.string;
@@ -60,7 +62,7 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
     } else if (strcmp(cmd_type, "assert_unlinkable")) {
         const file_name = json.object.get("filename").?.string;
         const text = json.object.get("text").?.string;
-        return .{ .assert_unlinkable = .{ .line = line, .file_name = file_name, .trap = errors.decodeErrorFromString(text) } };
+        return .{ .assert_unlinkable = .{ .line = line, .file_name = file_name, .trap = errors.linkErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_uninstantiable")) {
         const file_name = json.object.get("filename").?.string;
         const text = json.object.get("text").?.string;

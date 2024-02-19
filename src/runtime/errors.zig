@@ -11,4 +11,6 @@ pub const Error = error{
     InvalidConversionToInteger,
     InstantiationFailed,
     Unreachable,
+    IncompatibleImportType,
+    UnknownImport,
 };

@@ -13,7 +13,5 @@ pub const Error = error{
     MalformedMutId,
     MalformedBlockType,
     TypeMismatch,
-    IncompatibleImportType,
-    UnknownImport,
     OtherError,
 };

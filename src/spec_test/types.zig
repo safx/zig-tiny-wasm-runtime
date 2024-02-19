@@ -18,7 +18,7 @@ pub const Command = union(enum) {
     assert_return: AssertReturnCommandArg,
     assert_trap: AssertTrapCommandArg,
     assert_exhaustion,
-    assert_malformed,
+    assert_malformed: AssertMalformedCommandArg,
     assert_invalid: AssertInvalidCommandArg,
     assert_unlinkable: AssertUnlinkableCommandArg,
     assert_uninstantiable: AssertUninstantiableCommandArg,
@@ -119,6 +119,16 @@ pub const AssertTrapCommandArg = struct {
     }
 };
 
+pub const AssertMalformedCommandArg = struct {
+    line: u32,
+    file_name: []const u8,
+    trap: errors.DecodeError,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = try writer.print("{s} (-> {}) (line:{})", .{ self.file_name, self.trap, self.line });
+    }
+};
+
 pub const AssertInvalidCommandArg = struct {
     line: u32,
     file_name: []const u8,
@@ -132,7 +142,7 @@ pub const AssertInvalidCommandArg = struct {
 pub const AssertUnlinkableCommandArg = struct {
     line: u32,
     file_name: []const u8,
-    trap: errors.DecodeError,
+    trap: errors.RuntimeError,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         _ = try writer.print("{s} (-> {}) (line:{})", .{ self.file_name, self.trap, self.line });
