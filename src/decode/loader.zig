@@ -105,19 +105,13 @@ pub const ModuleLoader = struct {
         const size = try self.reader.readVarU32();
 
         const start_pos = self.reader.position;
-        const sec = self.sectionInternal(sect, size);
+        const sec = try self.sectionInternal(sect, size);
         const pos = self.reader.position;
         if (pos - start_pos != size) {
-            _ = sec catch |err| {
-                if (err == Error.EndOpcodeExpected) {
-                    return Error.SectionSizeMismatch;
-                }
-                return err;
-            };
             return Error.SectionSizeMismatch;
         }
 
-        return try sec;
+        return sec;
     }
 
     fn sectionInternal(self: *Self, sect: std.wasm.Section, size: u32) (Error || error{OutOfMemory})!Section {
@@ -344,7 +338,8 @@ pub const ModuleLoader = struct {
         const op = try self.reader.readU8();
         const value = try self.initExprValue(op);
         const end = try self.reader.readU8();
-        assert(end == 0x0b);
+        if (end != 0x0b)
+            return Error.EndOpcodeExpected;
         return value;
     }
 

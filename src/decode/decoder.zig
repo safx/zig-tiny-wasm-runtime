@@ -36,7 +36,7 @@ pub const Decoder = struct {
             }
         }
 
-        return Error.EndOpcodeExpected;
+        return Error.UnexpectedEndOfSectionFunction;
     }
 
     fn fillEnd(inst: *Instruction, pos: u32) Error!void {
@@ -120,8 +120,8 @@ pub const Decoder = struct {
             n(.i64_store8) => .{ .i64_store8 = try memArg(reader) },
             n(.i64_store16) => .{ .i64_store16 = try memArg(reader) },
             n(.i64_store32) => .{ .i64_store32 = try memArg(reader) },
-            n(.memory_size) => if (try reader.readU8() == 0) .memory_size else unreachable,
-            n(.memory_grow) => if (try reader.readU8() == 0) .memory_grow else unreachable,
+            n(.memory_size) => if (try reader.readU8() == 0) .memory_size else return Error.ZeroByteExpected,
+            n(.memory_grow) => if (try reader.readU8() == 0) .memory_grow else return Error.ZeroByteExpected,
 
             // numeric instructions (1)
             n(.i32_const) => .{ .i32_const = try reader.readVarI32() },

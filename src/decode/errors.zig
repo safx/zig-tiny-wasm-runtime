@@ -8,6 +8,7 @@ pub const Error = error{
     EndOpcodeExpected,
     UnexpectedEndOfSectionFunction,
     SectionSizeMismatch,
+    ZeroByteExpected,
     //
     MalformedFunctypeMagicNumber,
     MalformedElemKind,

@@ -57,7 +57,7 @@ pub fn decodeErrorFromString(str: []const u8) DecodeError {
     if (strcmp(str, "unknown operator tee_local")) return E.OtherError; // FIXME
     if (strcmp(str, "unknown operator")) return E.OtherError; // FIXME
     if (strcmp(str, "unknown type")) return E.OtherError; // FIXME
-    if (strcmp(str, "zero byte expected")) return E.OtherError; // FIXME
+    if (strcmp(str, "zero byte expected")) return E.ZeroByteExpected;
 
     std.debug.print("? Unknown validation error \"{s}\" {any}\n", .{ str, str });
     unreachable;
