@@ -71,17 +71,17 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
             },
             .assert_trap => |arg| {
                 _ = doAction(arg.action, engine, current_module, allocator) catch |err| {
-                    validateCatchedError(arg.trap, err, arg.line);
+                    validateCatchedError(arg.trap, err, true, arg.line);
                     continue;
                 };
                 std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
                 @panic("Test failed.");
             },
             // .assert_exhaustion =>
-            .assert_malformed => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
+            .assert_malformed => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, false, arg.line),
             // .assert_invalid => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
-            .assert_unlinkable => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
-            .assert_uninstantiable => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
+            .assert_unlinkable => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, true, arg.line),
+            .assert_uninstantiable => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, true, arg.line),
             else => {},
         }
     }
@@ -104,9 +104,9 @@ fn doAction(action: types.Action, engine: *types.Engine, current_module: *types.
     }
 }
 
-fn exepecError(engine: *types.Engine, file_name: []const u8, trap: anyerror, line: u32) !void {
+fn expectErrorWhileloadingModule(engine: *types.Engine, file_name: []const u8, trap: anyerror, panic_when_check_failed: bool, line: u32) !void {
     _ = engine.loadModuleFromPath(file_name, null) catch |err| {
-        validateCatchedError(trap, err, line);
+        validateCatchedError(trap, err, panic_when_check_failed, line);
         return;
     };
     std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{trap});
@@ -157,16 +157,18 @@ fn checkReturnValue(expected: types.Result, result: types.Value) bool {
     }
 }
 
-fn validateCatchedError(expected_error: anyerror, actual_error: anyerror, line: u32) void {
+fn validateCatchedError(expected_error: anyerror, actual_error: anyerror, panic_when_check_failed: bool, line: u32) void {
     if (actual_error != expected_error) {
-        std.debug.print("====================\n", .{});
-        std.debug.print("\t  Test failed at line {}\n", .{line});
-        std.debug.print("\n  actual failure: {}\n", .{actual_error});
-        std.debug.print("\n  expected failure: {any}\n", .{expected_error});
-        std.debug.print("====================\n", .{});
-        @panic("Test failed.");
+        if (panic_when_check_failed) {
+            std.debug.print("====================\n", .{});
+            std.debug.print("\t  Test failed at line {}\n", .{line});
+            std.debug.print("\n  actual failure: {}\n", .{actual_error});
+            std.debug.print("\n  expected failure: {any}\n", .{expected_error});
+            std.debug.print("====================\n", .{});
+            @panic("Test failed.");
+        }
     }
-    std.debug.print("test pass (expected failure: {any})\n", .{expected_error});
+    std.debug.print("test pass (actual failure: {any})\n", .{actual_error});
 }
 
 /// Returns function name by searching from the latest instaitiated modules.
