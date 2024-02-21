@@ -1,5 +1,6 @@
 const utils = @import("./utils.zig");
 const EOF = @import("./errors.zig").Error.EOF;
+const IntegerTooLarge = @import("./errors.zig").Error.IntegerTooLarge;
 
 pub const BinaryReader = struct {
     const Self = @This();
@@ -68,23 +69,23 @@ pub const BinaryReader = struct {
         return utils.safeNumCast(T, buffer);
     }
 
-    pub fn readVarU32(self: *Self) error{EOF}!u32 {
+    pub fn readVarU32(self: *Self) (error{IntegerTooLarge} || error{EOF})!u32 {
         return self.readLeb(u32);
     }
 
-    pub fn readVarI32(self: *Self) error{EOF}!i32 {
+    pub fn readVarI32(self: *Self) (error{IntegerTooLarge} || error{EOF})!i32 {
         return self.readLeb(i32);
     }
 
-    pub fn readVarU64(self: *Self) error{EOF}!u64 {
+    pub fn readVarU64(self: *Self) (error{IntegerTooLarge} || error{EOF})!u64 {
         return self.readLeb(u64);
     }
 
-    pub fn readVarI64(self: *Self) error{EOF}!i64 {
+    pub fn readVarI64(self: *Self) (error{IntegerTooLarge} || error{EOF})!i64 {
         return self.readLeb(i64);
     }
 
-    fn readLeb(self: *Self, comptime NumType: type) error{EOF}!NumType {
+    fn readLeb(self: *Self, comptime NumType: type) (error{IntegerTooLarge} || error{EOF})!NumType {
         if (NumType != i32 and NumType != u32 and NumType != i64 and NumType != u64) {
             @compileError("Unknown Number Type");
         }
@@ -96,8 +97,16 @@ pub const BinaryReader = struct {
         var shift: ShiftType = 0;
         while (true) {
             const byte = try self.readU8();
+
+            if ((BaseType == u32 and shift == 28 and byte & 0xf0 > 0) or
+                (BaseType == u64 and shift == 63 and byte & 0xfe > 0))
+            {
+                return IntegerTooLarge;
+            }
+
             const num = @as(BaseType, byte);
             result |= (num & 0x7f) << shift;
+
             if (byte & 0x80 == 0)
                 break;
             shift += 7;
@@ -143,5 +152,17 @@ test BinaryReader {
         const data: []const u8 = &.{ 0xef, 0xf9, 0xbe, 0xef, 0x9a, 0xf1, 0xd9, 0x92, 0x01 };
         var b = BinaryReader.new(data);
         try expectEqual(@as(i64, 82586009202572527), try b.readVarI64());
+    }
+
+    {
+        const data: []const u8 = &.{ 0x80, 0x80, 0x80, 0x80, 0x10 };
+        var b = BinaryReader.new(data);
+        try std.testing.expectError(IntegerTooLarge, b.readVarU32());
+    }
+
+    {
+        const data: []const u8 = &.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02 };
+        var b = BinaryReader.new(data);
+        try std.testing.expectError(IntegerTooLarge, b.readVarU64());
     }
 }

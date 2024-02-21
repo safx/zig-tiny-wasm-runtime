@@ -9,6 +9,7 @@ pub const Error = error{
     UnexpectedEndOfSectionFunction,
     SectionSizeMismatch,
     ZeroByteExpected,
+    IntegerTooLarge,
     //
     MalformedFunctypeMagicNumber,
     MalformedElemKind,

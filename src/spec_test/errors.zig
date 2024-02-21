@@ -26,7 +26,7 @@ pub fn decodeErrorFromString(str: []const u8) DecodeError {
     if (strcmp(str, "import after table")) return E.OtherError; // FIXME
     if (strcmp(str, "inline function type")) return E.OtherError; // FIXME
     if (strcmp(str, "integer representation too long")) return E.OtherError; // FIXME
-    if (strcmp(str, "integer too large")) return E.OtherError; // FIXME
+    if (strcmp(str, "integer too large")) return E.IntegerTooLarge;
     if (strcmp(str, "length out of bounds")) return E.OtherError; // FIXME
     if (strcmp(str, "magic header not detected")) return E.MagicHeaderNotDetected;
     if (strcmp(str, "malformed UTF-8 encoding")) return E.OtherError; // FIXME
