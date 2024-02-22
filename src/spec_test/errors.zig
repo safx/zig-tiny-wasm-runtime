@@ -9,17 +9,17 @@ pub fn decodeErrorFromString(str: []const u8) DecodeError {
     if (strcmp(str, "END opcode expected")) return E.EndOpcodeExpected;
     if (strcmp(str, "alignment")) return E.OtherError; // FIXME
     if (strcmp(str, "constant out of range")) return E.OtherError; // FIXME
-    if (strcmp(str, "data count and data section have inconsistent lengths")) return E.OtherError; // FIXME
-    if (strcmp(str, "data count section required")) return E.OtherError; // FIXME
+    if (strcmp(str, "data count and data section have inconsistent lengths")) return E.DataCountAndDataSectionHaveInconsistentLengths;
+    if (strcmp(str, "data count section required")) return E.DataCountSectionRequired;
     if (strcmp(str, "duplicate func")) return E.OtherError; // FIXME
     if (strcmp(str, "duplicate global")) return E.OtherError; // FIXME
     if (strcmp(str, "duplicate local")) return E.OtherError; // FIXME
     if (strcmp(str, "duplicate memory")) return E.OtherError; // FIXME
     if (strcmp(str, "duplicate table")) return E.OtherError; // FIXME
-    if (strcmp(str, "function and code section have inconsistent lengths")) return E.OtherError; // FIXME
+    if (strcmp(str, "function and code section have inconsistent lengths")) return E.FunctionAndCodeSectionHaveInconsistentLengths;
     if (strcmp(str, "i32 constant out of range")) return E.OtherError; // FIXME
     if (strcmp(str, "i32 constant")) return E.MagicHeaderNotDetected; // TODO: address.1.wat failed to decode
-    if (strcmp(str, "illegal opcode")) return E.OtherError; // FIXME
+    if (strcmp(str, "illegal opcode")) return E.IllegalOpcode;
     if (strcmp(str, "import after function")) return E.OtherError; // FIXME
     if (strcmp(str, "import after global")) return E.OtherError; // FIXME
     if (strcmp(str, "import after memory")) return E.OtherError; // FIXME
@@ -37,7 +37,7 @@ pub fn decodeErrorFromString(str: []const u8) DecodeError {
     if (strcmp(str, "mismatching label")) return E.OtherError; // FIXME
     if (strcmp(str, "multiple start sections")) return E.OtherError; // FIXME
     if (strcmp(str, "section size mismatch")) return E.SectionSizeMismatch;
-    if (strcmp(str, "too many locals")) return E.OtherError; // FIXME
+    if (strcmp(str, "too many locals")) return E.TooManyLocals;
     if (strcmp(str, "unexpected content after last section")) return E.OtherError; // FIXME
     if (strcmp(str, "unexpected end of section or function")) return E.UnexpectedEndOfSectionFunction;
     if (strcmp(str, "unexpected end")) return E.EOF;

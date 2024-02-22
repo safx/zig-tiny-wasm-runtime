@@ -42,7 +42,7 @@ pub const ModuleLoader = struct {
         var elements: []const types.Element = &.{};
         var codes: []const ModFunc = &.{};
         var datas: []const types.Data = &.{};
-        var data_count: u32 = 0;
+        var data_count: ?u32 = null;
 
         while (self.section()) |sec| {
             switch (sec) {
@@ -65,6 +65,22 @@ pub const ModuleLoader = struct {
                 return err;
             }
         }
+
+        if (data_count) |count| {
+            if (count != datas.len)
+                return Error.DataCountAndDataSectionHaveInconsistentLengths;
+        } else {
+            // no dataidx operation found in code
+            for (codes) |c| {
+                for (c.body) |op| {
+                    if (op == .memory_init or op == .data_drop)
+                        return Error.DataCountSectionRequired;
+                }
+            }
+        }
+
+        if (func_idxs.len != codes.len)
+            return Error.FunctionAndCodeSectionHaveInconsistentLengths;
 
         const funcs = try self.allocator.alloc(types.Func, func_idxs.len);
         for (func_idxs, codes, 0..) |func_idx, f, i| {
@@ -353,7 +369,7 @@ pub const ModuleLoader = struct {
             n(.global_get) => .{ .global_get = try self.reader.readVarU32() },
             0xd0 => .{ .ref_null = @enumFromInt(try self.reader.readU8()) },
             0xd2 => .{ .ref_func = try self.reader.readVarU32() },
-            else => unreachable,
+            else => return Error.IllegalOpcode,
         };
     }
 
@@ -385,7 +401,12 @@ pub const ModuleLoader = struct {
 
     fn createLocals(self: *Self, vec: []const Locals) (Error || error{OutOfMemory})![]const types.ValueType {
         var total: u32 = 0;
-        for (vec) |v| total += v.size;
+        for (vec) |v| {
+            const r = @addWithOverflow(total, v.size);
+            if (r[1] == 1)
+                return Error.TooManyLocals;
+            total = r[0];
+        }
         if (total == 0) {
             return &.{};
         }

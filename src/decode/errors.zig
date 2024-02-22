@@ -10,6 +10,11 @@ pub const Error = error{
     SectionSizeMismatch,
     ZeroByteExpected,
     IntegerTooLarge,
+    TooManyLocals,
+    FunctionAndCodeSectionHaveInconsistentLengths,
+    DataCountAndDataSectionHaveInconsistentLengths,
+    DataCountSectionRequired,
+    IllegalOpcode,
     //
     MalformedFunctypeMagicNumber,
     MalformedElemKind,
