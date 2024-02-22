@@ -29,7 +29,7 @@ pub fn doWasmSpecTest() !void {
     }
 }
 
-pub fn execSpecTestsFromFile(file_name: []const u8, verbose: bool) !void {
+pub fn execSpecTestsFromFile(file_name: []const u8, verboseLevel: u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -41,17 +41,19 @@ pub fn execSpecTestsFromFile(file_name: []const u8, verbose: bool) !void {
     defer file.close();
 
     const commands = try reader.readJsonFromFile(file, allocator);
-    var engine = types.Engine.new(allocator, verbose);
-    try execSpecTests(&engine, commands, allocator);
+    var engine = types.Engine.new(allocator, verboseLevel >= 2);
+    try execSpecTests(&engine, commands, allocator, verboseLevel >= 1);
 }
 
-fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocator: std.mem.Allocator) !void {
+fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocator: std.mem.Allocator, verbose: bool) !void {
     var current_module: *types.ModuleInst = try engine.loadModuleFromPath("spectest.wasm", "spectest");
 
     for (commands) |cmd| {
-        std.debug.print("-" ** 75 ++ "\n", .{});
-        std.debug.print("{any}\n", .{cmd});
-        //std.debug.print("{}\n", .{std.json.fmt(cmd, .{})});
+        if (verbose) {
+            std.debug.print("-" ** 75 ++ "\n", .{});
+            std.debug.print("{any}\n", .{cmd});
+            //std.debug.print("{}\n", .{std.json.fmt(cmd, .{})});
+        }
 
         switch (cmd) {
             .module => |arg| {
@@ -66,22 +68,23 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
             },
             .assert_return => |arg| {
                 const ret = try doAction(arg.action, engine, current_module, allocator);
-                validateResult(arg.expected, ret, arg.line);
+                validateResult(arg.expected, ret, arg.line, verbose);
                 defer allocator.free(ret);
             },
             .assert_trap => |arg| {
                 _ = doAction(arg.action, engine, current_module, allocator) catch |err| {
-                    validateCatchedError(arg.trap, err, true, arg.line);
+                    validateCatchedError(arg.trap, err, true, arg.line, verbose);
                     continue;
                 };
-                std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
+                if (verbose)
+                    std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
                 @panic("Test failed.");
             },
             // .assert_exhaustion =>
-            .assert_malformed => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, false, arg.line),
-            // .assert_invalid => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line),
-            .assert_unlinkable => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, true, arg.line),
-            .assert_uninstantiable => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, true, arg.line),
+            .assert_malformed => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, false, arg.line, verbose),
+            // .assert_invalid => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line, verbose),
+            .assert_unlinkable => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, true, arg.line, verbose),
+            .assert_uninstantiable => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, true, arg.line, verbose),
             else => {},
         }
     }
@@ -104,16 +107,17 @@ fn doAction(action: types.Action, engine: *types.Engine, current_module: *types.
     }
 }
 
-fn expectErrorWhileloadingModule(engine: *types.Engine, file_name: []const u8, trap: anyerror, panic_when_check_failed: bool, line: u32) !void {
+fn expectErrorWhileloadingModule(engine: *types.Engine, file_name: []const u8, trap: anyerror, panic_when_check_failed: bool, line: u32, verbose: bool) !void {
     _ = engine.loadModuleFromPath(file_name, null) catch |err| {
-        validateCatchedError(trap, err, panic_when_check_failed, line);
+        validateCatchedError(trap, err, panic_when_check_failed, line, verbose);
         return;
     };
-    std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{trap});
+    if (verbose)
+        std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{trap});
     @panic("Test failed.");
 }
 
-fn validateResult(expected_value: []const types.Result, actual_result: []const types.Value, line: u32) void {
+fn validateResult(expected_value: []const types.Result, actual_result: []const types.Value, line: u32, verbose: bool) void {
     if (actual_result.len != expected_value.len) {
         @panic("Test failed (length not match).");
     }
@@ -129,7 +133,8 @@ fn validateResult(expected_value: []const types.Result, actual_result: []const t
             @panic("Test failed.");
         }
     }
-    std.debug.print("test pass (result = {any})\n", .{actual_result});
+    if (verbose)
+        std.debug.print("test pass (result = {any})\n", .{actual_result});
 }
 
 fn checkReturnValue(expected: types.Result, result: types.Value) bool {
@@ -157,18 +162,21 @@ fn checkReturnValue(expected: types.Result, result: types.Value) bool {
     }
 }
 
-fn validateCatchedError(expected_error: anyerror, actual_error: anyerror, panic_when_check_failed: bool, line: u32) void {
+fn validateCatchedError(expected_error: anyerror, actual_error: anyerror, panic_when_check_failed: bool, line: u32, verbose: bool) void {
     if (actual_error != expected_error) {
         if (panic_when_check_failed) {
-            std.debug.print("====================\n", .{});
-            std.debug.print("\t  Test failed at line {}\n", .{line});
-            std.debug.print("\n  actual failure: {}\n", .{actual_error});
-            std.debug.print("\n  expected failure: {any}\n", .{expected_error});
-            std.debug.print("====================\n", .{});
+            if (verbose) {
+                std.debug.print("====================\n", .{});
+                std.debug.print("\t  Test failed at line {}\n", .{line});
+                std.debug.print("\n  actual failure: {}\n", .{actual_error});
+                std.debug.print("\n  expected failure: {any}\n", .{expected_error});
+                std.debug.print("====================\n", .{});
+            }
             @panic("Test failed.");
         }
     }
-    std.debug.print("test pass (actual failure: {any})\n", .{actual_error});
+    if (verbose)
+        std.debug.print("test pass (actual failure: {any})\n", .{actual_error});
 }
 
 /// Returns function name by searching from the latest instaitiated modules.
