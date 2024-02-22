@@ -44,6 +44,7 @@ pub const ModuleLoader = struct {
         var datas: []const types.Data = &.{};
         var data_count: ?u32 = null;
 
+        var last_section: i32 = 0;
         while (!self.reader.eof()) {
             const sec = try self.section();
             switch (sec) {
@@ -60,6 +61,14 @@ pub const ModuleLoader = struct {
                 .data => |d| datas = d,
                 .data_count => |d| data_count = d,
                 .custom => {},
+            }
+
+            if (sec != .custom) {
+                const current_section = @intFromEnum(sec);
+                if (current_section <= last_section) {
+                    return Error.UnexpectedContentAfterLastSection;
+                }
+                last_section = current_section;
             }
         }
 
@@ -473,14 +482,14 @@ pub const ModuleLoader = struct {
 
         for (0..size) |i| {
             array[i] = filler(self) catch |err| {
-                return if (err == Error.UnexpectedEndOfBuffer) Error.SectionSizeMismatch else err;
+                return if (err == Error.UnexpectedEndOfBuffer) Error.UnexpectedEndOfSectionOrFunction else err;
             };
         }
         return array;
     }
 };
 
-const Section = union(enum) {
+const Section = union(std.wasm.Section) {
     custom: CustomInfo,
     type: []const types.FuncType,
     import: []const types.Import,

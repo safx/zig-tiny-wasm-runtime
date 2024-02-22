@@ -36,7 +36,7 @@ pub const Decoder = struct {
             }
         }
 
-        return Error.UnexpectedEndOfSectionFunction;
+        return Error.UnexpectedEndOfSectionOrFunction;
     }
 
     fn fillEnd(inst: *Instruction, pos: u32) Error!void {

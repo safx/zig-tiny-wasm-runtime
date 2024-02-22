@@ -6,7 +6,7 @@ pub const Error = error{
     UnknownBinaryVersion,
     MagicHeaderNotDetected,
     EndOpcodeExpected,
-    UnexpectedEndOfSectionFunction,
+    UnexpectedEndOfSectionOrFunction,
     SectionSizeMismatch,
     ZeroByteExpected,
     IntegerTooLarge,
@@ -15,6 +15,7 @@ pub const Error = error{
     DataCountAndDataSectionHaveInconsistentLengths,
     DataCountSectionRequired,
     IllegalOpcode,
+    UnexpectedContentAfterLastSection,
     //
     MalformedFunctypeMagicNumber,
     MalformedElemKind,

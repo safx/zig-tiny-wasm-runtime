@@ -38,8 +38,8 @@ pub fn decodeErrorFromString(str: []const u8) DecodeError {
     if (strcmp(str, "multiple start sections")) return E.OtherError; // FIXME
     if (strcmp(str, "section size mismatch")) return E.SectionSizeMismatch;
     if (strcmp(str, "too many locals")) return E.TooManyLocals;
-    if (strcmp(str, "unexpected content after last section")) return E.OtherError; // FIXME
-    if (strcmp(str, "unexpected end of section or function")) return E.UnexpectedEndOfSectionFunction;
+    if (strcmp(str, "unexpected content after last section")) return E.UnexpectedContentAfterLastSection; // FIXME
+    if (strcmp(str, "unexpected end of section or function")) return E.UnexpectedEndOfSectionOrFunction;
     if (strcmp(str, "unexpected end")) return E.UnexpectedEndOfBuffer;
     if (strcmp(str, "unexpected token")) return E.OtherError; // FIXME
     if (strcmp(str, "unknown binary version")) return E.UnknownBinaryVersion;
