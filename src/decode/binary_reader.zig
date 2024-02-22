@@ -1,5 +1,5 @@
 const utils = @import("./utils.zig");
-const EOF = @import("./errors.zig").Error.EOF;
+const UnexpectedEndOfBuffer = @import("./errors.zig").Error.UnexpectedEndOfBuffer;
 const IntegerTooLarge = @import("./errors.zig").Error.IntegerTooLarge;
 
 pub const BinaryReader = struct {
@@ -25,67 +25,67 @@ pub const BinaryReader = struct {
         return self.original_offset + self.position;
     }
 
-    pub fn peek(self: Self) error{EOF}!u8 {
+    pub fn peek(self: Self) error{UnexpectedEndOfBuffer}!u8 {
         if (self.eof()) {
-            return EOF;
+            return UnexpectedEndOfBuffer;
         }
         return self.buffer[self.position];
     }
 
-    pub fn ensureHasBytes(self: Self, len: usize) error{EOF}!void {
+    pub fn ensureHasBytes(self: Self, len: usize) error{UnexpectedEndOfBuffer}!void {
         if (self.position + len > self.buffer.len) {
-            return EOF;
+            return UnexpectedEndOfBuffer;
         }
     }
 
-    pub fn readBytes(self: *Self, size: usize) error{EOF}![]const u8 {
+    pub fn readBytes(self: *Self, size: usize) error{UnexpectedEndOfBuffer}![]const u8 {
         try self.ensureHasBytes(size);
         const start = self.position;
         self.position += size;
         return self.buffer[start..self.position];
     }
 
-    pub fn readU32(self: *Self) error{EOF}!u32 {
+    pub fn readU32(self: *Self) error{UnexpectedEndOfBuffer}!u32 {
         return try self.readNumber(u32);
     }
 
-    pub fn readU8(self: *Self) error{EOF}!u8 {
+    pub fn readU8(self: *Self) error{UnexpectedEndOfBuffer}!u8 {
         try self.ensureHasBytes(1);
         const ch = self.buffer[self.position];
         self.position += 1;
         return ch;
     }
 
-    pub fn readF32(self: *Self) error{EOF}!f32 {
+    pub fn readF32(self: *Self) error{UnexpectedEndOfBuffer}!f32 {
         return try self.readNumber(f32);
     }
 
-    pub fn readF64(self: *Self) error{EOF}!f64 {
+    pub fn readF64(self: *Self) error{UnexpectedEndOfBuffer}!f64 {
         return try self.readNumber(f64);
     }
 
-    fn readNumber(self: *Self, comptime T: type) error{EOF}!T {
+    fn readNumber(self: *Self, comptime T: type) error{UnexpectedEndOfBuffer}!T {
         const buffer = try self.readBytes(@sizeOf(T));
         return utils.safeNumCast(T, buffer);
     }
 
-    pub fn readVarU32(self: *Self) (error{IntegerTooLarge} || error{EOF})!u32 {
+    pub fn readVarU32(self: *Self) (error{IntegerTooLarge} || error{UnexpectedEndOfBuffer})!u32 {
         return self.readLeb(u32);
     }
 
-    pub fn readVarI32(self: *Self) (error{IntegerTooLarge} || error{EOF})!i32 {
+    pub fn readVarI32(self: *Self) (error{IntegerTooLarge} || error{UnexpectedEndOfBuffer})!i32 {
         return self.readLeb(i32);
     }
 
-    pub fn readVarU64(self: *Self) (error{IntegerTooLarge} || error{EOF})!u64 {
+    pub fn readVarU64(self: *Self) (error{IntegerTooLarge} || error{UnexpectedEndOfBuffer})!u64 {
         return self.readLeb(u64);
     }
 
-    pub fn readVarI64(self: *Self) (error{IntegerTooLarge} || error{EOF})!i64 {
+    pub fn readVarI64(self: *Self) (error{IntegerTooLarge} || error{UnexpectedEndOfBuffer})!i64 {
         return self.readLeb(i64);
     }
 
-    fn readLeb(self: *Self, comptime NumType: type) (error{IntegerTooLarge} || error{EOF})!NumType {
+    fn readLeb(self: *Self, comptime NumType: type) (error{IntegerTooLarge} || error{UnexpectedEndOfBuffer})!NumType {
         if (NumType != i32 and NumType != u32 and NumType != i64 and NumType != u64) {
             @compileError("Unknown Number Type");
         }

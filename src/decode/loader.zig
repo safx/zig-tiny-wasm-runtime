@@ -44,7 +44,8 @@ pub const ModuleLoader = struct {
         var datas: []const types.Data = &.{};
         var data_count: ?u32 = null;
 
-        while (self.section()) |sec| {
+        while (!self.reader.eof()) {
+            const sec = try self.section();
             switch (sec) {
                 .type => |d| types_ = d,
                 .import => |d| imports = d,
@@ -59,10 +60,6 @@ pub const ModuleLoader = struct {
                 .data => |d| datas = d,
                 .data_count => |d| data_count = d,
                 .custom => {},
-            }
-        } else |err| {
-            if (err != error.EOF) {
-                return err;
             }
         }
 
@@ -463,7 +460,7 @@ pub const ModuleLoader = struct {
         return .{ .min = min, .max = max };
     }
 
-    fn readBytesWithCopy(self: *Self, size: usize) (error{EOF} || error{OutOfMemory})![]const u8 {
+    fn readBytesWithCopy(self: *Self, size: usize) (error{UnexpectedEndOfBuffer} || error{OutOfMemory})![]const u8 {
         const copied_array = try self.allocator.alloc(u8, size);
         const array = try self.reader.readBytes(size);
         @memcpy(copied_array, array);
@@ -475,7 +472,9 @@ pub const ModuleLoader = struct {
         const array = try self.allocator.alloc(T, size);
 
         for (0..size) |i| {
-            array[i] = try filler(self);
+            array[i] = filler(self) catch |err| {
+                return if (err == Error.UnexpectedEndOfBuffer) Error.SectionSizeMismatch else err;
+            };
         }
         return array;
     }

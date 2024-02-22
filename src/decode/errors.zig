@@ -1,10 +1,10 @@
 pub const Error = error{
+    UnexpectedEndOfBuffer,
     MalformedImportKind,
     MalformedRefType,
     MalformedSectionId,
     UnknownBinaryVersion,
     MagicHeaderNotDetected,
-    EOF,
     EndOpcodeExpected,
     UnexpectedEndOfSectionFunction,
     SectionSizeMismatch,
