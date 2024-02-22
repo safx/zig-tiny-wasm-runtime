@@ -98,8 +98,8 @@ pub const BinaryReader = struct {
         while (true) {
             const byte = try self.readU8();
 
-            if ((BaseType == u32 and shift == 28 and byte & 0xf0 > 0) or
-                (BaseType == u64 and shift == 63 and byte & 0xfe > 0))
+            if ((NumType == u32 and shift == 28 and byte & 0xf0 > 0) or
+                (NumType == u64 and shift == 63 and byte & 0xfe > 0))
             {
                 return IntegerTooLarge;
             }
@@ -151,7 +151,14 @@ test BinaryReader {
     {
         const data: []const u8 = &.{ 0xef, 0xf9, 0xbe, 0xef, 0x9a, 0xf1, 0xd9, 0x92, 0x01 };
         var b = BinaryReader.new(data);
-        try expectEqual(@as(i64, 82586009202572527), try b.readVarI64());
+        try expectEqual(@as(i64, 0x0125_6789_adef_bcef), try b.readVarI64());
+    }
+
+    {
+        const data: []const u8 = &.{ 0xdf, 0xf7, 0xbf, 0xd6, 0x79 };
+        var b = BinaryReader.new(data);
+        const v: u32 = 0x9acf_fbdf;
+        try expectEqual(@as(i32, @bitCast(v)), try b.readVarI32());
     }
 
     {
