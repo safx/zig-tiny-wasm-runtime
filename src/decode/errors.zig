@@ -16,6 +16,7 @@ pub const Error = error{
     DataCountSectionRequired,
     IllegalOpcode,
     UnexpectedContentAfterLastSection,
+    IntegerRepresentationTooLong,
     //
     MalformedFunctypeMagicNumber,
     MalformedElemKind,

@@ -1,6 +1,5 @@
 const utils = @import("./utils.zig");
-const UnexpectedEndOfBuffer = @import("./errors.zig").Error.UnexpectedEndOfBuffer;
-const IntegerTooLarge = @import("./errors.zig").Error.IntegerTooLarge;
+const Error = @import("./errors.zig").Error;
 
 pub const BinaryReader = struct {
     const Self = @This();
@@ -27,14 +26,14 @@ pub const BinaryReader = struct {
 
     pub fn peek(self: Self) error{UnexpectedEndOfBuffer}!u8 {
         if (self.eof()) {
-            return UnexpectedEndOfBuffer;
+            return Error.UnexpectedEndOfBuffer;
         }
         return self.buffer[self.position];
     }
 
     pub fn ensureHasBytes(self: Self, len: usize) error{UnexpectedEndOfBuffer}!void {
         if (self.position + len > self.buffer.len) {
-            return UnexpectedEndOfBuffer;
+            return Error.UnexpectedEndOfBuffer;
         }
     }
 
@@ -69,39 +68,60 @@ pub const BinaryReader = struct {
         return utils.safeNumCast(T, buffer);
     }
 
-    pub fn readVarU32(self: *Self) (error{IntegerTooLarge} || error{UnexpectedEndOfBuffer})!u32 {
+    pub fn readVarU32(self: *Self) Error!u32 {
         return self.readLeb(u32);
     }
 
-    pub fn readVarI32(self: *Self) (error{IntegerTooLarge} || error{UnexpectedEndOfBuffer})!i32 {
+    pub fn readVarI32(self: *Self) Error!i32 {
         return self.readLeb(i32);
     }
 
-    pub fn readVarU64(self: *Self) (error{IntegerTooLarge} || error{UnexpectedEndOfBuffer})!u64 {
+    pub fn readVarU64(self: *Self) Error!u64 {
         return self.readLeb(u64);
     }
 
-    pub fn readVarI64(self: *Self) (error{IntegerTooLarge} || error{UnexpectedEndOfBuffer})!i64 {
+    pub fn readVarI64(self: *Self) Error!i64 {
         return self.readLeb(i64);
     }
 
-    fn readLeb(self: *Self, comptime NumType: type) (error{IntegerTooLarge} || error{UnexpectedEndOfBuffer})!NumType {
+    fn readLeb(self: *Self, comptime NumType: type) Error!NumType {
         if (NumType != i32 and NumType != u32 and NumType != i64 and NumType != u64) {
             @compileError("Unknown Number Type");
         }
 
-        const BaseType = if (@bitSizeOf(NumType) == 32) u32 else u64;
-        const ShiftType = if (@bitSizeOf(NumType) == 32) u5 else u6;
+        const bit_size = @bitSizeOf(NumType);
+        const max_shift = if (bit_size == 32) 28 else 63;
+        const BaseType = if (bit_size == 32) u32 else u64;
+        const ShiftType = if (bit_size == 32) u5 else u6;
 
         var result: BaseType = 0;
         var shift: ShiftType = 0;
         while (true) {
             const byte = try self.readU8();
 
-            if ((NumType == u32 and shift == 28 and byte & 0xf0 > 0) or
-                (NumType == u64 and shift == 63 and byte & 0xfe > 0))
-            {
-                return IntegerTooLarge;
+            if (shift == max_shift) {
+                if (byte & 0x80 > 0)
+                    return Error.IntegerRepresentationTooLong;
+
+                switch (NumType) {
+                    u32 => if (byte & 0xf0 > 0) return Error.IntegerTooLarge,
+                    u64 => if (byte & 0xfe > 0) return Error.IntegerTooLarge,
+                    i32 => {
+                        const sign_bit = byte & 0x08 > 0;
+                        const top_bits = byte & 0xf0;
+                        if ((sign_bit and top_bits != 0x70) or (!sign_bit and top_bits != 0)) {
+                            return Error.IntegerTooLarge;
+                        }
+                    },
+                    i64 => {
+                        const sign_bit = byte & 0x01 > 0;
+                        const top_bits = byte & 0x7e;
+                        if ((sign_bit and top_bits != 0x7e) or (!sign_bit and top_bits != 0)) {
+                            return Error.IntegerTooLarge;
+                        }
+                    },
+                    else => unreachable,
+                }
             }
 
             const num = @as(BaseType, byte);
@@ -109,13 +129,14 @@ pub const BinaryReader = struct {
 
             if (byte & 0x80 == 0)
                 break;
+
             shift += 7;
         }
 
         const signed_integer_type = NumType == i32 or NumType == i64;
         if (signed_integer_type) {
             const value: NumType = @bitCast(result);
-            if (NumType == i32 and shift == 28 or NumType == i64 and shift == 63) {
+            if (shift == max_shift) {
                 return value;
             }
             const top_bit = value & @as(NumType, 1) << (shift + 6);
@@ -143,7 +164,7 @@ test BinaryReader {
     }
 
     {
-        const data: []const u8 = &.{ 0xff, 0xff, 0xff, 0xff, 0x0f };
+        const data: []const u8 = &.{ 0xff, 0xff, 0xff, 0xff, 0x7f };
         var b = BinaryReader.new(data);
         try expectEqual(@as(i32, -1), try b.readVarI32());
     }
@@ -162,14 +183,26 @@ test BinaryReader {
     }
 
     {
+        const data: []const u8 = &.{ 0x80, 0x80, 0x80, 0x80, 0x70 };
+        var b = BinaryReader.new(data);
+        try std.testing.expectError(Error.IntegerTooLarge, b.readVarI32());
+    }
+
+    {
+        const data: []const u8 = &.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x00 };
+        var b = BinaryReader.new(data);
+        try std.testing.expectError(Error.IntegerRepresentationTooLong, b.readVarI32());
+    }
+
+    {
         const data: []const u8 = &.{ 0x80, 0x80, 0x80, 0x80, 0x10 };
         var b = BinaryReader.new(data);
-        try std.testing.expectError(IntegerTooLarge, b.readVarU32());
+        try std.testing.expectError(Error.IntegerTooLarge, b.readVarU32());
     }
 
     {
         const data: []const u8 = &.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02 };
         var b = BinaryReader.new(data);
-        try std.testing.expectError(IntegerTooLarge, b.readVarU64());
+        try std.testing.expectError(Error.IntegerTooLarge, b.readVarU64());
     }
 }
