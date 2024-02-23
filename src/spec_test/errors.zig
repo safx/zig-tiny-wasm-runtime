@@ -29,7 +29,7 @@ pub fn decodeErrorFromString(str: []const u8) DecodeError {
     if (strcmp(str, "integer too large")) return E.IntegerTooLarge;
     if (strcmp(str, "length out of bounds")) return E.OtherError; // FIXME
     if (strcmp(str, "magic header not detected")) return E.MagicHeaderNotDetected;
-    if (strcmp(str, "malformed UTF-8 encoding")) return E.OtherError; // FIXME
+    if (strcmp(str, "malformed UTF-8 encoding")) return E.MalformedUtf8Encoding;
     if (strcmp(str, "malformed import kind")) return E.MalformedImportKind;
     if (strcmp(str, "malformed mutability")) return E.OtherError; // FIXME
     if (strcmp(str, "malformed reference type")) return E.MalformedRefType;

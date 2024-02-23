@@ -17,6 +17,7 @@ pub const Error = error{
     IllegalOpcode,
     UnexpectedContentAfterLastSection,
     IntegerRepresentationTooLong,
+    MalformedUtf8Encoding,
     //
     MalformedFunctypeMagicNumber,
     MalformedElemKind,

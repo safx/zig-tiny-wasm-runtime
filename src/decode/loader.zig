@@ -172,6 +172,11 @@ pub const ModuleLoader = struct {
     fn import(self: *Self) (Error || error{OutOfMemory})!types.Import {
         const mod = try self.name();
         const nm = try self.name();
+
+        if (!std.unicode.utf8ValidateSlice(mod) or !std.unicode.utf8ValidateSlice(nm)) {
+            return Error.MalformedUtf8Encoding;
+        }
+
         const desc = try self.importdesc();
         return .{ .module_name = mod, .name = nm, .desc = desc };
     }
@@ -313,11 +318,15 @@ pub const ModuleLoader = struct {
         const start = self.reader.position;
         const cname = try self.name();
         const end = self.reader.position;
-        const cname_len = end - start;
-        if (size < cname_len)
+        const consumed = end - start;
+        if (size < consumed)
             return Error.UnexpectedEndOfBuffer;
 
-        const len = size - cname_len;
+        if (!std.unicode.utf8ValidateSlice(cname)) {
+            return Error.MalformedUtf8Encoding;
+        }
+
+        const len = size - consumed;
         const cdata = try self.reader.readBytes(len);
         return .{ .name = cname, .data = cdata };
     }
