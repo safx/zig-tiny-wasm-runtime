@@ -1,26 +1,27 @@
 pub const std = @import("std");
-pub const wa = @import("wasm-core");
+const types = struct {
+    usingnamespace @import("wasm-core");
+};
 pub const Error = @import("./errors.zig").Error;
 
-pub fn validate(module: wa.Module) void {
+pub fn validate(module: types.Module) void {
     _ = module;
 }
 
 const Context = struct {
-    types: []const wa.FuncType = &.{},
-    funcs: []wa.Func = &.{},
-    tables: []wa.TableType = &.{},
-    mems: []wa.MemoryType = &.{},
-    globals: []wa.GlobalType = &.{},
-    elems: []wa.RefType = &.{},
-    datas: []wa.Data = &.{},
+    types: []const types.FuncType = &.{},
+    funcs: []types.Func = &.{},
+    tables: []types.TableType = &.{},
+    mems: []types.MemoryType = &.{},
+    globals: []types.GlobalType = &.{},
+    elems: []types.RefType = &.{},
+    datas: []types.Data = &.{},
     locals: []u8 = &.{}, // FIXME: type
     labels: []u8 = &.{}, // FIXME: type
     @"return": []u8 = &.{}, // FIXME: type
-    refs: []wa.FuncIdx,
+    refs: []types.FuncIdx,
 
-    pub fn new(module: wa.Module, allocator: std.mem.Allocator) (error{OutOfMemory})!Context {
-        // 1: resolve imports
+    pub fn new(module: types.Module, allocator: std.mem.Allocator) (error{OutOfMemory})!Context {
         var num_import_funcs: u32 = 0;
         var num_import_tables: u32 = 0;
         var num_import_mems: u32 = 0;
@@ -33,15 +34,14 @@ const Context = struct {
                 .global => num_import_globals += 1,
             };
 
-        // 20: module instance
         var context = Context{};
         context.types = module.types;
-        context.func_addrs = try allocator.alloc(wa.Func, num_import_funcs + module.funcs.len);
-        context.table_addrs = try allocator.alloc(wa.TableType, num_import_tables + module.tables.len);
-        context.mem_addrs = try allocator.alloc(wa.MemoryType, num_import_mems + module.memories.len);
-        context.global_addrs = try allocator.alloc(wa.GlobalType, num_import_globals + module.globals.len);
-        context.elem_addrs = try allocator.alloc(wa.RefType, module.elements.len);
-        context.data_addrs = try allocator.alloc(wa.Data, module.datas.len);
+        context.func_addrs = try allocator.alloc(types.Func, num_import_funcs + module.funcs.len);
+        context.table_addrs = try allocator.alloc(types.TableType, num_import_tables + module.tables.len);
+        context.mem_addrs = try allocator.alloc(types.MemoryType, num_import_mems + module.memories.len);
+        context.global_addrs = try allocator.alloc(types.GlobalType, num_import_globals + module.globals.len);
+        context.elem_addrs = try allocator.alloc(types.RefType, module.elements.len);
+        context.data_addrs = try allocator.alloc(types.Data, module.datas.len);
 
         return context;
     }
