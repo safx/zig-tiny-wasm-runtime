@@ -44,7 +44,7 @@ pub const ModuleLoader = struct {
         var datas: []const types.Data = &.{};
         var data_count: ?u32 = null;
 
-        var last_section: i32 = 0;
+        var sections: [13]bool = .{false} ** 13;
         while (!self.reader.eof()) {
             const sec = try self.section();
             switch (sec) {
@@ -65,10 +65,10 @@ pub const ModuleLoader = struct {
 
             if (sec != .custom) {
                 const current_section = @intFromEnum(sec);
-                if (current_section <= last_section) {
+                if (sections[current_section]) {
                     return Error.UnexpectedContentAfterLastSection;
                 }
-                last_section = current_section;
+                sections[current_section] = true;
             }
         }
 
