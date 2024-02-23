@@ -313,7 +313,11 @@ pub const ModuleLoader = struct {
         const start = self.reader.position;
         const cname = try self.name();
         const end = self.reader.position;
-        const len = size - (end - start);
+        const cname_len = end - start;
+        if (size < cname_len)
+            return Error.UnexpectedEndOfBuffer;
+
+        const len = size - cname_len;
         const cdata = try self.reader.readBytes(len);
         return .{ .name = cname, .data = cdata };
     }
