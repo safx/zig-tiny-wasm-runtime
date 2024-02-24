@@ -274,7 +274,17 @@ pub const Value = union(core.ValueType) {
             .i64 => |val| return @intCast(val),
             .f32 => |val| return @bitCast(val),
             .f64 => |val| return @intCast(val),
-            else => @panic(""),
+            else => unreachable,
+        }
+    }
+
+    pub fn asU32(self: Self) u32 {
+        switch (self) {
+            .i32 => |val| return @bitCast(val),
+            .i64 => |val| return @intCast(val),
+            .f32 => |val| return @bitCast(val),
+            .f64 => |val| return @intCast(val),
+            else => unreachable,
         }
     }
 
@@ -287,7 +297,7 @@ pub const Value = union(core.ValueType) {
                 return @bitCast(v);
             },
             .f64 => |val| return @bitCast(val),
-            else => @panic(""),
+            else => unreachable,
         }
     }
 
@@ -303,7 +313,7 @@ pub const Value = union(core.ValueType) {
                 const v: i32 = @intCast(val);
                 return @bitCast(v);
             },
-            else => @panic(""),
+            else => unreachable,
         }
     }
 
@@ -319,7 +329,7 @@ pub const Value = union(core.ValueType) {
                 return v;
             },
             .f64 => |val| return @bitCast(val),
-            else => @panic(""),
+            else => unreachable,
         }
     }
 

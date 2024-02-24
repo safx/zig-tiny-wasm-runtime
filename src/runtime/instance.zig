@@ -662,7 +662,7 @@ pub const Instance = struct {
 
         const ft_expect = module.types[arg.type_idx];
 
-        const i: u32 = @bitCast(self.stack.pop().value.asI32());
+        const i: u32 = self.stack.pop().value.asU32();
         if (i >= tab.elem.len)
             return Error.UndefinedElement;
 
@@ -781,7 +781,7 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
-        const i: u32 = @bitCast(self.stack.pop().value.asI32());
+        const i: u32 = self.stack.pop().value.asU32();
 
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
@@ -796,7 +796,7 @@ pub const Instance = struct {
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
         const val = self.stack.pop().value;
-        const i: u32 = @bitCast(self.stack.pop().value.asI32());
+        const i: u32 = self.stack.pop().value.asU32();
 
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
@@ -820,7 +820,7 @@ pub const Instance = struct {
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
 
-        var n: u32 = @bitCast(self.stack.pop().value.asI32());
+        var n: u32 = self.stack.pop().value.asU32();
         const val = self.stack.pop().value;
 
         if (tab.type.limits.max != null and @as(usize, @intCast(n)) + tab.elem.len > tab.type.limits.max.?) {
@@ -864,9 +864,9 @@ pub const Instance = struct {
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
 
-        var n: u32 = @bitCast(self.stack.pop().value.asI32());
+        var n: u32 = self.stack.pop().value.asU32();
         const val = self.stack.pop().value;
-        var i: u32 = @bitCast(self.stack.pop().value.asI32());
+        var i: u32 = self.stack.pop().value.asU32();
 
         const i_plus_n = @addWithOverflow(i, n);
         if (i_plus_n[1] == 1 or i_plus_n[0] > tab.elem.len)
@@ -887,9 +887,9 @@ pub const Instance = struct {
         const ta_s = module.table_addrs[arg.table_idx_src];
         const tab_s = self.store.tables.items[ta_s];
 
-        var n: u32 = @bitCast(self.stack.pop().value.asI32());
-        var s: u32 = @bitCast(self.stack.pop().value.asI32());
-        var d: u32 = @bitCast(self.stack.pop().value.asI32());
+        var n: u32 = self.stack.pop().value.asU32();
+        var s: u32 = self.stack.pop().value.asU32();
+        var d: u32 = self.stack.pop().value.asU32();
 
         const s_plus_n = @addWithOverflow(s, n);
         if (s_plus_n[1] == 1 or s_plus_n[0] > tab_s.elem.len) {
@@ -926,9 +926,9 @@ pub const Instance = struct {
         const ea = module.elem_addrs[arg.elem_idx];
         const elem = self.store.elems.items[ea];
 
-        var n: u32 = @bitCast(self.stack.pop().value.asI32());
-        var s: u32 = @bitCast(self.stack.pop().value.asI32());
-        var d: u32 = @bitCast(self.stack.pop().value.asI32());
+        var n: u32 = self.stack.pop().value.asU32();
+        var s: u32 = self.stack.pop().value.asU32();
+        var d: u32 = self.stack.pop().value.asU32();
 
         const s_plus_n = @addWithOverflow(s, n);
         if (s_plus_n[1] == 1 or s_plus_n[0] > elem.elem.len) {
@@ -965,7 +965,7 @@ pub const Instance = struct {
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
 
-        const ea: u32 = @bitCast(self.stack.pop().value.asI32());
+        const ea: u32 = self.stack.pop().value.asU32();
 
         const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
         if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len) {
@@ -994,7 +994,7 @@ pub const Instance = struct {
         const mem = &self.store.mems.items[a];
 
         const c = self.stack.pop().value.as(T);
-        const i: u32 = @bitCast(self.stack.pop().value.asI32());
+        const i: u32 = self.stack.pop().value.asU32();
 
         const ea: u32 = i + mem_arg.offset;
         const byte_size = bit_size / 8;
@@ -1067,9 +1067,9 @@ pub const Instance = struct {
         const mem_addr = module.mem_addrs[0];
         const mem_inst = self.store.mems.items[mem_addr];
 
-        var n: u32 = @bitCast(self.stack.pop().value.asI32());
+        var n: u32 = self.stack.pop().value.asU32();
         const val = self.stack.pop();
-        var d: u32 = @bitCast(self.stack.pop().value.asI32());
+        var d: u32 = self.stack.pop().value.asU32();
 
         const d_plus_n = @addWithOverflow(d, n);
         if (d_plus_n[1] == 1 or d_plus_n[0] > mem_inst.data.len) {
@@ -1090,9 +1090,9 @@ pub const Instance = struct {
         const mem_addr = module.mem_addrs[0];
         const mem_inst = self.store.mems.items[mem_addr];
 
-        var n: u32 = @bitCast(self.stack.pop().value.asI32());
-        var s: u32 = @bitCast(self.stack.pop().value.asI32());
-        var d: u32 = @bitCast(self.stack.pop().value.asI32());
+        var n: u32 = self.stack.pop().value.asU32();
+        var s: u32 = self.stack.pop().value.asU32();
+        var d: u32 = self.stack.pop().value.asU32();
 
         const s_plus_n = @addWithOverflow(s, n);
         if (s_plus_n[1] == 1 or s_plus_n[0] > mem_inst.data.len) {
@@ -1129,9 +1129,9 @@ pub const Instance = struct {
         const data_addr = module.data_addrs[data_idx];
         const data = self.store.datas.items[data_addr];
 
-        var n: u32 = @bitCast(self.stack.pop().value.asI32());
-        var s: u32 = @bitCast(self.stack.pop().value.asI32());
-        var d: u32 = @bitCast(self.stack.pop().value.asI32());
+        var n: u32 = self.stack.pop().value.asU32();
+        var s: u32 = self.stack.pop().value.asU32();
+        var d: u32 = self.stack.pop().value.asU32();
 
         const s_plus_n = @addWithOverflow(s, n);
         if (s_plus_n[1] == 1 or s_plus_n[0] > data.data.len) {
