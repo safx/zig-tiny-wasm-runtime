@@ -1,14 +1,10 @@
-pub const std = @import("std");
+const std = @import("std");
 const types = struct {
     const core = @import("wasm-core");
     usingnamespace core;
     const ResultType = []const core.ValueType;
 };
-pub const Error = @import("./errors.zig").Error;
-
-pub fn validate(module: types.Module) void {
-    _ = module;
-}
+const Error = @import("./errors.zig").Error;
 
 pub const Context = struct {
     types: []const types.FuncType = &.{},
@@ -24,17 +20,13 @@ pub const Context = struct {
     refs: []types.FuncIdx = &.{},
 
     pub fn new(module: types.Module, allocator: std.mem.Allocator) (error{OutOfMemory})!Context {
-        var num_import_funcs: u32 = 0;
-        var num_import_tables: u32 = 0;
-        var num_import_mems: u32 = 0;
-        var num_import_globals: u32 = 0;
-        for (module.imports) |imp|
-            switch (imp.desc) {
-                .function => num_import_funcs += 1,
-                .table => num_import_tables += 1,
-                .memory => num_import_mems += 1,
-                .global => num_import_globals += 1,
-            };
+        const imports = try ImportGroup.new(module, allocator);
+        defer imports.deinit(allocator);
+
+        var num_import_funcs = imports.funcs.len;
+        var num_import_tables = imports.tables.len;
+        var num_import_mems = imports.mems.len;
+        var num_import_globals = imports.globals.len;
 
         var context = Context{};
         context.types = module.types;
@@ -46,5 +38,44 @@ pub const Context = struct {
         context.datas = try allocator.alloc(bool, module.datas.len);
 
         return context;
+    }
+};
+
+const ImportGroup = struct {
+    const Self = @This();
+
+    funcs: []types.FuncType = &.{},
+    tables: []types.TableType = &.{},
+    mems: []types.MemoryType = &.{},
+    globals: []types.GlobalType = &.{},
+
+    fn new(module: types.Module, allocator: std.mem.Allocator) error{OutOfMemory}!Self {
+        var funcs = std.ArrayList(types.FuncType).init(allocator);
+        var tables = std.ArrayList(types.TableType).init(allocator);
+        var mems = std.ArrayList(types.MemoryType).init(allocator);
+        var globals = std.ArrayList(types.GlobalType).init(allocator);
+
+        for (module.imports) |imp| {
+            switch (imp.desc) {
+                .function => |idx| try funcs.append(module.types[idx]),
+                .table => |ty| try tables.append(ty),
+                .memory => |ty| try mems.append(ty),
+                .global => |ty| try globals.append(ty),
+            }
+        }
+
+        return .{
+            .funcs = try funcs.toOwnedSlice(),
+            .tables = try tables.toOwnedSlice(),
+            .mems = try mems.toOwnedSlice(),
+            .globals = try globals.toOwnedSlice(),
+        };
+    }
+
+    fn deinit(self: Self, allocator: std.mem.Allocator) void {
+        allocator.free(self.funcs);
+        allocator.free(self.tables);
+        allocator.free(self.mems);
+        allocator.free(self.globals);
     }
 };
