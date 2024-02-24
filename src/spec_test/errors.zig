@@ -59,7 +59,7 @@ pub fn decodeErrorFromString(str: []const u8) DecodeError {
     if (strcmp(str, "unknown type")) return E.OtherError; // FIXME
     if (strcmp(str, "zero byte expected")) return E.ZeroByteExpected;
 
-    std.debug.print("? Unknown validation error \"{s}\" {any}\n", .{ str, str });
+    std.debug.print("? Unknown validation error \"{s}\"\n", .{str});
     unreachable;
 }
 
@@ -88,7 +88,7 @@ pub fn validationErrorFromString(str: []const u8) ValidationError {
     if (strcmp(str, "unknown table") or strcmp(str, "unknown table 0")) return E.UnknownTable;
     if (strcmp(str, "unknown type")) return E.UnknownType;
 
-    std.debug.print("? Unknown validation error \"{s}\" {any}\n", .{ str, str });
+    std.debug.print("? Unknown validation error \"{s}\"\n", .{str});
     unreachable;
 }
 

@@ -85,67 +85,63 @@ pub const BinaryReader = struct {
     }
 
     fn readLeb(self: *Self, comptime NumType: type) Error!NumType {
-        if (NumType != i32 and NumType != u32 and NumType != i64 and NumType != u64) {
+        if (NumType != i32 and NumType != u32 and NumType != i64 and NumType != u64)
             @compileError("Unknown Number Type");
-        }
 
         const bit_size = @bitSizeOf(NumType);
         const max_shift = if (bit_size == 32) 28 else 63;
-        const BaseType = if (bit_size == 32) u32 else u64;
+        const signed_integer_type = NumType == i32 or NumType == i64;
         const ShiftType = if (bit_size == 32) u5 else u6;
 
-        var result: BaseType = 0;
+        var result: NumType = 0;
         var shift: ShiftType = 0;
-        while (true) {
+        while (true) : (shift += 7) {
             const byte = try self.readU8();
 
             if (shift == max_shift) {
-                if (byte & 0x80 > 0)
-                    return Error.IntegerRepresentationTooLong;
+                try checkIntegerTooLarge(NumType, byte);
+            }
 
-                switch (NumType) {
-                    u32 => if (byte & 0xf0 > 0) return Error.IntegerTooLarge,
-                    u64 => if (byte & 0xfe > 0) return Error.IntegerTooLarge,
-                    i32 => {
-                        const sign_bit = byte & 0x08 > 0;
-                        const top_bits = byte & 0xf0;
-                        if ((sign_bit and top_bits != 0x70) or (!sign_bit and top_bits != 0)) {
-                            return Error.IntegerTooLarge;
-                        }
-                    },
-                    i64 => {
-                        const sign_bit = byte & 0x01 > 0;
-                        const top_bits = byte & 0x7e;
-                        if ((sign_bit and top_bits != 0x7e) or (!sign_bit and top_bits != 0)) {
-                            return Error.IntegerTooLarge;
-                        }
-                    },
-                    else => unreachable,
+            const num = @as(NumType, byte) & 0x7f;
+            result |= num << shift;
+
+            if (byte & 0x80 == 0) {
+                if (signed_integer_type and shift < max_shift and 0x40 != 0) {
+                    const top_bit = result & @as(NumType, 1) << (shift + 6);
+                    return (result ^ top_bit) - top_bit;
+                } else {
+                    return result;
                 }
             }
-
-            const num = @as(BaseType, byte);
-            result |= (num & 0x7f) << shift;
-
-            if (byte & 0x80 == 0)
-                break;
-
-            shift += 7;
         }
-
-        const signed_integer_type = NumType == i32 or NumType == i64;
-        if (signed_integer_type) {
-            const value: NumType = @bitCast(result);
-            if (shift == max_shift) {
-                return value;
-            }
-            const top_bit = value & @as(NumType, 1) << (shift + 6);
-            return (value ^ top_bit) - top_bit;
-        } else {
-            return result;
-        }
+        unreachable;
     }
 };
+
+inline fn checkIntegerTooLarge(comptime NumType: type, byte: u8) (error{IntegerRepresentationTooLong} || error{IntegerTooLarge})!void {
+    if (byte & 0x80 > 0)
+        return Error.IntegerRepresentationTooLong;
+
+    switch (NumType) {
+        u32 => if (byte & 0xf0 > 0) return Error.IntegerTooLarge,
+        u64 => if (byte & 0xfe > 0) return Error.IntegerTooLarge,
+        i32 => {
+            const sign_bit = byte & 0x08 != 0;
+            const top_bits = byte & 0xf0;
+            if ((sign_bit and top_bits != 0x70) or (!sign_bit and top_bits != 0)) {
+                return Error.IntegerTooLarge;
+            }
+        },
+        i64 => {
+            const sign_bit = byte & 0x01 != 0;
+            const top_bits = byte & 0x7e;
+            if ((sign_bit and top_bits != 0x7e) or (!sign_bit and top_bits != 0)) {
+                return Error.IntegerTooLarge;
+            }
+        },
+        else => unreachable,
+    }
+}
 
 test BinaryReader {
     const std = @import("std");
