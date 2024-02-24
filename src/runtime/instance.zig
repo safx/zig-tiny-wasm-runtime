@@ -248,7 +248,6 @@ pub const Instance = struct {
             switch (elem.mode) {
                 .active => |active_type| {
                     const n = elem.init.len;
-                    self.debugPrint("======> Elem-{} {any}\n", .{ i, active_type });
                     try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
@@ -265,7 +264,6 @@ pub const Instance = struct {
                 else => continue,
             }
 
-            self.debugPrint("==============>>>>>>>>>>>>>>>>>>>>\n", .{});
             for (self.store.tables.items, 0..) |item, j| {
                 self.debugPrint("Table {} = [{}]{{", .{ j, item.elem.len });
                 for (item.elem[0..@min(19, item.elem.len)]) |e| {
