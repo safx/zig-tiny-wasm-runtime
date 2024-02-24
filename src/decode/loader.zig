@@ -340,7 +340,7 @@ pub const ModuleLoader = struct {
     fn importdesc(self: *Self) Error!types.ImportDesc {
         const kind = try self.reader.readU8();
         return switch (kind) {
-            0 => .{ .func = try self.reader.readVarU32() },
+            0 => .{ .function = try self.reader.readVarU32() },
             1 => .{ .table = try self.table() },
             2 => .{ .memory = try self.memtype() },
             3 => .{ .global = try self.globalType() },
@@ -351,7 +351,7 @@ pub const ModuleLoader = struct {
     fn exportdesc(self: *Self) Error!types.ExportDesc {
         const kind = try self.reader.readU8();
         return switch (kind) {
-            0 => .{ .func = try self.reader.readVarU32() },
+            0 => .{ .function = try self.reader.readVarU32() },
             1 => .{ .table = try self.reader.readVarU32() },
             2 => .{ .memory = try self.reader.readVarU32() },
             3 => .{ .global = try self.reader.readVarU32() },

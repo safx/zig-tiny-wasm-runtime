@@ -94,7 +94,7 @@ pub const Engine = struct {
 
     fn isMatchType(store: types.Store, exp: types.ExternalValue, module: types.Module, imp: types.ImportDesc) bool {
         return switch (exp) {
-            .function => |v| imp == .func and isMatchFuncType(store.funcs.items[v].type, module.types[imp.func]),
+            .function => |v| imp == .function and isMatchFuncType(store.funcs.items[v].type, module.types[imp.function]),
             .table => |v| imp == .table and isMatchTableType(store.tables.items[v].type, imp.table),
             .memory => |v| imp == .memory and isMatchMemType(store.mems.items[v].type, imp.memory),
             .global => |v| imp == .global and isMatchGlobalType(store.globals.items[v].type, imp.global),

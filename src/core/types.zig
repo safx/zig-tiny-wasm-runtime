@@ -98,15 +98,15 @@ pub const Export = struct {
     }
 };
 
-pub const ImportDesc = union(enum) {
-    func: TypeIdx,
+pub const ImportDesc = union(wasm.ExternalKind) {
+    function: TypeIdx,
     table: TableType,
     memory: MemoryType,
     global: GlobalType,
 };
 
-pub const ExportDesc = union(enum) {
-    func: FuncIdx,
+pub const ExportDesc = union(wasm.ExternalKind) {
+    function: FuncIdx,
     table: TableIdx,
     memory: MemIdx,
     global: GlobalIdx,

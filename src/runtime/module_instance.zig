@@ -79,7 +79,7 @@ pub const ModuleInst = struct {
         // 18, 19: export
         for (module.exports, 0..) |exp, i| {
             const exp_value: types.ExternalValue = switch (exp.desc) {
-                .func => |idx| .{ .function = mod_inst.func_addrs[idx] },
+                .function => |idx| .{ .function = mod_inst.func_addrs[idx] },
                 .table => |idx| .{ .table = mod_inst.table_addrs[idx] },
                 .memory => |idx| .{ .memory = mod_inst.mem_addrs[idx] },
                 .global => |idx| .{ .global = mod_inst.global_addrs[idx] },
