@@ -261,7 +261,9 @@ pub const Value = union(core.ValueType) {
     pub fn as(self: Self, comptime T: type) T {
         return switch (T) {
             i32 => self.asI32(),
+            u32 => self.asU32(),
             i64 => self.asI64(),
+            u64 => self.asU64(),
             f32 => self.asF32(),
             f64 => self.asF64(),
             else => @panic("unknown type: " ++ @typeName(T)),
@@ -278,14 +280,8 @@ pub const Value = union(core.ValueType) {
         }
     }
 
-    pub fn asU32(self: Self) u32 {
-        switch (self) {
-            .i32 => |val| return @bitCast(val),
-            .i64 => |val| return @intCast(val),
-            .f32 => |val| return @bitCast(val),
-            .f64 => |val| return @intCast(val),
-            else => unreachable,
-        }
+    pub inline fn asU32(self: Self) u32 {
+        return @bitCast(self.asI32());
     }
 
     pub fn asI64(self: Self) i64 {
@@ -299,6 +295,10 @@ pub const Value = union(core.ValueType) {
             .f64 => |val| return @bitCast(val),
             else => unreachable,
         }
+    }
+
+    pub inline fn asU64(self: Self) u64 {
+        return @bitCast(self.asI64());
     }
 
     pub fn asF32(self: Self) f32 {

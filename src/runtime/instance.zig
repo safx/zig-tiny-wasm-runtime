@@ -1161,32 +1161,22 @@ pub const Instance = struct {
         data.data = &.{};
     }
 
-    inline fn basetype(comptime T: type) type {
-        return if (T == u32) i32 else if (T == u64) i64 else T;
-    }
-
     inline fn instrOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) R) error{OutOfMemory}!void {
-        const value: T = @bitCast(self.stack.pop().value.as(basetype(T)));
+        const value: T = self.stack.pop().value.as(T);
         const result: R = f(R, T, value);
-        const B = basetype(R);
-        const converted_result: B = @bitCast(result);
-        try self.stack.pushValueAs(B, converted_result);
+        try self.stack.pushValueAs(R, result);
     }
 
     inline fn instrExtOp(self: *Self, comptime R: type, comptime T: type, comptime S: type, comptime f: fn (type, type, type, T) R) error{OutOfMemory}!void {
-        const value: T = @bitCast(self.stack.pop().value.as(basetype(T)));
+        const value: T = self.stack.pop().value.as(T);
         const result: R = f(R, T, S, value);
-        const B = basetype(R);
-        const converted_result: B = @bitCast(result);
-        try self.stack.pushValueAs(B, converted_result);
+        try self.stack.pushValueAs(R, result);
     }
 
     inline fn instrEOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) (Error || error{OutOfMemory})!void {
-        const value: T = @bitCast(self.stack.pop().value.as(basetype(T)));
+        const value: T = self.stack.pop().value.as(T);
         const result: R = try f(R, T, value);
-        const B = basetype(R);
-        const converted_result: B = @bitCast(result);
-        try self.stack.pushValueAs(B, converted_result);
+        try self.stack.pushValueAs(R, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-unop-mathit-unop
@@ -1198,9 +1188,8 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-binop-mathit-binop
     inline fn binOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) (Error || error{OutOfMemory})!void {
-        const B = basetype(T);
-        const rhs: T = @bitCast(self.stack.pop().value.as(B));
-        const lhs: T = @bitCast(self.stack.pop().value.as(B));
+        const rhs: T = self.stack.pop().value.as(T);
+        const lhs: T = self.stack.pop().value.as(T);
         const result = try f(T, lhs, rhs);
         try self.stack.pushValueAs(T, result);
     }
@@ -1214,9 +1203,8 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-relop-mathit-relop
     inline fn relOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) i32) error{OutOfMemory}!void {
-        const B = basetype(T);
-        const rhs: T = @bitCast(self.stack.pop().value.as(B));
-        const lhs: T = @bitCast(self.stack.pop().value.as(B));
+        const rhs: T = self.stack.pop().value.as(T);
+        const lhs: T = self.stack.pop().value.as(T);
         const result = f(T, lhs, rhs);
         try self.stack.pushValueAs(i32, result);
     }
