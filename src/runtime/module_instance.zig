@@ -40,28 +40,26 @@ pub const ModuleInst = struct {
         mod_inst.data_addrs = try allocator.alloc(types.DataAddr, module.datas.len);
         mod_inst.exports = try allocator.alloc(types.ExportInst, module.exports.len);
 
-        // 14, 15, 16, 17: imports
+        // 2, 8, 14: function
         @memcpy(mod_inst.func_addrs[0..num_import_funcs], externals.functions);
-        @memcpy(mod_inst.table_addrs[0..num_import_tables], externals.tables);
-        @memcpy(mod_inst.mem_addrs[0..num_import_mems], externals.memories);
-        @memcpy(mod_inst.global_addrs[0..num_import_globals], externals.globals);
-
-        // 2, 8: function
         for (module.funcs, num_import_funcs..) |func, i| {
             mod_inst.func_addrs[i] = try allocFunc(store, func, mod_inst);
         }
 
-        // 3, 9: table
+        // 3, 9, 15: table
+        @memcpy(mod_inst.table_addrs[0..num_import_tables], externals.tables);
         for (module.tables, num_import_tables..) |table, i| {
             mod_inst.table_addrs[i] = try allocTable(store, table, allocator);
         }
 
-        // 4, 10: memory
+        // 4, 10, 16: memory
+        @memcpy(mod_inst.mem_addrs[0..num_import_mems], externals.memories);
         for (module.memories, num_import_mems..) |mem, i| {
             mod_inst.mem_addrs[i] = try allocMemory(store, mem, allocator);
         }
 
-        // 5, 11: global
+        // 5, 11, 17: global
+        @memcpy(mod_inst.global_addrs[0..num_import_globals], externals.globals);
         for (module.globals, 0..) |global, i| {
             mod_inst.global_addrs[num_import_globals + i] = try allocGlobal(store, global, values[i]);
         }
