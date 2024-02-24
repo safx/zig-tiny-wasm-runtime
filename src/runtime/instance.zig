@@ -114,7 +114,7 @@ pub const Instance = struct {
 
         // 5:
         for (func_type.parameter_types, args) |p, a| {
-            if (p != valueTypeFromValue(a)) {
+            if (p != a) {
                 return Error.InvocationParameterMismatch;
             }
         }
@@ -1297,7 +1297,7 @@ const FlowControl = union(enum) {
     }
 };
 
-inline fn unsignedTypeOf(comptime T: type) type {
+inline fn UnsignedTypeOf(comptime T: type) type {
     if (T != i32 and T != i64)
         @compileError("Invalid Number Type");
 
@@ -1529,47 +1529,32 @@ fn opIntShrU(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opIntRotl(comptime T: type, lhs: T, rhs: T) Error!T {
-    if (T == i32) {
-        var num: u32 = @bitCast(lhs);
-        const b = @bitSizeOf(T);
-        const r = @mod(rhs, b);
-        const r1: u5 = @intCast(r);
-        const r2: u5 = @intCast(@mod(b - r, b));
-        const res = (num << r1) | (num >> r2);
-        const res2: i32 = @bitCast(res);
-        return res2;
-    } else {
-        var num: u64 = @bitCast(lhs);
-        const b = @bitSizeOf(T);
-        const r = @mod(rhs, b);
-        const r1: u6 = @intCast(r);
-        const r2: u6 = @intCast(@mod(b - r, b));
-        const res = (num << r1) | (num >> r2);
-        const res2: i64 = @bitCast(res);
-        return res2;
-    }
+    if (T != i32 and T != i64)
+        @compileError("Invalid Number Type");
+
+    const ShiftType = if (T == i32) u5 else u6;
+    const num: UnsignedTypeOf(T) = @bitCast(lhs);
+    const b = @bitSizeOf(T);
+    const r = @mod(rhs, b);
+    const r1: ShiftType = @intCast(r);
+    const r2: ShiftType = @intCast(@mod(b - r, b));
+    const res = (num << r1) | (num >> r2);
+
+    return @bitCast(res);
 }
 
 fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
-    if (T == i32) {
-        var num: u32 = @bitCast(lhs);
-        const b = @bitSizeOf(T);
-        const r = @mod(rhs, b);
-        const r1: u5 = @intCast(r);
-        const r2: u5 = @intCast(@mod(b - r, b));
-        const res = (num >> r1) | (num << r2);
-        const res2: i32 = @bitCast(res);
-        return res2;
-    } else {
-        var num: u64 = @bitCast(lhs);
-        const b = @bitSizeOf(T);
-        const r = @mod(rhs, b);
-        const r1: u6 = @intCast(r);
-        const r2: u6 = @intCast(@mod(b - r, b));
-        const res = (num >> r1) | (num << r2);
-        const res2: i64 = @bitCast(res);
-        return res2;
-    }
+    if (T != i32 and T != i64)
+        @compileError("Invalid Number Type");
+
+    const ShiftType = if (T == i32) u5 else u6;
+    const num: UnsignedTypeOf(T) = @bitCast(lhs);
+    const b = @bitSizeOf(T);
+    const r = @mod(rhs, b);
+    const r1: ShiftType = @intCast(r);
+    const r2: ShiftType = @intCast(@mod(b - r, b));
+    const res = (num >> r1) | (num << r2);
+    return @bitCast(res);
 }
 
 fn opFloatAbs(comptime T: type, value: T) T {
@@ -1677,18 +1662,6 @@ fn canonNan(comptime T: type) T {
     std.debug.assert(T == f64 or T == f32);
     const v = if (T == f64) @as(u64, 0x7ff8_0000_0000_0000) else @as(u32, 0x7fc0_0000);
     return @bitCast(v);
-}
-
-fn valueTypeFromValue(value: types.Value) types.ValueType {
-    return switch (value) {
-        .i32 => .i32,
-        .i64 => .i64,
-        .f32 => .f32,
-        .f64 => .f64,
-        .v128 => .v128,
-        .func_ref => .func_ref,
-        .extern_ref => .extern_ref,
-    };
 }
 
 test opFloatEq {
