@@ -87,6 +87,9 @@ pub const Engine = struct {
                 } else {
                     return Error.IncompatibleImportType;
                 }
+            } else {
+                std.debug.print("UnknownImport: {s}.{s}\n", .{ imp.module_name, imp.name });
+                return Error.UnknownImport;
             }
         }
         return external_imports;
