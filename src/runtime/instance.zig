@@ -393,8 +393,8 @@ pub const Instance = struct {
             .i64_load32_u => |mem_arg| try self.opLoad(i64, u32, mem_arg),
             .i32_store => |mem_arg| try self.opStore(i32, 32, mem_arg),
             .i64_store => |mem_arg| try self.opStore(i64, 64, mem_arg),
-            .f32_store => |mem_arg| try self.opStore(i32, 32, mem_arg),
-            .f64_store => |mem_arg| try self.opStore(i64, 64, mem_arg),
+            .f32_store => |mem_arg| try self.opStore(f32, 32, mem_arg),
+            .f64_store => |mem_arg| try self.opStore(f64, 64, mem_arg),
             .i32_store8 => |mem_arg| try self.opStore(i32, 8, mem_arg),
             .i32_store16 => |mem_arg| try self.opStore(i32, 16, mem_arg),
             .i64_store8 => |mem_arg| try self.opStore(i64, 8, mem_arg),
@@ -995,7 +995,8 @@ pub const Instance = struct {
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
 
-        const c = self.stack.pop().value.as(T);
+        const BitType = if (@bitSizeOf(T) == 64) u64 else if (@bitSizeOf(T) == 32) u32 else unreachable;
+        const c: BitType = @bitCast(self.stack.pop().value.as(T));
         const i: u32 = self.stack.pop().value.asU32();
 
         const ea: u32 = i + mem_arg.offset;

@@ -281,8 +281,6 @@ pub const Value = union(core.ValueType) {
         switch (self) {
             .i32 => |val| return val,
             .i64 => |val| return @intCast(val),
-            .f32 => |val| return @bitCast(val),
-            .f64 => |val| return @intCast(val),
             else => unreachable,
         }
     }
@@ -295,11 +293,6 @@ pub const Value = union(core.ValueType) {
         switch (self) {
             .i32 => |val| return val,
             .i64 => |val| return val,
-            .f32 => |val| {
-                const v: i64 = @intCast(val);
-                return @bitCast(v);
-            },
-            .f64 => |val| return @bitCast(val),
             else => unreachable,
         }
     }
@@ -310,11 +303,6 @@ pub const Value = union(core.ValueType) {
 
     pub fn asF32(self: Self) f32 {
         switch (self) {
-            .i32 => |val| return @bitCast(val),
-            .i64 => |val| {
-                const v: i32 = @intCast(val);
-                return @bitCast(v);
-            },
             .f32 => |val| return @bitCast(val),
             .f64 => |val| {
                 const v: i32 = @intCast(val);
@@ -326,11 +314,6 @@ pub const Value = union(core.ValueType) {
 
     pub fn asF64(self: Self) f64 {
         switch (self) {
-            .i32 => |val| {
-                const x: i64 = val;
-                return @bitCast(x);
-            },
-            .i64 => |val| return @bitCast(val),
             .f32 => |val| return {
                 const v: f32 = @bitCast(val);
                 return v;
