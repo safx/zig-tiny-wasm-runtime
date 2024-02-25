@@ -267,96 +267,32 @@ pub const Value = union(core.ValueType) {
 
     pub fn as(self: Self, comptime T: type) T {
         return switch (T) {
-            i32 => self.asI32(),
-            u32 => self.asU32(),
-            i64 => self.asI64(),
-            u64 => self.asU64(),
-            f32 => self.asF32(),
-            f64 => self.asF64(),
+            i32 => self.i32,
+            u32 => @bitCast(self.i32),
+            i64 => self.i64,
+            u64 => @bitCast(self.i64),
+            f32 => @bitCast(self.f32),
+            f64 => @bitCast(self.f64),
             else => @panic("unknown type: " ++ @typeName(T)),
         };
     }
 
-    pub fn asI32(self: Self) i32 {
-        switch (self) {
-            .i32 => |val| return val,
-            .i64 => |val| return @intCast(val),
-            else => unreachable,
-        }
-    }
-
     pub inline fn asU32(self: Self) u32 {
-        return @bitCast(self.asI32());
-    }
-
-    pub fn asI64(self: Self) i64 {
-        switch (self) {
-            .i32 => |val| return val,
-            .i64 => |val| return val,
-            else => unreachable,
-        }
-    }
-
-    pub inline fn asU64(self: Self) u64 {
-        return @bitCast(self.asI64());
-    }
-
-    pub fn asF32(self: Self) f32 {
-        switch (self) {
-            .f32 => |val| return @bitCast(val),
-            .f64 => |val| {
-                const v: i32 = @intCast(val);
-                return @bitCast(v);
-            },
-            else => unreachable,
-        }
-    }
-
-    pub fn asF64(self: Self) f64 {
-        switch (self) {
-            .f32 => |val| return {
-                const v: f32 = @bitCast(val);
-                return v;
-            },
-            .f64 => |val| return @bitCast(val),
-            else => unreachable,
-        }
+        return @bitCast(self.i32);
     }
 
     pub fn format(self: Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
             .i32 => |val| try writer.print("{}_i32", .{val}),
             .i64 => |val| try writer.print("{}_i64", .{val}),
-            .f32 => try writer.print("{d:.2}_f32", .{self.asF32()}),
-            .f64 => try writer.print("{d:.2}_f64", .{self.asF64()}),
+            .f32 => try writer.print("{d:.2}_f32", .{self.as(f32)}),
+            .f64 => try writer.print("{d:.2}_f64", .{self.as(f64)}),
             .v128 => |val| try writer.print("{}_i128", .{val}),
             .func_ref => |val| if (val) |v| try writer.print("{}_ref", .{v}) else try writer.print("null_ref", .{}),
             .extern_ref => |val| if (val) |v| try writer.print("{}_extref", .{v}) else try writer.print("null_extref", .{}),
         }
     }
 };
-
-test "Value" {
-    const expectEqual = std.testing.expectEqual;
-
-    {
-        const v = Value{ .i32 = 0 };
-        try expectEqual(@as(i32, 0), v.i32);
-        try expectEqual(@as(i32, 0), v.asI32());
-        try expectEqual(@as(i64, 0), v.asI64());
-        try expectEqual(@as(f32, 0), v.asF32());
-        try expectEqual(@as(f64, 0), v.asF64());
-    }
-    {
-        const v = Value{ .i32 = 5 };
-        try expectEqual(@as(i32, 5), v.i32);
-        try expectEqual(@as(i64, 5), v.asI64());
-    }
-    {
-        const v = Value{ .i64 = 1 };
-        try expectEqual(@as(i64, 1), v.i64);
-    }
-}
 
 pub const RefValue = union(enum) {
     const Self = @This();

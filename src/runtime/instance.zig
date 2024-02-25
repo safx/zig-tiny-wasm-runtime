@@ -726,7 +726,7 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-parametric-mathsf-select-t-ast
     inline fn opSelect(self: *Self) error{OutOfMemory}!void {
-        const c = self.stack.pop().value.asI32();
+        const c = self.stack.pop().value.asU32();
         const val2 = self.stack.pop();
         const val1 = self.stack.pop();
         if (c != 0) {
@@ -1028,8 +1028,8 @@ pub const Instance = struct {
         const mem_addr = module.mem_addrs[0];
         const mem_inst = self.store.mems.items[mem_addr];
 
-        const sz: i32 = @intCast(mem_inst.data.len / page_size);
-        const n = self.stack.pop().value.asI32();
+        const sz: u32 = @intCast(mem_inst.data.len / page_size);
+        const n = self.stack.pop().value.asU32();
 
         if (mem_inst.type.limits.max) |max| {
             if (n + sz > max) {
@@ -1046,13 +1046,13 @@ pub const Instance = struct {
 
         self.store.mems.items[mem_addr].data = new_data;
         self.store.mems.items[mem_addr].type.limits.min = @intCast(new_data.len);
-        try self.stack.pushValueAs(i32, sz);
+        try self.stack.pushValueAs(u32, sz);
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-memories
-    fn growmem(mem_inst: types.MemInst, n: i32, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
-        const data_len: i32 = @intCast(mem_inst.data.len / page_size);
-        const len: i32 = data_len + n;
+    fn growmem(mem_inst: types.MemInst, n: u32, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
+        const data_len: u32 = @intCast(mem_inst.data.len / page_size);
+        const len: u32 = data_len + n;
         if (len + n > 65536) {
             return std.mem.Allocator.Error.OutOfMemory;
         }
