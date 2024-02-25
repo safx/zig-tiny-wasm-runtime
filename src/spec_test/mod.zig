@@ -8,7 +8,7 @@ const Error = @import("./errors.zig").RuntimeError;
 const reader = @import("./reader.zig");
 
 test "Wasm spec test" {
-    //try doWasmSpecTest();
+    // try doWasmSpecTest();
 }
 
 pub fn doWasmSpecTest() !void {
@@ -24,25 +24,29 @@ pub fn doWasmSpecTest() !void {
     while (try it.next()) |entry| {
         const ext = getExtention(entry.name);
         if (std.mem.eql(u8, ext, "json")) {
-            try execSpecTestsFromFile(entry.name);
+            try execSpecTestsFromFile(entry.name, 2);
         }
     }
 }
 
-pub fn execSpecTestsFromFile(file_name: []const u8, verboseLevel: u8) !void {
+pub fn execSpecTestsFromCommandLine(file_name: []const u8, verbose_level: u8) !void {
+    var buf: [4096]u8 = undefined;
+    const cwd = std.fs.cwd();
+    try std.os.chdir(try cwd.realpath("spec_test", &buf));
+    try execSpecTestsFromFile(file_name, verbose_level);
+}
+
+fn execSpecTestsFromFile(file_name: []const u8, verbose_level: u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var buf: [4096]u8 = undefined;
-    const cwd = std.fs.cwd();
-    try std.os.chdir(try cwd.realpath("spec_test", &buf));
     const file = try std.fs.cwd().openFile(file_name, .{ .mode = .read_only });
     defer file.close();
 
     const commands = try reader.readJsonFromFile(file, allocator);
-    var engine = types.Engine.new(allocator, verboseLevel >= 2);
-    try execSpecTests(&engine, commands, allocator, verboseLevel >= 1);
+    var engine = types.Engine.new(allocator, verbose_level >= 2);
+    try execSpecTests(&engine, commands, allocator, verbose_level >= 1);
 }
 
 fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocator: std.mem.Allocator, verbose: bool) !void {
@@ -52,7 +56,6 @@ fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocat
         if (verbose) {
             std.debug.print("-" ** 75 ++ "\n", .{});
             std.debug.print("{any}\n", .{cmd});
-            //std.debug.print("{}\n", .{std.json.fmt(cmd, .{})});
         }
 
         switch (cmd) {
@@ -139,21 +142,15 @@ fn validateResult(expected_value: []const types.Result, actual_result: []const t
 
 fn checkReturnValue(expected: types.Result, result: types.Value) bool {
     switch (expected) {
-        .@"const" => |exp_const| {
-            switch (exp_const) {
-                .i32, .i64 => return exp_const.asI64() == result.asI64(),
-                .f32 => return exp_const.asI32() == result.asI32(),
-                .f64 => return exp_const.asI64() == result.asI64(),
-                .v128 => unreachable,
-                .func_ref => |r| switch (result) {
-                    .func_ref => |v| return r == v,
-                    else => return false,
-                },
-                .extern_ref => |r| switch (result) {
-                    .extern_ref => |v| return r == v,
-                    else => return false,
-                },
+        .@"const" => |exp| {
+            const Tag = @typeInfo(types.Value).Union.tag_type.?;
+            inline for (@typeInfo(Tag).Enum.fields) |field| {
+                if (field.value == @intFromEnum(exp) and field.value == @intFromEnum(result)) {
+                    return @field(exp, field.name) == @field(result, field.name);
+                }
             }
+            std.debug.print("*** {any} {any}\n", .{ exp, result });
+            unreachable;
         },
         .f32_nan_arithmetic => return isArithmeticNanF32(result.f32),
         .f32_nan_canonical => return isCanonicalNanF32(result.f32),

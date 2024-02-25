@@ -17,5 +17,5 @@ pub fn main() !void {
             file_name = arg;
         }
     }
-    try spec.execSpecTestsFromFile(file_name.?, verbose);
+    try spec.execSpecTestsFromCommandLine(file_name.?, verbose);
 }

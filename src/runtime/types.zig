@@ -251,6 +251,18 @@ pub const Value = union(core.ValueType) {
         };
     }
 
+    pub fn defaultValueFrom(ty: core.ValueType) Self {
+        return switch (ty) {
+            .i32 => .{ .i32 = 0 },
+            .i64 => .{ .i64 = 0 },
+            .f32 => .{ .f32 = 0 },
+            .f64 => .{ .f64 = 0 },
+            .v128 => .{ .v128 = 0 },
+            .func_ref => .{ .func_ref = null },
+            .extern_ref => .{ .extern_ref = null },
+        };
+    }
+
     pub fn isNull(self: Self) bool {
         return switch (self) {
             .func_ref, .extern_ref => |v| v == null,

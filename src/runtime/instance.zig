@@ -45,7 +45,9 @@ pub const Instance = struct {
         const p_len = func_type.parameter_types.len;
         const num_locals = p_len + func_inst.code.locals.len;
         const locals = try self.allocator.alloc(types.Value, num_locals);
-        @memset(locals[p_len..num_locals], .{ .i64 = 0 }); // TODO: should be assign actual type?
+        for (func_inst.code.locals, p_len..) |l, i| {
+            locals[i] = types.Value.defaultValueFrom(l);
+        }
 
         // 6, 7:
         var i = p_len;
