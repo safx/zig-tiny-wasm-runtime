@@ -101,36 +101,6 @@ pub const Engine = struct {
         };
     }
 
-    fn isMatchFuncType(a: types.FuncType, b: types.FuncType) bool {
-        return std.mem.eql(types.ValueType, a.parameter_types, b.parameter_types) and
-            std.mem.eql(types.ValueType, a.result_types, b.result_types);
-    }
-
-    fn isMatchTableType(a: types.TableType, b: types.TableType) bool {
-        return a.ref_type == b.ref_type and isValidLimits(a.limits, b.limits);
-    }
-
-    fn isMatchMemType(a: types.MemoryType, b: types.MemoryType) bool {
-        return isValidLimits(a.limits, b.limits);
-    }
-
-    fn isMatchGlobalType(a: types.GlobalType, b: types.GlobalType) bool {
-        return a.mutability == b.mutability and
-            a.value_type == b.value_type;
-    }
-
-    fn isValidLimits(a: types.Limits, b: types.Limits) bool {
-        if (b.max) |b_max| {
-            if (a.max) |a_max| {
-                if (a_max > b_max)
-                    return false;
-            } else {
-                return false;
-            }
-        }
-        return a.min >= b.min;
-    }
-
     fn findExport(mod_inst: types.ModuleInst, import_name: []const u8) error{UnknownImport}!types.ExternalValue {
         for (mod_inst.exports) |exp| {
             if (std.mem.eql(u8, import_name, exp.name)) {
@@ -148,4 +118,34 @@ fn getFilename(path: []const u8) []const u8 {
         elem = p;
     }
     return elem;
+}
+
+fn isMatchFuncType(a: types.FuncType, b: types.FuncType) bool {
+    return std.mem.eql(types.ValueType, a.parameter_types, b.parameter_types) and
+        std.mem.eql(types.ValueType, a.result_types, b.result_types);
+}
+
+fn isMatchTableType(a: types.TableType, b: types.TableType) bool {
+    return a.ref_type == b.ref_type and isValidLimits(a.limits, b.limits);
+}
+
+fn isMatchMemType(a: types.MemoryType, b: types.MemoryType) bool {
+    return isValidLimits(a.limits, b.limits);
+}
+
+fn isMatchGlobalType(a: types.GlobalType, b: types.GlobalType) bool {
+    return a.mutability == b.mutability and
+        a.value_type == b.value_type;
+}
+
+fn isValidLimits(a: types.Limits, b: types.Limits) bool {
+    if (b.max) |b_max| {
+        if (a.max) |a_max| {
+            if (a_max > b_max)
+                return false;
+        } else {
+            return false;
+        }
+    }
+    return a.min >= b.min;
 }

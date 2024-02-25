@@ -182,14 +182,14 @@ pub const Instance = struct {
     /// `instantiate` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/modules.html#instantiation
     pub fn instantiate(self: *Self, module: types.Module, extern_vals: []const types.ExternalValue) (Error || error{OutOfMemory})!*types.ModuleInst {
-        // 1: validate
-        // 2: assert
+        // 1, 2: validate
+
         // 3: check length
         if (module.imports.len != extern_vals.len) {
             return Error.InstantiationFailed;
         }
 
-        // 4: verify external value
+        // 4: verifying external value is done in engine
 
         // 5: aux module
         var aux_module = try types.ModuleInst.auxiliaryInstance(&self.store, module, extern_vals, self.allocator);
@@ -237,7 +237,6 @@ pub const Instance = struct {
         const mod_inst = try types.ModuleInst.allocateModule(&self.store, module, extern_vals, vals, refs, self.allocator);
         var node = ModInstList.Node{ .data = mod_inst.* };
         self.modules.prepend(&node);
-        //self.debugPrint("\n---ModInst\n{}\n", .{std.json.fmt(mod_inst, .{})});
 
         // 12, 13: push aux frame
         const aux_frame = types.ActivationFrame{
@@ -529,16 +528,16 @@ pub const Instance = struct {
 
             // numeric instructions (4)
             .i32_wrap_i64 => try self.instrOp(u32, u64, opWrap),
-            .i32_trunc_f32_s => try self.instrEOp(i32, f32, opTrunc),
-            .i32_trunc_f32_u => try self.instrEOp(u32, f32, opTrunc),
-            .i32_trunc_f64_s => try self.instrEOp(i32, f64, opTrunc),
-            .i32_trunc_f64_u => try self.instrEOp(u32, f64, opTrunc),
+            .i32_trunc_f32_s => try self.instrTryOp(i32, f32, opTrunc),
+            .i32_trunc_f32_u => try self.instrTryOp(u32, f32, opTrunc),
+            .i32_trunc_f64_s => try self.instrTryOp(i32, f64, opTrunc),
+            .i32_trunc_f64_u => try self.instrTryOp(u32, f64, opTrunc),
             .i64_extend_i32_s => try self.instrExtOp(i64, i32, i32, opExtend),
             .i64_extend_i32_u => try self.instrExtOp(u64, u32, u32, opExtend),
-            .i64_trunc_f32_s => try self.instrEOp(i64, f32, opTrunc),
-            .i64_trunc_f32_u => try self.instrEOp(u64, f32, opTrunc),
-            .i64_trunc_f64_s => try self.instrEOp(i64, f64, opTrunc),
-            .i64_trunc_f64_u => try self.instrEOp(u64, f64, opTrunc),
+            .i64_trunc_f32_s => try self.instrTryOp(i64, f32, opTrunc),
+            .i64_trunc_f32_u => try self.instrTryOp(u64, f32, opTrunc),
+            .i64_trunc_f64_s => try self.instrTryOp(i64, f64, opTrunc),
+            .i64_trunc_f64_u => try self.instrTryOp(u64, f64, opTrunc),
             .f32_convert_i32_s => try self.instrOp(f32, i32, opConvert),
             .f32_convert_i32_u => try self.instrOp(f32, u32, opConvert),
             .f32_convert_i64_s => try self.instrOp(f32, i64, opConvert),
@@ -681,7 +680,7 @@ pub const Instance = struct {
             return Error.UninitializedElement;
         const a = r.func_ref.?;
 
-        const f = self.store.funcs.items[@intCast(a)];
+        const f = self.store.funcs.items[a];
         const ft_actual = f.type;
         if (ft_expect.parameter_types.len != ft_actual.parameter_types.len or ft_expect.result_types.len != ft_actual.result_types.len)
             return Error.IndirectCallTypeMismatch;
@@ -811,8 +810,7 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
-        const val: i32 = @intCast(tab.elem.len);
-        try self.stack.pushValueAs(i32, val);
+        try self.stack.pushValueAs(u32, @as(u32, @intCast(tab.elem.len)));
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-grow-x
@@ -829,7 +827,7 @@ pub const Instance = struct {
             return;
         }
 
-        const sz = tab.elem.len;
+        const sz: u32 = @intCast(tab.elem.len);
 
         const new_elem = growtable(tab, n, types.RefValue.fromValue(val), self.allocator) catch |err| {
             assert(err == std.mem.Allocator.Error.OutOfMemory);
@@ -840,19 +838,20 @@ pub const Instance = struct {
         self.store.tables.items[ta].elem = new_elem;
         self.store.tables.items[ta].type.limits.min = @intCast(new_elem.len);
 
-        try self.stack.pushValueAs(i32, @as(i32, @intCast(sz)));
+        try self.stack.pushValueAs(u32, sz);
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-tables
     inline fn growtable(table_inst: types.TableInst, n: u32, val: types.RefValue, allocator: std.mem.Allocator) error{OutOfMemory}![]types.RefValue {
-        const data_len: u32 = @intCast(table_inst.elem.len);
-        const len_with_overflow = @addWithOverflow(data_len, n);
-        const len = len_with_overflow[0];
-        if (len_with_overflow[1] == 1 or len + n > 65536) {
+        const table_len: u32 = @intCast(table_inst.elem.len);
+        const len_with_overflow = @addWithOverflow(table_len, n);
+        if (len_with_overflow[1] == 1) {
             return std.mem.Allocator.Error.OutOfMemory;
         }
+        const len = len_with_overflow[0];
+
         const old_elem = table_inst.elem;
-        const new_elem = try allocator.alloc(types.RefValue, @intCast(len));
+        const new_elem = try allocator.alloc(types.RefValue, len);
         @memcpy(new_elem[0..old_elem.len], old_elem);
         @memset(new_elem[old_elem.len..], val);
         // `limits.min` should be updated outside this function
@@ -874,7 +873,7 @@ pub const Instance = struct {
             return Error.OutOfBoundsTableAccess;
 
         while (n > 0) {
-            tab.elem[@intCast(i)] = types.RefValue.fromValue(val);
+            tab.elem[i] = types.RefValue.fromValue(val);
             i += 1;
             n -= 1;
         }
@@ -1018,8 +1017,8 @@ pub const Instance = struct {
         const mem_addr = module.mem_addrs[0];
         const mem_inst = self.store.mems.items[mem_addr];
 
-        const sz: i32 = @intCast(mem_inst.data.len / page_size);
-        try self.stack.pushValueAs(i32, sz);
+        const sz: u32 = @intCast(mem_inst.data.len / page_size);
+        try self.stack.pushValueAs(u32, sz);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-grow
@@ -1057,7 +1056,7 @@ pub const Instance = struct {
             return std.mem.Allocator.Error.OutOfMemory;
         }
         const old_data = mem_inst.data;
-        const new_data = try allocator.alloc(u8, @intCast(len * page_size));
+        const new_data = try allocator.alloc(u8, len * page_size);
         @memcpy(new_data[0..old_data.len], old_data);
         @memset(new_data[old_data.len..], 0);
         // `limits.min` should be updated outside this function
@@ -1176,7 +1175,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
-    inline fn instrEOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) (Error || error{OutOfMemory})!void {
+    inline fn instrTryOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) (Error || error{OutOfMemory})!void {
         const value: T = self.stack.pop().value.as(T);
         const result: R = try f(R, T, value);
         try self.stack.pushValueAs(R, result);
@@ -1287,13 +1286,6 @@ const FlowControl = union(enum) {
         }
     }
 };
-
-inline fn UnsignedTypeOf(comptime T: type) type {
-    if (T != i32 and T != i64)
-        @compileError("Invalid Number Type");
-
-    return if (T == i32) u32 else u64;
-}
 
 // arithmetic ops are defined outside the struct
 
@@ -1523,8 +1515,9 @@ fn opIntRotl(comptime T: type, lhs: T, rhs: T) Error!T {
     if (T != i32 and T != i64)
         @compileError("Invalid Number Type");
 
+    const UnsignedType = if (T == i32) u32 else u64;
     const ShiftType = if (T == i32) u5 else u6;
-    const num: UnsignedTypeOf(T) = @bitCast(lhs);
+    const num: UnsignedType = @bitCast(lhs);
     const b = @bitSizeOf(T);
     const r = @mod(rhs, b);
     const r1: ShiftType = @intCast(r);
@@ -1538,8 +1531,9 @@ fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
     if (T != i32 and T != i64)
         @compileError("Invalid Number Type");
 
+    const UnsignedType = if (T == i32) u32 else u64;
     const ShiftType = if (T == i32) u5 else u6;
-    const num: UnsignedTypeOf(T) = @bitCast(lhs);
+    const num: UnsignedType = @bitCast(lhs);
     const b = @bitSizeOf(T);
     const r = @mod(rhs, b);
     const r1: ShiftType = @intCast(r);
