@@ -408,10 +408,10 @@ pub const Instance = struct {
             .memory_fill => try self.opMemoryFill(),
 
             // numeric instructions (1)
-            .i32_const => |val| try self.stack.pushValue(val),
-            .i64_const => |val| try self.stack.pushValue(val),
-            .f32_const => |val| try self.stack.pushValue(val),
-            .f64_const => |val| try self.stack.pushValue(val),
+            .i32_const => |val| try self.stack.pushValueAs(i32, val),
+            .i64_const => |val| try self.stack.pushValueAs(i64, val),
+            .f32_const => |val| try self.stack.pushValueAs(f32, val),
+            .f64_const => |val| try self.stack.pushValueAs(f64, val),
 
             // numeric instructions (2) i32
             .i32_eqz => try self.testOp(i32, opIntEqz),

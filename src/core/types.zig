@@ -17,19 +17,16 @@ pub const InstractionAddr = u32;
 pub const RefType = wasm.RefType;
 
 pub const ValueType = enum(u8) {
-    const valtype = wasm.valtype;
-    const reftype = wasm.reftype;
-
     // numtype
-    i32 = valtype(wasm.Valtype.i32),
-    i64 = valtype(wasm.Valtype.i64),
-    f32 = valtype(wasm.Valtype.f32),
-    f64 = valtype(wasm.Valtype.f64),
+    i32 = wasm.valtype(.i32),
+    i64 = wasm.valtype(.i64),
+    f32 = wasm.valtype(.f32),
+    f64 = wasm.valtype(.f64),
     // vectype
-    v128 = valtype(wasm.Valtype.v128),
+    v128 = wasm.valtype(.v128),
     // reftype
-    func_ref = reftype(wasm.RefType.funcref),
-    extern_ref = reftype(wasm.RefType.externref),
+    func_ref = wasm.reftype(.funcref),
+    extern_ref = wasm.reftype(.externref),
 };
 
 pub const FuncType = struct {

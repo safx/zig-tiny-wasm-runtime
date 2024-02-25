@@ -32,11 +32,6 @@ pub const Stack = struct {
         };
     }
 
-    pub fn pushValue(self: *Self, value: anytype) error{OutOfMemory}!void {
-        const val = Value.from(value);
-        try self.push(.{ .value = val });
-    }
-
     pub fn pushValueAs(self: *Self, comptime T: type, value: T) error{OutOfMemory}!void {
         const val = Value.from(value);
         try self.push(.{ .value = val });
@@ -362,7 +357,7 @@ test "Value" {
     const expectEqual = std.testing.expectEqual;
 
     {
-        const v = Value.from(@as(i32, 0));
+        const v = Value{ .i32 = 0 };
         try expectEqual(@as(i32, 0), v.i32);
         try expectEqual(@as(i32, 0), v.asI32());
         try expectEqual(@as(i64, 0), v.asI64());
@@ -370,14 +365,13 @@ test "Value" {
         try expectEqual(@as(f64, 0), v.asF64());
     }
     {
-        const v = Value.from(@as(i32, 5));
+        const v = Value{ .i32 = 5 };
         try expectEqual(@as(i32, 5), v.i32);
         try expectEqual(@as(i64, 5), v.asI64());
     }
     {
-        const v = Value.from(@as(i64, 1));
+        const v = Value{ .i64 = 1 };
         try expectEqual(@as(i64, 1), v.i64);
-        //try expectEqual(@as(f64, 1), v.asF64());
     }
 }
 

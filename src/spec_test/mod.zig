@@ -149,7 +149,6 @@ fn checkReturnValue(expected: types.Result, result: types.Value) bool {
                     return @field(exp, field.name) == @field(result, field.name);
                 }
             }
-            std.debug.print("*** {any} {any}\n", .{ exp, result });
             unreachable;
         },
         .f32_nan_arithmetic => return isArithmeticNanF32(result.f32),
