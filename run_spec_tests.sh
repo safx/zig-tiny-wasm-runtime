@@ -3,7 +3,7 @@
 zig build -Doptimize=ReleaseSafe
 
 (cd spec_test; ls *.json) | while read i; do
-    p=`./zig-out/bin/zwasmi $i 2>&1 | grep 'test pass' | wc -l`
+    p=`./zig-out/bin/spec_test $i 2>&1 | grep 'test pass' | wc -l`
     a=`grep -c assert_  spec_test/$i`
     echo $i $p $a
 done | awk '{

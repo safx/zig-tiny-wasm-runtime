@@ -10,52 +10,80 @@ pub fn build(b: *std.Build) void {
     const runtime = ModuleInfo.init(b, "wasm-runtime", "src/runtime/mod.zig", &.{ core, decode });
     const spec = ModuleInfo.init(b, "wasm-spec-test", "src/spec_test/mod.zig", &.{ core, decode, validate, runtime });
 
-    const moduleInfos = .{ core, decode, validate, runtime, spec };
+    {
+        const modules = .{ core, decode, runtime };
 
-    const exe = b.addExecutable(.{
-        .name = "zwasmi",
-        .root_source_file = .{ .path = "src/main.zig" },
-        .target = target,
-        .optimize = optimize,
-    });
-    inline for (moduleInfos) |info| {
-        exe.addModule(info.name, info.module);
-    }
-    b.installArtifact(exe);
-
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
-
-    const test_step = b.step("test", "Run unit tests");
-    inline for (moduleInfos) |info| {
-        const unit_test = b.addTest(.{
-            .root_source_file = .{ .path = info.path },
+        const exe = b.addExecutable(.{
+            .name = "zig-wasm-interp",
+            .root_source_file = .{ .path = "src/main.zig" },
             .target = target,
             .optimize = optimize,
         });
-
-        inline for (moduleInfos) |i| {
-            unit_test.addModule(i.name, i.module);
+        inline for (modules) |info| {
+            exe.addModule(info.name, info.module);
         }
-        //const test_step = b.step(info.name, "Run unit tests");
-        //b.installArtifact(unit_test);
-        const run_unit_test = b.addRunArtifact(unit_test);
-        test_step.dependOn(&run_unit_test.step);
+        b.installArtifact(exe);
+
+        const run_cmd = b.addRunArtifact(exe);
+        run_cmd.step.dependOn(b.getInstallStep());
+        if (b.args) |args| {
+            run_cmd.addArgs(args);
+        }
+
+        const run_step = b.step("run", "Run the app");
+        run_step.dependOn(&run_cmd.step);
     }
 
-    const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/main.zig" },
-        .target = target,
-        .optimize = optimize,
-    });
-    const run_unit_tests = b.addRunArtifact(unit_tests);
-    test_step.dependOn(&run_unit_tests.step);
+    const spectest_modules = .{ core, decode, validate, runtime, spec };
+    {
+        const exe = b.addExecutable(.{
+            .name = "spec_test",
+            .root_source_file = .{ .path = "src/spec_test.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        inline for (spectest_modules) |info| {
+            exe.addModule(info.name, info.module);
+        }
+        b.installArtifact(exe);
+
+        const run_cmd = b.addRunArtifact(exe);
+        run_cmd.step.dependOn(b.getInstallStep());
+        if (b.args) |args| {
+            run_cmd.addArgs(args);
+        }
+
+        const run_step = b.step("spectest", "Run the wasm spec tests");
+        run_step.dependOn(&run_cmd.step);
+    }
+
+    {
+        const unit_tests = b.addTest(.{
+            .root_source_file = .{ .path = "src/main.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        const run_unit_tests = b.addRunArtifact(unit_tests);
+
+        const test_step = b.step("test", "Run unit tests");
+        inline for (spectest_modules) |info| {
+            const unit_test = b.addTest(.{
+                .root_source_file = .{ .path = info.path },
+                .target = target,
+                .optimize = optimize,
+            });
+
+            inline for (spectest_modules) |i| {
+                unit_test.addModule(i.name, i.module);
+            }
+            //const test_step = b.step(info.name, "Run unit tests");
+            //b.installArtifact(unit_test);
+            const run_unit_test = b.addRunArtifact(unit_test);
+            test_step.dependOn(&run_unit_test.step);
+        }
+
+        test_step.dependOn(&run_unit_tests.step);
+    }
 }
 
 const ModuleInfo = struct {
