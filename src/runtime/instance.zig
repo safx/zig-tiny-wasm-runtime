@@ -643,9 +643,8 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-br-table-l-ast-l-n
     inline fn opBrTable(self: *Self, table_info: Instruction.BrTableType) error{OutOfMemory}!FlowControl {
-        const value = self.stack.pop().value.i32;
-        const pos: u32 = @bitCast(value);
-        const label_idx = if (pos < table_info.label_idxs.len) table_info.label_idxs[pos] else table_info.default_label_idx;
+        const value = self.stack.pop().value.asU32();
+        const label_idx = if (value < table_info.label_idxs.len) table_info.label_idxs[value] else table_info.default_label_idx;
         return self.opBr(label_idx);
     }
 
@@ -905,15 +904,15 @@ pub const Instance = struct {
 
         while (n > 0) : (n -= 1) {
             if (d <= s) {
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s)));
+                try self.stack.pushValueAs(u32, d);
+                try self.stack.pushValueAs(u32, s);
                 try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
                 try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
                 d += 1;
                 s += 1;
             } else {
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d + n - 1)));
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s + n - 1)));
+                try self.stack.pushValueAs(u32, d + n - 1);
+                try self.stack.pushValueAs(u32, s + n - 1);
                 try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
                 try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
             }
@@ -944,7 +943,7 @@ pub const Instance = struct {
 
         while (n > 0) : (n -= 1) {
             const ref_val = elem.elem[s];
-            try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
+            try self.stack.pushValueAs(u32, d);
             try self.stack.push(.{ .value = types.Value.fromRefValue(ref_val) });
             try self.execOneInstruction(.{ .table_set = arg.table_idx });
             d += 1;
@@ -995,6 +994,7 @@ pub const Instance = struct {
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
 
+        // change to integer type of same size to operate bit shift
         const BitType = if (@bitSizeOf(T) == 64) u64 else if (@bitSizeOf(T) == 32) u32 else unreachable;
         const c: BitType = @bitCast(self.stack.pop().value.as(T));
         const i: u32 = self.stack.pop().value.asU32();
@@ -1080,7 +1080,7 @@ pub const Instance = struct {
         }
 
         while (n > 0) : (n -= 1) {
-            try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
+            try self.stack.pushValueAs(u32, d);
             try self.stack.push(val);
             try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
             d += 1;
@@ -1109,15 +1109,15 @@ pub const Instance = struct {
 
         while (n > 0) : (n -= 1) {
             if (d <= s) {
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s)));
+                try self.stack.pushValueAs(u32, d);
+                try self.stack.pushValueAs(u32, s);
                 try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0 } });
                 try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
                 d += 1;
                 s += 1;
             } else {
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(d + n - 1)));
-                try self.stack.pushValueAs(i32, @as(i32, @bitCast(s + n - 1)));
+                try self.stack.pushValueAs(u32, d + n - 1);
+                try self.stack.pushValueAs(u32, s + n - 1);
                 try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0 } });
                 try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
             }
@@ -1148,8 +1148,8 @@ pub const Instance = struct {
 
         while (n > 0) : (n -= 1) {
             const b = data.data[s];
-            try self.stack.pushValueAs(i32, @as(i32, @bitCast(d)));
-            try self.stack.pushValueAs(i32, b);
+            try self.stack.pushValueAs(u32, d);
+            try self.stack.pushValueAs(u32, b);
             try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
             s += 1;
             d += 1;
