@@ -17,5 +17,15 @@ pub fn main() !void {
             file_name = arg;
         }
     }
-    try spec.execSpecTestsFromCommandLine(file_name.?, verbose);
+
+    if (file_name) |n| {
+        var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
+
+        var runner = try spec.SpecTestRunneer.new(allocator, "spec_test", verbose);
+        try runner.execFromFile(n);
+    } else {
+        std.debug.print("file expected", .{});
+    }
 }

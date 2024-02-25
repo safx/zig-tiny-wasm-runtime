@@ -1,11 +1,5 @@
 const std = @import("std");
-const types = struct {
-    usingnamespace @import("wasm-core");
-    usingnamespace @import("wasm-runtime");
-    usingnamespace @import("./types.zig");
-};
-const Error = @import("./errors.zig").RuntimeError;
-const reader = @import("./reader.zig");
+pub const SpecTestRunneer = @import("./test_runner.zig").SpecTestRunner;
 
 test "Wasm spec test" {
     // try doWasmSpecTest();
@@ -24,166 +18,9 @@ pub fn doWasmSpecTest() !void {
     while (try it.next()) |entry| {
         const ext = getExtention(entry.name);
         if (std.mem.eql(u8, ext, "json")) {
-            try execSpecTestsFromFile(entry.name, 2);
+            //try execSpecTestsFromFile(entry.name, 2);
         }
     }
-}
-
-pub fn execSpecTestsFromCommandLine(file_name: []const u8, verbose_level: u8) !void {
-    var buf: [4096]u8 = undefined;
-    const cwd = std.fs.cwd();
-    try std.os.chdir(try cwd.realpath("spec_test", &buf));
-    try execSpecTestsFromFile(file_name, verbose_level);
-}
-
-fn execSpecTestsFromFile(file_name: []const u8, verbose_level: u8) !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    const file = try std.fs.cwd().openFile(file_name, .{ .mode = .read_only });
-    defer file.close();
-
-    const commands = try reader.readJsonFromFile(file, allocator);
-    var engine = types.Engine.new(allocator, verbose_level >= 2);
-    try execSpecTests(&engine, commands, allocator, verbose_level >= 1);
-}
-
-fn execSpecTests(engine: *types.Engine, commands: []const types.Command, allocator: std.mem.Allocator, verbose: bool) !void {
-    var current_module: *types.ModuleInst = try engine.loadModuleFromPath("spectest.wasm", "spectest");
-
-    for (commands) |cmd| {
-        if (verbose) {
-            std.debug.print("-" ** 75 ++ "\n", .{});
-            std.debug.print("{any}\n", .{cmd});
-        }
-
-        switch (cmd) {
-            .module => |arg| {
-                current_module = try engine.loadModuleFromPath(arg.file_name, arg.name);
-            },
-            .register => |arg| {
-                try engine.registerModule(current_module, arg.as_name);
-            },
-            .action => |arg| {
-                const ret = try doAction(arg.action, engine, current_module, allocator);
-                defer allocator.free(ret);
-            },
-            .assert_return => |arg| {
-                const ret = try doAction(arg.action, engine, current_module, allocator);
-                validateResult(arg.expected, ret, arg.line, verbose);
-                defer allocator.free(ret);
-            },
-            .assert_trap => |arg| {
-                _ = doAction(arg.action, engine, current_module, allocator) catch |err| {
-                    validateCatchedError(arg.trap, err, true, arg.line, verbose);
-                    continue;
-                };
-                if (verbose)
-                    std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
-                @panic("Test failed.");
-            },
-            // .assert_exhaustion =>
-            .assert_malformed => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, false, arg.line, verbose),
-            // .assert_invalid => |arg| try exepecError(engine, arg.file_name, arg.trap, arg.line, verbose),
-            .assert_unlinkable => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, true, arg.line, verbose),
-            .assert_uninstantiable => |arg| try expectErrorWhileloadingModule(engine, arg.file_name, arg.trap, true, arg.line, verbose),
-            else => {},
-        }
-    }
-}
-
-fn doAction(action: types.Action, engine: *types.Engine, current_module: *types.ModuleInst, allocator: std.mem.Allocator) ![]const types.Value {
-    switch (action) {
-        .invoke => |arg| {
-            const mod = if (arg.module) |name| engine.getModuleInstByName(name) orelse current_module else current_module;
-            const func_addr = try getFunctionByName(mod, arg.field);
-            return try engine.invokeFunctionByAddr(func_addr.value.function, arg.args);
-        },
-        .get => |arg| {
-            const mod = if (arg.module) |name| engine.getModuleInstByName(name) orelse current_module else current_module;
-            const gval = engine.getValueFromGlobal(mod, arg.field).?;
-            const array = try allocator.alloc(types.Value, 1);
-            array[0] = gval;
-            return array;
-        },
-    }
-}
-
-fn expectErrorWhileloadingModule(engine: *types.Engine, file_name: []const u8, trap: anyerror, panic_when_check_failed: bool, line: u32, verbose: bool) !void {
-    _ = engine.loadModuleFromPath(file_name, null) catch |err| {
-        validateCatchedError(trap, err, panic_when_check_failed, line, verbose);
-        return;
-    };
-    if (verbose)
-        std.debug.print("failure test NOT FAILED (expected failure: {any})\n", .{trap});
-    @panic("Test failed.");
-}
-
-fn validateResult(expected_value: []const types.Result, actual_result: []const types.Value, line: u32, verbose: bool) void {
-    if (actual_result.len != expected_value.len) {
-        @panic("Test failed (length not match).");
-    }
-
-    for (expected_value, actual_result) |exp, res| {
-        const result = checkReturnValue(exp, res);
-        if (!result) {
-            std.debug.print("====================\n", .{});
-            std.debug.print("\t  Test failed at line {}\n", .{line});
-            std.debug.print("\t  return =  {any}\n", .{actual_result});
-            std.debug.print("\texpected = {any}\n", .{expected_value});
-            std.debug.print("====================\n", .{});
-            @panic("Test failed.");
-        }
-    }
-    if (verbose)
-        std.debug.print("test pass (result = {any})\n", .{actual_result});
-}
-
-fn checkReturnValue(expected: types.Result, result: types.Value) bool {
-    switch (expected) {
-        .@"const" => |exp| {
-            const Tag = @typeInfo(types.Value).Union.tag_type.?;
-            inline for (@typeInfo(Tag).Enum.fields) |field| {
-                if (field.value == @intFromEnum(exp) and field.value == @intFromEnum(result)) {
-                    return @field(exp, field.name) == @field(result, field.name);
-                }
-            }
-            unreachable;
-        },
-        .f32_nan_arithmetic => return isArithmeticNanF32(result.f32),
-        .f32_nan_canonical => return isCanonicalNanF32(result.f32),
-        .f64_nan_arithmetic => return isArithmeticNanF64(result.f64),
-        .f64_nan_canonical => return isCanonicalNanF64(result.f64),
-    }
-}
-
-fn validateCatchedError(expected_error: anyerror, actual_error: anyerror, panic_when_check_failed: bool, line: u32, verbose: bool) void {
-    if (actual_error != expected_error) {
-        if (panic_when_check_failed) {
-            if (verbose) {
-                std.debug.print("====================\n", .{});
-                std.debug.print("\t  Test failed at line {}\n", .{line});
-                std.debug.print("\n  actual failure: {}\n", .{actual_error});
-                std.debug.print("\n  expected failure: {any}\n", .{expected_error});
-                std.debug.print("====================\n", .{});
-            }
-            @panic("Test failed.");
-        }
-    }
-    if (verbose)
-        std.debug.print("test pass (actual failure: {any})\n", .{actual_error});
-}
-
-/// Returns function name by searching from the latest instaitiated modules.
-fn getFunctionByName(module: *types.ModuleInst, func_name: []const u8) error{ExportItemNotFound}!types.ExportInst {
-    for (module.exports) |exp| {
-        if (std.mem.eql(u8, exp.name, func_name)) {
-            return exp;
-        }
-    }
-    std.debug.print("ExportItemNotFound: {s}\n", .{func_name});
-    return Error.ExportItemNotFound;
 }
 
 fn getExtention(filename: []const u8) []const u8 {
@@ -193,20 +30,4 @@ fn getExtention(filename: []const u8) []const u8 {
         elem = p;
     }
     return elem;
-}
-
-fn isCanonicalNanF32(num: u32) bool {
-    return (num & 0x7fffffff) == 0x7fc00000;
-}
-
-fn isCanonicalNanF64(num: u64) bool {
-    return (num & 0x7fffffffffffffff) == 0x7ff8000000000000;
-}
-
-fn isArithmeticNanF32(num: u64) bool {
-    return (num & 0x00400000) == 0x00400000;
-}
-
-fn isArithmeticNanF64(num: u64) bool {
-    return (num & 0x0008000000000000) == 0x0008000000000000;
 }
