@@ -1279,8 +1279,8 @@ const FlowControl = union(enum) {
     pub fn newAtOpIf(info: Instruction.IfBlockInfo, cond: i32) FlowControl {
         if (cond != 0) {
             return .none;
-        } else if (info.@"else" != null) {
-            return .{ .jump = info.@"else".? + 1 }; // jump next to `else`
+        } else if (info.@"else") |addr| {
+            return .{ .jump = addr + 1 }; // jump next to `else`
         } else {
             return .{ .jump = info.end };
         }

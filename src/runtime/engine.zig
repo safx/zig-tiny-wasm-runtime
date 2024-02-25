@@ -76,6 +76,16 @@ pub const Engine = struct {
         return try self.instance.invokeFunctionByAddr(func_addr, args);
     }
 
+    pub fn invokeFunctionByName(self: *Self, func_name: []const u8, args: []const types.Value) (Error || error{OutOfMemory})![]const types.Value {
+        var it = self.mod_insts.valueIterator();
+        while (it.next()) |mod_inst| {
+            const exp = try findExport(mod_inst.*.*, func_name);
+            return try self.invokeFunctionByAddr(exp.function, args);
+        }
+        std.debug.print("Unknown function name to call: {s}\n", .{func_name});
+        return Error.UnknownImport;
+    }
+
     fn resolveImports(self: *Self, module: types.Module, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const types.ExternalValue {
         const imports = module.imports;
         var external_imports = try allocator.alloc(types.ExternalValue, imports.len);
@@ -88,7 +98,7 @@ pub const Engine = struct {
                     return Error.IncompatibleImportType;
                 }
             } else {
-                std.debug.print("UnknownImport: {s}.{s}\n", .{ imp.module_name, imp.name });
+                std.debug.print("Unknown import: {s}.{s}\n", .{ imp.module_name, imp.name });
                 return Error.UnknownImport;
             }
         }
