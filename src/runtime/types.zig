@@ -1,5 +1,6 @@
 const std = @import("std");
 const core = @import("wasm-core");
+const Error = @import("./errors.zig").Error;
 pub const ModuleInst = @import("./module_instance.zig").ModuleInst;
 
 pub const Store = struct {
@@ -24,6 +25,7 @@ pub const Store = struct {
 
 pub const Stack = struct {
     const Self = @This();
+    const max_stack_size = 4096;
     array: std.ArrayList(StackItem),
 
     pub fn new(allocator: std.mem.Allocator) Stack {
@@ -32,22 +34,32 @@ pub const Stack = struct {
         };
     }
 
-    pub fn pushValueAs(self: *Self, comptime T: type, value: T) error{OutOfMemory}!void {
+    inline fn checkStackExhausted(self: Self) error{CallStackExhausted}!void {
+        if (self.array.items.len > max_stack_size) {
+            return Error.CallStackExhausted;
+        }
+    }
+
+    pub fn pushValueAs(self: *Self, comptime T: type, value: T) (error{CallStackExhausted} || error{OutOfMemory})!void {
         const val = Value.from(value);
         try self.push(.{ .value = val });
+        try self.checkStackExhausted();
     }
 
-    pub fn push(self: *Self, value: StackItem) error{OutOfMemory}!void {
+    pub fn push(self: *Self, value: StackItem) (error{CallStackExhausted} || error{OutOfMemory})!void {
         try self.array.append(value);
+        try self.checkStackExhausted();
     }
 
-    pub fn appendSlice(self: *Self, values: []const StackItem) error{OutOfMemory}!void {
+    pub fn appendSlice(self: *Self, values: []const StackItem) (error{CallStackExhausted} || error{OutOfMemory})!void {
         try self.array.appendSlice(values);
+        try self.checkStackExhausted();
     }
 
-    pub fn insertAt(self: *Self, index_from_top: usize, value: StackItem) error{OutOfMemory}!void {
+    pub fn insertAt(self: *Self, index_from_top: usize, value: StackItem) (error{CallStackExhausted} || error{OutOfMemory})!void {
         const pos = self.array.items.len - index_from_top;
         try self.array.insert(pos, value);
+        try self.checkStackExhausted();
     }
 
     pub fn pop(self: *Self) StackItem {

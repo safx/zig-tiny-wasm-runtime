@@ -103,6 +103,7 @@ pub fn linkErrorFromString(str: []const u8) RuntimeError {
 
 pub fn runtimeErrorFromString(str: []const u8) RuntimeError {
     const E = RuntimeError;
+    if (strcmp(str, "call stack exhausted")) return E.CallStackExhausted;
     if (strcmp(str, "indirect call type mismatch")) return E.IndirectCallTypeMismatch;
     if (strcmp(str, "integer divide by zero")) return E.IntegerDivideByZero;
     if (strcmp(str, "integer overflow")) return E.IntegerOverflow;

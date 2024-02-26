@@ -17,7 +17,7 @@ pub const Command = union(enum) {
     // assertion
     assert_return: AssertReturnCommandArg,
     assert_trap: AssertTrapCommandArg,
-    assert_exhaustion,
+    assert_exhaustion: AssertExhaustionCommandArg,
     assert_malformed: AssertMalformedCommandArg,
     assert_invalid: AssertInvalidCommandArg,
     assert_unlinkable: AssertUnlinkableCommandArg,
@@ -110,6 +110,16 @@ pub const AssertReturnCommandArg = struct {
 };
 
 pub const AssertTrapCommandArg = struct {
+    line: u32,
+    action: Action,
+    trap: errors.RuntimeError,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = try writer.print("{any} (-> {}) (line:{})", .{ self.action, self.trap, self.line });
+    }
+};
+
+pub const AssertExhaustionCommandArg = struct {
     line: u32,
     action: Action,
     trap: errors.RuntimeError,

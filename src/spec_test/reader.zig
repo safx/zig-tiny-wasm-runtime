@@ -50,7 +50,9 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
         const text = json.object.get("text").?.string;
         return .{ .assert_trap = .{ .line = line, .action = action, .trap = errors.runtimeErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_exhaustion")) {
-        return .assert_exhaustion;
+        const action = try actionFromJson(json.object.get("action").?, allocator);
+        const text = json.object.get("text").?.string;
+        return .{ .assert_exhaustion = .{ .line = line, .action = action, .trap = errors.runtimeErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_malformed")) {
         const file_name = json.object.get("filename").?.string;
         const text = json.object.get("text").?.string;

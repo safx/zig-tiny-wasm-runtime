@@ -64,7 +64,14 @@ pub const SpecTestRunner = struct {
                     self.debugPrint("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
                     @panic("Test failed.");
                 },
-                // .assert_exhaustion =>
+                .assert_exhaustion => |arg| {
+                    _ = self.doAction(arg.action, current_module) catch |err| {
+                        self.validateCatchedError(arg.trap, err, true, arg.line);
+                        continue;
+                    };
+                    self.debugPrint("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
+                    @panic("Test failed.");
+                },
                 .assert_malformed => |arg| try self.expectErrorWhileloadingModule(arg.file_name, arg.trap, false, arg.line),
                 // .assert_invalid => |arg| try self.exepecError(engine, arg.file_name, arg.trap, arg.line),
                 .assert_unlinkable => |arg| try self.expectErrorWhileloadingModule(arg.file_name, arg.trap, true, arg.line),
