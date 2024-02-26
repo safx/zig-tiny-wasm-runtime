@@ -1,6 +1,7 @@
 const std = @import("std");
 const core = @import("wasm-core");
-const Error = @import("./errors.zig").Error;
+const CallStackExhausted = @import("./errors.zig").Error.CallStackExhausted;
+const Error = error{CallStackExhausted};
 pub const ModuleInst = @import("./module_instance.zig").ModuleInst;
 
 pub const Store = struct {
@@ -26,6 +27,7 @@ pub const Store = struct {
 pub const Stack = struct {
     const Self = @This();
     const max_stack_size = 4096;
+
     array: std.ArrayList(StackItem),
 
     pub fn new(allocator: std.mem.Allocator) Stack {
@@ -34,31 +36,31 @@ pub const Stack = struct {
         };
     }
 
-    inline fn checkStackExhausted(self: Self) error{CallStackExhausted}!void {
+    inline fn checkStackExhausted(self: Self) Error!void {
         if (self.array.items.len > max_stack_size) {
-            return Error.CallStackExhausted;
+            return CallStackExhausted;
         }
     }
 
-    pub fn pushValueAs(self: *Self, comptime T: type, value: T) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    pub fn pushValueAs(self: *Self, comptime T: type, value: T) Error!void {
         const val = Value.from(value);
-        try self.push(.{ .value = val });
+        self.push(.{ .value = val }) catch return CallStackExhausted;
         try self.checkStackExhausted();
     }
 
-    pub fn push(self: *Self, value: StackItem) (error{CallStackExhausted} || error{OutOfMemory})!void {
-        try self.array.append(value);
+    pub fn push(self: *Self, value: StackItem) Error!void {
+        self.array.append(value) catch return CallStackExhausted;
         try self.checkStackExhausted();
     }
 
-    pub fn appendSlice(self: *Self, values: []const StackItem) (error{CallStackExhausted} || error{OutOfMemory})!void {
-        try self.array.appendSlice(values);
+    pub fn appendSlice(self: *Self, values: []const StackItem) Error!void {
+        self.array.appendSlice(values) catch return CallStackExhausted;
         try self.checkStackExhausted();
     }
 
-    pub fn insertAt(self: *Self, index_from_top: usize, value: StackItem) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    pub fn insertAt(self: *Self, index_from_top: usize, value: StackItem) Error!void {
         const pos = self.array.items.len - index_from_top;
-        try self.array.insert(pos, value);
+        self.array.insert(pos, value) catch return CallStackExhausted;
         try self.checkStackExhausted();
     }
 
@@ -81,13 +83,13 @@ pub const Stack = struct {
     }
 
     /// pops values until `popped_values` is full
-    pub fn popValues(self: *Self, popped_values: *[]StackItem) error{OutOfMemory}![]const StackItem {
+    pub fn popValues(self: *Self, popped_values: *[]StackItem) Error![]const StackItem {
         const len = self.array.items.len;
         const num_items = popped_values.len;
         const new_len = len - num_items;
 
         @memcpy(popped_values.*, self.array.items[new_len..len]);
-        try self.array.resize(new_len);
+        self.array.resize(new_len) catch return CallStackExhausted;
 
         return popped_values.*;
     }

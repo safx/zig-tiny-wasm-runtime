@@ -586,24 +586,24 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-block-xref-syntax-instructions-syntax-blocktype-mathit-blocktype-xref-syntax-instructions-syntax-instr-mathit-instr-ast-xref-syntax-instructions-syntax-instr-control-mathsf-end
-    inline fn opBlock(self: *Self, block_info: Instruction.BlockInfo) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opBlock(self: *Self, block_info: Instruction.BlockInfo) error{CallStackExhausted}!void {
         try self.insertLabel(block_info.type, .{ .block = block_info.end });
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-loop-xref-syntax-instructions-syntax-blocktype-mathit-blocktype-xref-syntax-instructions-syntax-instr-mathit-instr-ast-xref-syntax-instructions-syntax-instr-control-mathsf-end
-    inline fn opLoop(self: *Self, block_info: Instruction.BlockInfo) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opLoop(self: *Self, block_info: Instruction.BlockInfo) error{CallStackExhausted}!void {
         const ip = self.stack.topFrame().ip;
         try self.insertLabel(block_info.type, .{ .loop = ip });
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-if-xref-syntax-instructions-syntax-blocktype-mathit-blocktype-xref-syntax-instructions-syntax-instr-mathit-instr-1-ast-xref-syntax-instructions-syntax-instr-control-mathsf-else-xref-syntax-instructions-syntax-instr-mathit-instr-2-ast-xref-syntax-instructions-syntax-instr-control-mathsf-end
-    inline fn opIf(self: *Self, block_info: Instruction.IfBlockInfo) (error{CallStackExhausted} || error{OutOfMemory})!FlowControl {
+    inline fn opIf(self: *Self, block_info: Instruction.IfBlockInfo) error{CallStackExhausted}!FlowControl {
         const cond = self.stack.pop().value.i32;
         try self.insertLabel(block_info.type, .{ .@"if" = block_info.end });
         return FlowControl.newAtOpIf(block_info, cond);
     }
 
-    inline fn insertLabel(self: *Self, block_type: Instruction.BlockType, label_type: types.LabelType) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn insertLabel(self: *Self, block_type: Instruction.BlockType, label_type: types.LabelType) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const func_type = expandToFuncType(module, block_type);
         const arity = if (label_type == .loop) func_type.parameter_types.len else func_type.result_types.len;
@@ -646,13 +646,13 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-call-x
-    inline fn opCall(self: *Self, func_idx: types.FuncIdx) (Error || error{OutOfMemory})!FlowControl {
+    inline fn opCall(self: *Self, func_idx: types.FuncIdx) Error!FlowControl {
         const module = self.stack.topFrame().module;
         return .{ .call = module.func_addrs[func_idx] };
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-call-indirect-x-y
-    inline fn opCallIndirect(self: *Self, arg: Instruction.CallIndirectArg) (Error || error{OutOfMemory})!FlowControl {
+    inline fn opCallIndirect(self: *Self, arg: Instruction.CallIndirectArg) Error!FlowControl {
         self.debugPrint("call_indirect: {any}\n", .{arg});
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[arg.table_idx];
@@ -696,7 +696,7 @@ pub const Instance = struct {
     // reference instructions
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-ref-mathsf-ref-null-t
-    inline fn opRefNull(self: *Self, ref_type: types.RefType) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opRefNull(self: *Self, ref_type: types.RefType) error{CallStackExhausted}!void {
         const val: types.Value = switch (ref_type) {
             .funcref => .{ .func_ref = null },
             .externref => .{ .extern_ref = null },
@@ -705,14 +705,14 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-ref-mathsf-ref-is-null
-    inline fn opIsNull(self: *Self) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opIsNull(self: *Self) error{CallStackExhausted}!void {
         const val = self.stack.pop().value;
         const v: i32 = if (val.isNull()) 1 else 0;
         try self.stack.pushValueAs(i32, v);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-ref-mathsf-ref-func-x
-    inline fn opRefFunc(self: *Self, func_idx: types.FuncIdx) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opRefFunc(self: *Self, func_idx: types.FuncIdx) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const a = module.func_addrs[func_idx];
         try self.stack.push(.{ .value = .{ .func_ref = a } });
@@ -721,7 +721,7 @@ pub const Instance = struct {
     // parametric instructions
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-parametric-mathsf-select-t-ast
-    inline fn opSelect(self: *Self) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opSelect(self: *Self) error{CallStackExhausted}!void {
         const c = self.stack.pop().value.asU32();
         const val2 = self.stack.pop();
         const val1 = self.stack.pop();
@@ -735,7 +735,7 @@ pub const Instance = struct {
     // variable instructions
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-local-get-x
-    inline fn opLocalGet(self: *Self, local_idx: types.LocalIdx) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opLocalGet(self: *Self, local_idx: types.LocalIdx) error{CallStackExhausted}!void {
         const frame = self.stack.topFrame();
         const val = frame.locals[local_idx];
         try self.stack.push(.{ .value = val });
@@ -749,7 +749,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-local-tee-x
-    inline fn opLocalTee(self: *Self, local_idx: types.LocalIdx) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opLocalTee(self: *Self, local_idx: types.LocalIdx) error{CallStackExhausted}!void {
         const value = self.stack.pop();
         try self.stack.push(value);
         try self.stack.push(value);
@@ -757,7 +757,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-global-get-x
-    inline fn opGlobalGet(self: *Self, global_idx: types.GlobalIdx) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opGlobalGet(self: *Self, global_idx: types.GlobalIdx) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const a = module.global_addrs[global_idx];
         const glob = self.store.globals.items[a];
@@ -775,7 +775,7 @@ pub const Instance = struct {
     // table instructions
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-get-x
-    inline fn opTableGet(self: *Self, table_idx: types.TableIdx) (error{OutOfBoundsTableAccess} || (error{CallStackExhausted} || error{OutOfMemory}))!void {
+    inline fn opTableGet(self: *Self, table_idx: types.TableIdx) (error{OutOfBoundsTableAccess} || error{CallStackExhausted})!void {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
@@ -804,7 +804,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-size-x
-    inline fn opTableSize(self: *Self, table_idx: types.TableIdx) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opTableSize(self: *Self, table_idx: types.TableIdx) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
@@ -812,7 +812,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-grow-x
-    inline fn opTableGrow(self: *Self, table_idx: types.TableIdx) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opTableGrow(self: *Self, table_idx: types.TableIdx) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
@@ -958,7 +958,7 @@ pub const Instance = struct {
     // memory instructions
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-xref-syntax-instructions-syntax-memarg-mathit-memarg-and-t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-n-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-xref-syntax-instructions-syntax-memarg-mathit-memarg
-    inline fn opLoad(self: *Self, comptime T: type, comptime N: type, mem_arg: Instruction.MemArg) (Error || error{OutOfMemory})!void {
+    inline fn opLoad(self: *Self, comptime T: type, comptime N: type, mem_arg: Instruction.MemArg) Error!void {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
@@ -1010,7 +1010,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-size
-    inline fn opMemorySize(self: *Self) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opMemorySize(self: *Self) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
         const mem_inst = self.store.mems.items[mem_addr];
@@ -1020,7 +1020,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-grow
-    inline fn opMemoryGrow(self: *Self) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn opMemoryGrow(self: *Self) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
         const mem_inst = self.store.mems.items[mem_addr];
@@ -1163,33 +1163,33 @@ pub const Instance = struct {
         data.data = &.{};
     }
 
-    inline fn instrOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) R) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn instrOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) R) error{CallStackExhausted}!void {
         const value: T = self.stack.pop().value.as(T);
         const result: R = f(R, T, value);
         try self.stack.pushValueAs(R, result);
     }
 
-    inline fn instrExtOp(self: *Self, comptime R: type, comptime T: type, comptime S: type, comptime f: fn (type, type, type, T) R) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn instrExtOp(self: *Self, comptime R: type, comptime T: type, comptime S: type, comptime f: fn (type, type, type, T) R) error{CallStackExhausted}!void {
         const value: T = self.stack.pop().value.as(T);
         const result: R = f(R, T, S, value);
         try self.stack.pushValueAs(R, result);
     }
 
-    inline fn instrTryOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) (Error || (error{CallStackExhausted} || error{OutOfMemory}))!void {
+    inline fn instrTryOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) Error!void {
         const value: T = self.stack.pop().value.as(T);
         const result: R = try f(R, T, value);
         try self.stack.pushValueAs(R, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-unop-mathit-unop
-    inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.as(T);
         const result = f(T, value);
         try self.stack.pushValueAs(T, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-binop-mathit-binop
-    inline fn binOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) (Error || (error{CallStackExhausted} || error{OutOfMemory}))!void {
+    inline fn binOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) Error!void {
         const rhs: T = self.stack.pop().value.as(T);
         const lhs: T = self.stack.pop().value.as(T);
         const result = try f(T, lhs, rhs);
@@ -1197,14 +1197,14 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-testop-mathit-testop
-    inline fn testOp(self: *Self, comptime T: type, comptime f: fn (type, T) i32) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn testOp(self: *Self, comptime T: type, comptime f: fn (type, T) i32) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.as(T);
         const result = f(T, value);
         try self.stack.pushValueAs(i32, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-relop-mathit-relop
-    inline fn relOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) i32) (error{CallStackExhausted} || error{OutOfMemory})!void {
+    inline fn relOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) i32) error{CallStackExhausted}!void {
         const rhs: T = self.stack.pop().value.as(T);
         const lhs: T = self.stack.pop().value.as(T);
         const result = f(T, lhs, rhs);
@@ -1212,7 +1212,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-xref-syntax-instructions-syntax-cvtop-mathit-cvtop-mathsf-t-1-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
-    inline fn cvtOp(self: *Self, comptime T2: type, comptime T1: type, comptime f: fn (type, type, T1) Error!T2) (Error || (error{CallStackExhausted} || error{OutOfMemory}))!void {
+    inline fn cvtOp(self: *Self, comptime T2: type, comptime T1: type, comptime f: fn (type, type, T1) Error!T2) Error!void {
         const value = self.stack.pop().value.as(T1);
         const result: T2 = try f(T2, T1, value);
         try self.stack.pushValueAs(T2, result);
