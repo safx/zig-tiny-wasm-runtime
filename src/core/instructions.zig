@@ -38,6 +38,16 @@ pub const Instruction = union(enum) {
         empty,
         value_type: ValueType,
         type_index: TypeIdx,
+
+        pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+            switch (self) {
+                inline else => |val| if (@TypeOf(val) == void) {
+                    try writer.print("{s}", .{@tagName(self)});
+                } else {
+                    try writer.print("{s}({any})", .{ @tagName(self), val });
+                },
+            }
+        }
     };
 
     pub const BrTableType = struct {
@@ -301,6 +311,15 @@ pub const Instruction = union(enum) {
         switch (self) {
             inline else => |val| if (@TypeOf(val) == void) {
                 try writer.print("{s}", .{@tagName(self)});
+            } else if (@typeInfo(@TypeOf(val)) == .Struct) {
+                try writer.print("{s} (", .{@tagName(self)});
+                const fields = @typeInfo(@TypeOf(val)).Struct.fields;
+                inline for (fields, 0..) |f, i| {
+                    try writer.print("{s} = {any}", .{ f.name, @field(val, f.name) });
+                    if (i + 1 < fields.len)
+                        try writer.writeAll(", ");
+                }
+                try writer.writeAll(")");
             } else {
                 try writer.print("{s} {any}", .{ @tagName(self), val });
             },

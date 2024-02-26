@@ -335,6 +335,10 @@ pub const ExternalValue = union(std.wasm.ExternalKind) {
 pub const Label = struct {
     arity: u32,
     type: LabelType,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        try writer.print("{any} (arity = {})", .{ self.type, self.arity });
+    }
 };
 
 pub const LabelType = union(enum) {
@@ -346,10 +350,10 @@ pub const LabelType = union(enum) {
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
-            inline else => |val| if (@TypeOf(val) == void) {
+            inline else => |addr| if (@TypeOf(addr) == void) {
                 try writer.print("{s}", .{@tagName(self)});
             } else {
-                try writer.print("{s} {any}", .{ @tagName(self), val });
+                try writer.print("{s} ({})", .{ @tagName(self), addr });
             },
         }
     }

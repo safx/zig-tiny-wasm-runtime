@@ -264,14 +264,6 @@ pub const Instance = struct {
                 .declarative => try self.execOneInstruction(.{ .elem_drop = @intCast(i) }),
                 else => continue,
             }
-
-            for (self.store.tables.items, 0..) |item, j| {
-                self.debugPrint("Table {} = [{}]{{", .{ j, item.elem.len });
-                for (item.elem[0..@min(19, item.elem.len)]) |e| {
-                    self.debugPrint("{any}, ", .{e});
-                }
-                self.debugPrint("}}\n", .{});
-            }
         }
 
         // 16: data segment
@@ -304,11 +296,6 @@ pub const Instance = struct {
     }
 
     fn printStack(self: *Self) void {
-        // for (self.store.globals.items, 0..) |g, i| {
-        //     self.debugPrint("{}={any}, ", .{ i, g.value });
-        // }
-        // self.debugPrint("\n", .{});
-
         const len = self.stack.array.items.len;
         const slice = if (len > 10) self.stack.array.items[len - 10 ..] else self.stack.array.items;
         if (len > 10) {
@@ -626,8 +613,6 @@ pub const Instance = struct {
             self.stack.popValuesAndUppermostLabel();
         }
         try self.stack.appendSlice(vals);
-        self.debugPrint("== br {any} \n", .{label});
-        self.printStack();
 
         return FlowControl.newAtOpBr(label);
     }
@@ -653,7 +638,6 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-call-indirect-x-y
     inline fn opCallIndirect(self: *Self, arg: Instruction.CallIndirectArg) Error!FlowControl {
-        self.debugPrint("call_indirect: {any}\n", .{arg});
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[arg.table_idx];
         const tab = self.store.tables.items[ta];
@@ -663,15 +647,6 @@ pub const Instance = struct {
         const i: u32 = self.stack.pop().value.asU32();
         if (i >= tab.elem.len)
             return Error.UndefinedElement;
-
-        self.debugPrint("==============>>>> ta={} i={}\n", .{ ta, i });
-        for (self.store.tables.items, 0..) |item, j| {
-            self.debugPrint("Table {} = [{}]{{", .{ j, item.elem.len });
-            for (item.elem[0..@min(19, item.elem.len)]) |e| {
-                self.debugPrint("{any}, ", .{e});
-            }
-            self.debugPrint("}}\n", .{});
-        }
 
         const r = tab.elem[i];
         if (r.isNull())
@@ -799,7 +774,6 @@ pub const Instance = struct {
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
 
-        self.debugPrint("\t tbl_{}[{}] = {any}\n", .{ a, i, val });
         tab.elem[i] = types.RefValue.fromValue(val);
     }
 
@@ -978,10 +952,7 @@ pub const Instance = struct {
         }
         const ea_end = ea_end_with_overflow[0];
 
-        self.debugPrint("=== {any} ==", .{mem.data[ea_start..ea_end]});
         const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
-
-        self.debugPrint("===> {}\n", .{val});
         try self.stack.pushValueAs(T, val);
     }
 
@@ -1283,6 +1254,16 @@ const FlowControl = union(enum) {
             return .{ .jump = addr + 1 }; // jump next to `else`
         } else {
             return .{ .jump = info.end };
+        }
+    }
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        switch (self) {
+            inline else => |val| if (@TypeOf(val) == void) {
+                try writer.print("{s}", .{@tagName(self)});
+            } else {
+                try writer.print("{s} {any}", .{ @tagName(self), val });
+            },
         }
     }
 };
