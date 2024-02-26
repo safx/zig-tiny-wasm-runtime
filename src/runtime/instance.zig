@@ -569,8 +569,6 @@ pub const Instance = struct {
             .i64_trunc_sat_f32_u => try self.cvtOp(u64, f32, opTruncSat),
             .i64_trunc_sat_f64_s => try self.cvtOp(i64, f64, opTruncSat),
             .i64_trunc_sat_f64_u => try self.cvtOp(u64, f64, opTruncSat),
-
-            else => unreachable,
         }
         return .none;
     }
@@ -819,7 +817,7 @@ pub const Instance = struct {
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
 
-        var n: u32 = self.stack.pop().value.asU32();
+        const n: u32 = self.stack.pop().value.asU32();
         const val = self.stack.pop().value;
 
         if (tab.type.limits.max != null and @as(usize, @intCast(n)) + tab.elem.len > tab.type.limits.max.?) {
@@ -1313,8 +1311,7 @@ fn opTrunc(comptime R: type, comptime T: type, value: T) Error!R {
         return Error.IntegerOverflow;
     }
 
-    const result: R = @intFromFloat(value);
-    return result;
+    return @intFromFloat(value);
 }
 
 // https://github.com/WebAssembly/wabt/blob/main/include/wabt/interp/interp-math.h#L299-L306
@@ -1364,13 +1361,11 @@ fn opTruncSat(comptime R: type, comptime T: type, value: T) Error!R {
 }
 
 fn opConvert(comptime R: type, comptime T: type, value: T) R {
-    const result: R = @floatFromInt(value);
-    return result;
+    return @floatFromInt(value);
 }
 
 fn opReinterpret(comptime R: type, comptime T: type, value: T) R {
-    const result: R = @bitCast(value);
-    return result;
+    return @bitCast(value);
 }
 
 fn opPromote(comptime R: type, comptime T: type, value: T) R {
@@ -1378,23 +1373,15 @@ fn opPromote(comptime R: type, comptime T: type, value: T) R {
 }
 
 fn opWrap(comptime R: type, comptime T: type, value: T) R {
-    const result: R = @intCast(value & 0xffffffff);
-    return result;
+    return @intCast(value & 0xffffffff);
 }
 
 fn opDemote(comptime R: type, comptime T: type, value: T) R {
-    const result: f32 = @floatCast(value);
-    return result;
+    return @floatCast(value);
 }
 
 fn opExtend(comptime R: type, comptime T: type, comptime S: type, value: T) R {
-    const result: S = @truncate(value);
-    return result;
-}
-
-fn opExtend64(comptime R: type, comptime T: type, value: T) R {
-    const result: i64 = @truncate(value);
-    return result;
+    return @as(S, @truncate(value));
 }
 
 fn opIntEqz(comptime T: type, value: T) i32 {

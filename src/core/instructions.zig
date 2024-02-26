@@ -297,10 +297,6 @@ pub const Instruction = union(enum) {
     i64_trunc_sat_f64_s,
     i64_trunc_sat_f64_u,
 
-    // vector instructions
-    misc: wasm.MiscOpcode,
-    simd: wasm.SimdOpcode,
-
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
             inline else => |val| if (@TypeOf(val) == void) {
