@@ -148,12 +148,12 @@ pub const Instance = struct {
             const instr = instrs[ip];
 
             self.printStack();
-            self.debugPrint("== [{}]: {}\n", .{ ip, instr });
+            self.debugPrint("= [{}]: {}\n", .{ ip, instr });
 
-            const flow_ctrl = try self.execInstruction(ip, instr);
+            const flow_ctrl = try self.execInstruction(instr);
 
             if (flow_ctrl != .none) {
-                self.debugPrint("\t===> {}\n", .{flow_ctrl});
+                self.debugPrint("\t-> {}\n", .{flow_ctrl});
             }
 
             switch (flow_ctrl) {
@@ -325,12 +325,12 @@ pub const Instance = struct {
 
     /// executes an instruction without control flow
     fn execOneInstruction(self: *Self, instr: Instruction) (Error || error{OutOfMemory})!void {
-        self.debugPrint("== [_] {}\n", .{instr});
-        _ = try self.execInstruction(0, instr);
+        self.debugPrint("= {}\n", .{instr});
+        _ = try self.execInstruction(instr);
     }
 
     /// executes an instruction and returns control flow
-    fn execInstruction(self: *Self, ip: types.InstractionAddr, instr: Instruction) (Error || error{OutOfMemory})!FlowControl {
+    fn execInstruction(self: *Self, instr: Instruction) (Error || error{OutOfMemory})!FlowControl {
         switch (instr) {
             .end => return self.opEnd(),
             .@"else" => return self.opElse(),
@@ -339,7 +339,7 @@ pub const Instance = struct {
             .nop => {},
             .@"unreachable" => return Error.Unreachable,
             .block => |block_info| try self.opBlock(block_info),
-            .loop => |block_info| try self.opLoop(block_info, ip),
+            .loop => |block_info| try self.opLoop(block_info),
             .@"if" => |block_info| return self.opIf(block_info),
             .br => |label_idx| return self.opBr(label_idx),
             .br_if => |label_idx| return self.opBrIf(label_idx),
@@ -576,6 +576,7 @@ pub const Instance = struct {
     }
 
     // contronl instructions
+
     inline fn opEnd(self: *Self) FlowControl {
         const label = self.stack.popUppermostLabel().?;
         return FlowControl.newAtOpEnd(label);
@@ -592,7 +593,8 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-loop-xref-syntax-instructions-syntax-blocktype-mathit-blocktype-xref-syntax-instructions-syntax-instr-mathit-instr-ast-xref-syntax-instructions-syntax-instr-control-mathsf-end
-    inline fn opLoop(self: *Self, block_info: Instruction.BlockInfo, ip: types.InstractionAddr) error{OutOfMemory}!void {
+    inline fn opLoop(self: *Self, block_info: Instruction.BlockInfo) error{OutOfMemory}!void {
+        const ip = self.stack.topFrame().ip;
         try self.insertLabel(block_info.type, .{ .loop = ip });
     }
 
@@ -1153,6 +1155,8 @@ pub const Instance = struct {
         }
     }
 
+    // numeric instructions
+
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-data-drop-x
     inline fn opDataDrop(self: *Self, data_idx: types.DataIdx) void {
         const module = self.stack.topFrame().module;
@@ -1284,8 +1288,6 @@ const FlowControl = union(enum) {
         }
     }
 };
-
-// arithmetic ops are defined outside the struct
 
 fn opIntClz(comptime T: type, value: T) T {
     return @clz(value);
@@ -1426,18 +1428,22 @@ fn opIntGe(comptime T: type, lhs: T, rhs: T) i32 {
 fn opIntAdd(comptime T: type, lhs: T, rhs: T) Error!T {
     return lhs +% rhs;
 }
+
 fn opIntSub(comptime T: type, lhs: T, rhs: T) Error!T {
     return lhs -% rhs;
 }
+
 fn opIntMul(comptime T: type, lhs: T, rhs: T) Error!T {
     return lhs *% rhs;
 }
+
 fn opIntDivS(comptime T: type, lhs: T, rhs: T) Error!T {
     if (T == i32 and lhs == -2147483648 and rhs == -1) return Error.IntegerOverflow;
     if (T == i64 and lhs == -9223372036854775808 and rhs == -1) return Error.IntegerOverflow;
     if (rhs == 0) return Error.IntegerDivideByZero;
     return @divTrunc(lhs, rhs);
 }
+
 fn opIntDivU(comptime T: type, lhs: T, rhs: T) Error!T {
     if (rhs == 0) return Error.IntegerDivideByZero;
     if (T == i32 and lhs == 2147483648 and rhs == 4294967295) return 0;
@@ -1445,6 +1451,7 @@ fn opIntDivU(comptime T: type, lhs: T, rhs: T) Error!T {
     const res = @divTrunc(lhs, rhs);
     return @bitCast(res);
 }
+
 fn opIntRemS(comptime T: type, lhs: T, rhs: T) Error!T {
     if (rhs == 0) return Error.IntegerDivideByZero;
     if (T == i32) {
