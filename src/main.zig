@@ -31,12 +31,22 @@ pub fn main() !void {
 
     var engine = runtime.Engine.new(allocator, verbose);
     for (wasm_files.items) |file| {
-        _ = try engine.loadModuleFromPath(file, file);
+        const inst = try engine.loadModuleFromPath(file, file);
+        if (verbose) {
+            for (inst.exports, 0..) |exp, i| {
+                std.debug.print("export[{}] = {s} ", .{ i, exp.name });
+                if (exp.value == .function) {
+                    std.debug.print("(func: {any})\n", .{engine.instance.store.funcs.items[exp.value.function].type});
+                } else {
+                    std.debug.print("({s}) \n", .{@tagName(exp.value)});
+                }
+            }
+        }
     }
     if (func_name) |func| {
         const return_values = try engine.invokeFunctionByName(func, wasm_args.items);
         std.debug.print("=> {any}\n", .{return_values});
-    } else {
+    } else if (wasm_files.items.len == 0) {
         std.debug.print("usage: file.wasm -v -r func -a arg1 -a arg2\n", .{});
     }
 }

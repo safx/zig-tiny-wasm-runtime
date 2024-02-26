@@ -27,6 +27,10 @@ pub const ValueType = enum(u8) {
     // reftype
     func_ref = wasm.reftype(.funcref),
     extern_ref = wasm.reftype(.externref),
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        try writer.print("{s}", .{@tagName(self)});
+    }
 };
 
 pub const FuncType = struct {
