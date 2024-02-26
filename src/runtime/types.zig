@@ -54,19 +54,6 @@ pub const Stack = struct {
         return self.array.pop();
     }
 
-    pub fn maybePopForLabel(self: *Self) ?StackItem {
-        if (self.array.items.len == 0) {
-            return null;
-        }
-        const last = self.array.getLast();
-        switch (last) {
-            .label => {
-                return self.array.pop();
-            },
-            else => return null,
-        }
-    }
-
     pub fn getNthLabelFromTop(self: *Self, num_labels: usize) Label {
         var n = num_labels + 1;
         var i = self.array.items.len;
@@ -74,33 +61,37 @@ pub const Stack = struct {
             const item = self.array.items[i - 1];
             if (item == .label) {
                 n -= 1;
-                if (n == 0) {
+                if (n == 0)
                     return item.label;
-                }
             }
         }
         unreachable;
     }
 
-    pub fn popValues(self: *Self, num_labels: usize) error{OutOfMemory}![]const StackItem {
+    /// pops values until `popped_values` is full
+    pub fn popValues(self: *Self, popped_values: *[]StackItem) error{OutOfMemory}![]const StackItem {
         const len = self.array.items.len;
-        const new_len = len - num_labels;
-        const ret = self.array.items[new_len..len];
+        const num_items = popped_values.len;
+        const new_len = len - num_items;
+
+        @memcpy(popped_values.*, self.array.items[new_len..len]);
         try self.array.resize(new_len);
-        return ret;
+
+        return popped_values.*;
     }
 
+    /// returns the current activation frame
     pub fn topFrame(self: Self) ActivationFrame {
         var i = self.array.items.len;
         while (i > 0) : (i -= 1) {
             const item = self.array.items[i - 1];
-            if (item == .frame) {
+            if (item == .frame)
                 return item.frame;
-            }
         }
         unreachable;
     }
 
+    /// updates instraction pointer in the current frame
     pub fn updateTopFrameIp(self: *Self, ip: u32) void {
         var i = self.array.items.len;
         while (i > 0) : (i -= 1) {
@@ -113,7 +104,7 @@ pub const Stack = struct {
         unreachable;
     }
 
-    // finds the uppermost label and remove it.
+    /// finds the uppermost label and remove it.
     pub fn popUppermostLabel(self: *Self) ?Label {
         var len = self.array.items.len;
         while (len > 0) : (len -= 1) {
@@ -145,17 +136,15 @@ pub const Stack = struct {
         // FIXME: find and resize
         while (true) {
             const item = self.pop();
-            if (item == .frame) {
+            if (item == .frame)
                 return;
-            }
         }
     }
 
     pub fn hasFrame(self: *Self) bool {
         for (self.array.items) |e| {
-            if (e == .frame) {
+            if (e == .frame)
                 return true;
-            }
         }
         return false;
     }

@@ -617,17 +617,15 @@ pub const Instance = struct {
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-br-l
     inline fn opBr(self: *Self, label_idx: types.LabelIdx) error{OutOfMemory}!FlowControl {
         const label = self.stack.getNthLabelFromTop(label_idx);
-        const vals = try self.stack.popValues(label.arity);
 
-        // use copied slice for avoiding violation error in appendSlice
-        const copies = try self.allocator.alloc(types.StackItem, vals.len);
-        defer self.allocator.free(copies);
-        @memcpy(copies, vals);
+        var array = try self.allocator.alloc(types.StackItem, label.arity);
+        defer self.allocator.free(array);
+        const vals = try self.stack.popValues(&array);
 
         for (0..label_idx + 1) |_| {
             self.stack.popValuesAndUppermostLabel();
         }
-        try self.stack.appendSlice(copies);
+        try self.stack.appendSlice(vals);
         self.debugPrint("== br {any} \n", .{label});
         self.printStack();
 
