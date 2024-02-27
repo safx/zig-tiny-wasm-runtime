@@ -76,7 +76,7 @@ pub const Engine = struct {
     }
 
     pub fn invokeFunctionByAddr(self: *Self, func_addr: types.FuncAddr, args: []const types.Value) (Error || error{OutOfMemory})![]const types.Value {
-        try self.instance.stack.array.resize(0); // TODO: IS IT OK?
+        std.debug.assert(self.instance.stack.array.items.len == 0);
         return try self.instance.invokeFunctionByAddr(func_addr, args);
     }
 

@@ -133,7 +133,10 @@ pub const Instance = struct {
 
         // 9:
         try self.invokeFunction(func_addr);
-        try self.execLoop();
+        self.execLoop() catch |err| {
+            self.clearStack();
+            return err;
+        };
 
         // 1, 2: pop values
         const num_returns = func_type.result_types.len;
@@ -190,9 +193,16 @@ pub const Instance = struct {
         unreachable;
     }
 
+    pub fn instantiate(self: *Self, module: types.Module, extern_vals: []const types.ExternalValue) (Error || error{OutOfMemory})!*types.ModuleInst {
+        return self.instantiateInner(module, extern_vals) catch |err| {
+            self.clearStack();
+            return err;
+        };
+    }
+
     /// `instantiate` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/modules.html#instantiation
-    pub fn instantiate(self: *Self, module: types.Module, extern_vals: []const types.ExternalValue) (Error || error{OutOfMemory})!*types.ModuleInst {
+    inline fn instantiateInner(self: *Self, module: types.Module, extern_vals: []const types.ExternalValue) (Error || error{OutOfMemory})!*types.ModuleInst {
         // 1, 2: validate
 
         // 3: check length
@@ -302,6 +312,14 @@ pub const Instance = struct {
         assert(popped_value == .frame);
 
         return mod_inst;
+    }
+
+    fn clearStack(self: *Self) void {
+        while (self.stack.array.items.len > 0) {
+            const item = self.stack.pop();
+            if (item == .frame)
+                self.allocator.free(item.frame.locals);
+        }
     }
 
     fn printStack(self: *Self) void {
