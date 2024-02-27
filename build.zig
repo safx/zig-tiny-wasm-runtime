@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
     const core = ModuleInfo.init(b, "wasm-core", "src/core/mod.zig", &.{});
     const decode = ModuleInfo.init(b, "wasm-decode", "src/decode/mod.zig", &.{core});
     const validate = ModuleInfo.init(b, "wasm-validate", "src/validate/mod.zig", &.{core});
-    const runtime = ModuleInfo.init(b, "wasm-runtime", "src/runtime/mod.zig", &.{ core, decode });
+    const runtime = ModuleInfo.init(b, "wasm-runtime", "src/runtime/mod.zig", &.{ core, decode, validate });
     const spec = ModuleInfo.init(b, "wasm-spec-test", "src/spec_test/mod.zig", &.{ core, decode, validate, runtime });
 
     {

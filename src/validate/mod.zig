@@ -7,5 +7,5 @@ pub const Error = @import("./errors.zig").Error;
 
 pub fn validateModule(module: types.Module, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!void {
     const context = try Context.new(module, allocator);
-    _ = context;
+    defer context.deinit(allocator);
 }

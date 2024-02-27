@@ -3,6 +3,7 @@ const types = struct {
     usingnamespace @import("wasm-core");
     usingnamespace @import("./types.zig");
 };
+const validate = @import("wasm-validate");
 pub const Instance = @import("./instance.zig").Instance;
 pub const Error = @import("./errors.zig").Error;
 
@@ -56,6 +57,8 @@ pub const Engine = struct {
         defer self.allocator.free(data);
         const module = try loader.parseAll(data);
         defer module.deinit();
+
+        try validate.validateModule(module, self.allocator);
 
         return try self.loadModule(module, if (module_name) |n| n else getFilename(file_name));
     }
