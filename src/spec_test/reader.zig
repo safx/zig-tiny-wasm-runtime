@@ -26,48 +26,50 @@ fn commandArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]c
 }
 
 fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command {
-    const cmd_type = json.object.get("type").?.string;
-    const line: u32 = @intCast(json.object.get("line").?.integer);
+    const obj = json.object;
+
+    const cmd_type = obj.get("type").?.string;
+    const line: u32 = @intCast(obj.get("line").?.integer);
     if (strcmp(cmd_type, "action")) {
-        const action = try actionFromJson(json.object.get("action").?, allocator);
+        const action = try actionFromJson(obj.get("action").?, allocator);
         return .{ .action = .{ .line = line, .action = action } };
     } else if (strcmp(cmd_type, "module")) {
-        const file_name = json.object.get("filename").?.string;
+        const file_name = obj.get("filename").?.string;
         const name = getStringOrNull(json.object, "name");
         return .{ .module = .{ .line = line, .file_name = file_name, .name = name } };
     } else if (strcmp(cmd_type, "module_quote")) {
         return .module_quote;
     } else if (strcmp(cmd_type, "register")) {
         const name = getStringOrNull(json.object, "name");
-        const as_name = json.object.get("as").?.string;
+        const as_name = obj.get("as").?.string;
         return .{ .register = .{ .as_name = as_name, .name = name } };
     } else if (strcmp(cmd_type, "assert_return")) {
-        const action = try actionFromJson(json.object.get("action").?, allocator);
-        const expected = try resultArrayFromJson(json.object.get("expected").?, allocator);
+        const action = try actionFromJson(obj.get("action").?, allocator);
+        const expected = try resultArrayFromJson(obj.get("expected").?, allocator);
         return .{ .assert_return = .{ .line = line, .action = action, .expected = expected } };
     } else if (strcmp(cmd_type, "assert_trap")) {
-        const action = try actionFromJson(json.object.get("action").?, allocator);
-        const text = json.object.get("text").?.string;
+        const action = try actionFromJson(obj.get("action").?, allocator);
+        const text = obj.get("text").?.string;
         return .{ .assert_trap = .{ .line = line, .action = action, .trap = errors.runtimeErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_exhaustion")) {
-        const action = try actionFromJson(json.object.get("action").?, allocator);
-        const text = json.object.get("text").?.string;
+        const action = try actionFromJson(obj.get("action").?, allocator);
+        const text = obj.get("text").?.string;
         return .{ .assert_exhaustion = .{ .line = line, .action = action, .trap = errors.runtimeErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_malformed")) {
-        const file_name = json.object.get("filename").?.string;
-        const text = json.object.get("text").?.string;
+        const file_name = obj.get("filename").?.string;
+        const text = obj.get("text").?.string;
         return .{ .assert_malformed = .{ .line = line, .file_name = file_name, .trap = errors.decodeErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_invalid")) {
-        const file_name = json.object.get("filename").?.string;
-        const text = json.object.get("text").?.string;
+        const file_name = obj.get("filename").?.string;
+        const text = obj.get("text").?.string;
         return .{ .assert_invalid = .{ .line = line, .file_name = file_name, .trap = errors.validationErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_unlinkable")) {
-        const file_name = json.object.get("filename").?.string;
-        const text = json.object.get("text").?.string;
+        const file_name = obj.get("filename").?.string;
+        const text = obj.get("text").?.string;
         return .{ .assert_unlinkable = .{ .line = line, .file_name = file_name, .trap = errors.linkErrorFromString(text) } };
     } else if (strcmp(cmd_type, "assert_uninstantiable")) {
-        const file_name = json.object.get("filename").?.string;
-        const text = json.object.get("text").?.string;
+        const file_name = obj.get("filename").?.string;
+        const text = obj.get("text").?.string;
         return .{ .assert_uninstantiable = .{ .line = line, .file_name = file_name, .trap = errors.runtimeErrorFromString(text) } };
     } else {
         std.debug.print("? Unknown command {s}\n", .{cmd_type});
@@ -101,15 +103,13 @@ fn argFromJson(json: std.json.Value) !Value {
         return Value{ .f64 = num };
     } else if (strcmp(type_, "externref")) {
         var num: ?types.ExternAddr = null;
-        if (!strcmp(value, "null")) {
+        if (!strcmp(value, "null"))
             num = try std.fmt.parseInt(types.ExternAddr, value, 10);
-        }
         return Value{ .extern_ref = num };
     } else if (strcmp(type_, "funcref")) {
         var num: ?types.ExternAddr = null;
-        if (!strcmp(value, "null")) {
+        if (!strcmp(value, "null"))
             num = try std.fmt.parseInt(types.ExternAddr, value, 10);
-        }
         return Value{ .func_ref = num };
     } else {
         std.debug.print("? Unknown arg {s}\n", .{type_});
@@ -136,34 +136,24 @@ fn resultFromJson(json: std.json.Value) !Result {
         const num = try std.fmt.parseInt(u64, value, 10);
         return .{ .@"const" = .{ .i64 = @bitCast(num) } };
     } else if (strcmp(type_, "f32")) {
-        if (std.mem.eql(u8, "nan:canonical", value)) {
+        if (std.mem.eql(u8, "nan:canonical", value))
             return .f32_nan_canonical;
-        }
-        if (std.mem.eql(u8, "nan:arithmetic", value)) {
+        if (std.mem.eql(u8, "nan:arithmetic", value))
             return .f32_nan_arithmetic;
-        }
         const num = try std.fmt.parseInt(u32, value, 10);
         return .{ .@"const" = .{ .f32 = num } };
     } else if (strcmp(type_, "f64")) {
-        if (std.mem.eql(u8, "nan:canonical", value)) {
+        if (std.mem.eql(u8, "nan:canonical", value))
             return .f64_nan_canonical;
-        }
-        if (std.mem.eql(u8, "nan:arithmetic", value)) {
+        if (std.mem.eql(u8, "nan:arithmetic", value))
             return .f64_nan_arithmetic;
-        }
         const num = try std.fmt.parseInt(u64, value, 10);
         return .{ .@"const" = .{ .f64 = num } };
     } else if (strcmp(type_, "externref")) {
-        var num: ?types.ExternAddr = null;
-        if (!strcmp(value, "null")) {
-            num = try std.fmt.parseInt(types.ExternAddr, value, 10);
-        }
+        const num: ?types.ExternAddr = if (strcmp(value, "null")) null else try std.fmt.parseInt(types.ExternAddr, value, 10);
         return .{ .@"const" = .{ .extern_ref = num } };
     } else if (strcmp(type_, "funcref")) {
-        var num: ?types.ExternAddr = null;
-        if (!strcmp(value, "null")) {
-            num = try std.fmt.parseInt(types.ExternAddr, value, 10);
-        }
+        const num: ?types.FuncAddr = if (strcmp(value, "null")) null else try std.fmt.parseInt(types.FuncAddr, value, 10);
         return .{ .@"const" = .{ .func_ref = num } };
     } else {
         std.debug.print("? Unknown result {s}\n", .{type_});
@@ -172,15 +162,17 @@ fn resultFromJson(json: std.json.Value) !Result {
 }
 
 fn actionFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Action {
-    const cmd_type: []const u8 = json.object.get("type").?.string;
+    const obj = json.object;
+
+    const cmd_type: []const u8 = obj.get("type").?.string;
     if (strcmp(cmd_type, "invoke")) {
         const module = getStringOrNull(json.object, "module");
-        const field = json.object.get("field").?.string;
-        const args: []const Value = try argArrayFromJson(json.object.get("args").?, allocator);
+        const field = obj.get("field").?.string;
+        const args: []const Value = try argArrayFromJson(obj.get("args").?, allocator);
         return .{ .invoke = .{ .field = field, .args = args, .module = module } };
     } else if (strcmp(cmd_type, "get")) {
         const module = getStringOrNull(json.object, "module");
-        const field = json.object.get("field").?.string;
+        const field = obj.get("field").?.string;
         return .{ .get = .{ .field = field, .module = module } };
     } else {
         std.debug.print("? Unknown action type: {s}", .{cmd_type});
