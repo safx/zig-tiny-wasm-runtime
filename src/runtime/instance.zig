@@ -123,9 +123,7 @@ pub const Instance = struct {
         }
 
         // 6:
-        const empty_frame = types.ActivationFrame{
-            .module = undefined,
-        };
+        const empty_frame = types.ActivationFrame{};
         try self.stack.push(.{ .frame = empty_frame });
 
         // 8:
@@ -313,10 +311,12 @@ pub const Instance = struct {
             self.debugPrint("  : ({} more items)\n  :\n", .{len - 10});
         }
         for (slice) |i| {
+            if (i == .frame and i.frame.instructions.len == 0)
+                continue;
             switch (i) {
                 .value => |v| self.debugPrint("  V {}\n", .{v}),
                 .label => |v| self.debugPrint("  L {}\n", .{v}),
-                .frame => |v| self.debugPrint("  F {any}\n", .{v.locals}),
+                .frame => |v| self.debugPrint("  F locals: {any}, arity: {}, ip: {}\n", .{ v.locals, v.arity, v.ip }),
             }
         }
     }
