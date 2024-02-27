@@ -44,7 +44,7 @@ pub const Instance = struct {
         // 4, 8:
         const p_len = func_type.parameter_types.len;
         const num_locals = p_len + func_inst.code.locals.len;
-        const locals = try self.allocator.alloc(types.Value, num_locals);
+        const locals = try self.allocator.alloc(types.Value, num_locals); // freed in returnFunction
         for (func_inst.code.locals, p_len..) |l, i| {
             locals[i] = types.Value.defaultValueFrom(l);
         }
@@ -78,7 +78,8 @@ pub const Instance = struct {
     /// https://webassembly.github.io/spec/core/exec/instructions.html#returning-from-a-function
     fn returnFunction(self: *Self) (Error || error{OutOfMemory})![]const types.Value {
         // 1, 2, 3
-        const num_returns = self.stack.topFrame().arity;
+        const top_frame = self.stack.topFrame();
+        const num_returns = top_frame.arity;
 
         // 4, 5:
         const ret = try self.allocator.alloc(types.Value, num_returns);
@@ -91,6 +92,7 @@ pub const Instance = struct {
 
         // 6:
         self.stack.popValuesAndLabelsUntilFrame();
+        self.allocator.free(top_frame.locals);
 
         // 7: push vals
         for (ret) |v| {
@@ -167,6 +169,8 @@ pub const Instance = struct {
                     const ret = try self.returnFunction();
                     if (!self.stack.hasFrame()) {
                         return ret;
+                    } else {
+                        self.allocator.free(ret);
                     }
 
                     // FIXME: the function called from `start` needs this check
@@ -202,6 +206,7 @@ pub const Instance = struct {
 
         // 8: Get `val*`
         var vals = try self.allocator.alloc(types.Value, module.globals.len);
+        defer self.allocator.free(vals);
         for (module.globals, 0..) |global, i| {
             try self.execOneInstruction(instractionFromInitExpr(global.init));
             vals[i] = self.stack.pop().value;
@@ -209,7 +214,9 @@ pub const Instance = struct {
 
         // 9: Get `ref*`
         var refs = try self.allocator.alloc([]types.RefValue, module.elements.len);
+        defer self.allocator.free(refs);
         for (module.elements, 0..) |element, i| {
+            // no need to free because refs[i] are assigned to ModuleInst
             refs[i] = try self.allocator.alloc(types.RefValue, element.init.len);
             for (element.init, 0..) |e, j| {
                 try self.execOneInstruction(instractionFromInitExpr(e));
@@ -223,11 +230,6 @@ pub const Instance = struct {
             }
         }
 
-        defer {
-            // free only the outer array because child arrays of refs are used in ModuleInst
-            self.allocator.free(refs);
-            self.allocator.free(vals);
-        }
         try self.store.funcs.resize(self.store.funcs.items.len - module.funcs.len); // purge funcs of aux_module
 
         // 10: pop init frame from stack
@@ -285,7 +287,8 @@ pub const Instance = struct {
         // 17: start function
         if (module.start) |s| {
             try self.invokeFunction(mod_inst.func_addrs[s]);
-            _ = try self.execLoop();
+            const ret = try self.execLoop();
+            self.allocator.free(ret);
         }
 
         // 18, 19: pop aux frame
@@ -826,8 +829,9 @@ pub const Instance = struct {
         const new_elem = try allocator.alloc(types.RefValue, len);
         @memcpy(new_elem[0..old_elem.len], old_elem);
         @memset(new_elem[old_elem.len..], val);
-        // `limits.min` should be updated outside this function
-        return new_elem;
+
+        allocator.free(old_elem);
+        return new_elem; // `limits.min` should be updated outside this function
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-fill-x
@@ -1028,8 +1032,9 @@ pub const Instance = struct {
         const new_data = try allocator.alloc(u8, len * page_size);
         @memcpy(new_data[0..old_data.len], old_data);
         @memset(new_data[old_data.len..], 0);
-        // `limits.min` should be updated outside this function
-        return new_data;
+
+        allocator.free(old_data);
+        return new_data; // `limits.min` should be updated outside this function
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-fill

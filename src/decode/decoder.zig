@@ -366,7 +366,7 @@ fn block(reader: *BinaryReader) Error!Instruction.BlockInfo {
 
 fn selectv(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]types.ValueType {
     const len = try reader.readVarU32();
-    var array = try allocator.alloc(types.ValueType, len);
+    var array = try allocator.alloc(types.ValueType, len); // freed by arena allocator in Module
     for (0..len) |i| {
         array[i] = try valueType(reader);
     }
@@ -388,7 +388,7 @@ fn blockType(reader: *BinaryReader) Error!Instruction.BlockType {
 
 fn brTable(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction.BrTableType {
     const size = try reader.readVarU32();
-    const label_idxs = try allocator.alloc(types.LabelIdx, size);
+    const label_idxs = try allocator.alloc(types.LabelIdx, size); // freed by arena allocator in Module
 
     for (0..size) |i| {
         label_idxs[i] = try reader.readVarU32();

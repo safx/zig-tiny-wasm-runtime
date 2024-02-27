@@ -62,6 +62,7 @@ pub const Engine = struct {
 
     fn loadModule(self: *Self, module: types.Module, module_name: []const u8) (Error || error{OutOfMemory})!*types.ModuleInst {
         const extern_vals = try self.resolveImports(module, self.allocator);
+        defer self.allocator.free(extern_vals);
         const mod_inst = try self.instance.instantiate(module, extern_vals);
         try self.registerModule(mod_inst, module_name);
         return mod_inst;

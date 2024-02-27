@@ -88,7 +88,7 @@ pub const ModuleLoader = struct {
         if (func_idxs.len != codes.len)
             return Error.FunctionAndCodeSectionHaveInconsistentLengths;
 
-        const funcs = try self.allocator.alloc(types.Func, func_idxs.len);
+        const funcs = try self.allocator.alloc(types.Func, func_idxs.len); // freed by arena allocator in Module
         for (func_idxs, codes, 0..) |func_idx, f, i| {
             funcs[i] = types.Func{
                 .type = func_idx,
@@ -213,7 +213,7 @@ pub const ModuleLoader = struct {
             0 => {
                 const expr = try self.initExpr();
                 const ys = try self.funcidxs();
-                const init_array = try self.allocator.alloc(types.InitExpression, ys.len);
+                const init_array = try self.allocator.alloc(types.InitExpression, ys.len); // freed by arena allocator in Module
                 for (ys, 0..) |y, i| {
                     init_array[i] = types.InitExpression{ .ref_func = y };
                 }
@@ -224,7 +224,7 @@ pub const ModuleLoader = struct {
                 const et = try self.reader.readU8();
                 assert(et == 0);
                 const ys = try self.funcidxs();
-                const init_array = try self.allocator.alloc(types.InitExpression, ys.len);
+                const init_array = try self.allocator.alloc(types.InitExpression, ys.len); // freed by arena allocator in Module
                 for (ys, 0..) |y, i| {
                     init_array[i] = types.InitExpression{ .ref_func = y };
                 }
@@ -236,7 +236,7 @@ pub const ModuleLoader = struct {
                 const et = try self.reader.readU8();
                 assert(et == 0);
                 const ys = try self.funcidxs();
-                const init_array = try self.allocator.alloc(types.InitExpression, ys.len);
+                const init_array = try self.allocator.alloc(types.InitExpression, ys.len); // freed by arena allocator in Module
                 for (ys, 0..) |y, i| {
                     init_array[i] = types.InitExpression{ .ref_func = y };
                 }
@@ -247,7 +247,7 @@ pub const ModuleLoader = struct {
                 const et = try self.reader.readU8();
                 assert(et == 0);
                 const ys = try self.funcidxs();
-                const init_array = try self.allocator.alloc(types.InitExpression, ys.len);
+                const init_array = try self.allocator.alloc(types.InitExpression, ys.len); // freed by arena allocator in Module
                 for (ys, 0..) |y, i| {
                     init_array[i] = types.InitExpression{ .ref_func = y };
                 }
@@ -430,7 +430,7 @@ pub const ModuleLoader = struct {
             return &.{};
         }
 
-        const ret = try self.allocator.alloc(types.ValueType, total);
+        const ret = try self.allocator.alloc(types.ValueType, total); // freed by arena allocator in Module
         var p: u32 = 0;
         for (vec) |v| {
             @memset(ret[p .. p + v.size], v.type);
@@ -483,7 +483,7 @@ pub const ModuleLoader = struct {
     }
 
     fn readBytesWithCopy(self: *Self, size: usize) (error{UnexpectedEndOfBuffer} || error{OutOfMemory})![]const u8 {
-        const copied_array = try self.allocator.alloc(u8, size);
+        const copied_array = try self.allocator.alloc(u8, size); // freed by arena allocator in Module
         const array = try self.reader.readBytes(size);
         @memcpy(copied_array, array);
         return copied_array;
@@ -491,7 +491,7 @@ pub const ModuleLoader = struct {
 
     fn createArray(self: *Self, comptime T: type, filler: fn (*Self) (Error || error{OutOfMemory})!T) (Error || error{OutOfMemory})![]const T {
         const size = try self.reader.readVarU32();
-        const array = try self.allocator.alloc(T, size);
+        const array = try self.allocator.alloc(T, size); // freed by arena allocator in Module
 
         for (0..size) |i| {
             array[i] = filler(self) catch |err| {
