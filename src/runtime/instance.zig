@@ -76,30 +76,29 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#returning-from-a-function
-    fn returnFunction(self: *Self) (Error || error{OutOfMemory})![]const types.Value {
+    fn returnFunction(self: *Self) (Error || error{OutOfMemory})!void {
         // 1, 2, 3
         const top_frame = self.stack.topFrame();
         const num_returns = top_frame.arity;
 
         // 4, 5:
-        const ret = try self.allocator.alloc(types.Value, num_returns);
+        const popped_values = try self.allocator.alloc(types.Value, num_returns);
+        defer self.allocator.free(popped_values);
         var i = num_returns;
         while (i > 0) : (i -= 1) {
             const item = self.stack.pop();
             assert(item == .value);
-            ret[i - 1] = item.value;
+            popped_values[i - 1] = item.value;
         }
 
-        // 6:
+        // 6: pop the frame
         self.stack.popValuesAndLabelsUntilFrame();
         self.allocator.free(top_frame.locals);
 
         // 7: push vals
-        for (ret) |v| {
+        for (popped_values) |v| {
             try self.stack.push(.{ .value = v });
         }
-
-        return ret;
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#invocation
@@ -123,6 +122,12 @@ pub const Instance = struct {
             }
         }
 
+        // 6:
+        const empty_frame = types.ActivationFrame{
+            .module = undefined,
+        };
+        try self.stack.push(.{ .frame = empty_frame });
+
         // 8:
         for (args) |arg| {
             try self.stack.push(.{ .value = arg });
@@ -130,20 +135,26 @@ pub const Instance = struct {
 
         // 9:
         try self.invokeFunction(func_addr);
-        const return_values = try self.execLoop(); // TODO
+        try self.execLoop();
 
-        // 1:
-        assert(return_values.len == func_type.result_types.len);
-
-        // pop value : FIXME
-        for (return_values) |_| {
-            _ = self.stack.pop();
+        // 1, 2: pop values
+        const num_returns = func_type.result_types.len;
+        const return_values = try self.allocator.alloc(types.Value, num_returns);
+        var i = num_returns;
+        while (i > 0) : (i -= 1) {
+            const item = self.stack.pop();
+            assert(item == .value);
+            return_values[i - 1] = item.value;
         }
+
+        // 3, 4:
+        const should_be_empty_frame = self.stack.pop();
+        assert(should_be_empty_frame == .frame);
 
         return return_values;
     }
 
-    fn execLoop(self: *Self) (Error || error{OutOfMemory})![]const types.Value {
+    fn execLoop(self: *Self) (Error || error{OutOfMemory})!void {
         while (true) {
             const instrs = self.stack.topFrame().instructions;
             const ip = self.stack.topFrame().ip;
@@ -166,16 +177,14 @@ pub const Instance = struct {
                     try self.invokeFunction(func_addr);
                 },
                 .exit => {
-                    const ret = try self.returnFunction();
+                    try self.returnFunction();
                     if (!self.stack.hasFrame()) {
-                        return ret;
-                    } else {
-                        self.allocator.free(ret);
+                        return;
                     }
 
                     // FIXME: the function called from `start` needs this check
                     if (self.stack.topFrame().instructions.len == 0) {
-                        return &.{};
+                        return;
                     }
                 },
             }
@@ -287,8 +296,7 @@ pub const Instance = struct {
         // 17: start function
         if (module.start) |s| {
             try self.invokeFunction(mod_inst.func_addrs[s]);
-            const ret = try self.execLoop();
-            self.allocator.free(ret);
+            try self.execLoop();
         }
 
         // 18, 19: pop aux frame
