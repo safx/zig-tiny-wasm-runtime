@@ -366,7 +366,7 @@ fn block(reader: *BinaryReader) Error!Instruction.BlockInfo {
 
 fn selectv(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]types.ValueType {
     const len = try reader.readVarU32();
-    var array = try allocator.alloc(types.ValueType, len); // freed by arena allocator in Module
+    const array = try allocator.alloc(types.ValueType, len); // freed by arena allocator in Module
     for (0..len) |i| {
         array[i] = try valueType(reader);
     }

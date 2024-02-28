@@ -82,23 +82,16 @@ pub const Instance = struct {
         const num_returns = top_frame.arity;
 
         // 4, 5:
-        const popped_values = try self.allocator.alloc(types.Value, num_returns);
+        var popped_values = try self.allocator.alloc(types.StackItem, num_returns);
         defer self.allocator.free(popped_values);
-        var i = num_returns;
-        while (i > 0) : (i -= 1) {
-            const item = self.stack.pop();
-            assert(item == .value);
-            popped_values[i - 1] = item.value;
-        }
+        try self.stack.popValues(&popped_values);
 
         // 6: pop the frame
         self.stack.popValuesAndLabelsUntilFrame();
         self.allocator.free(top_frame.locals);
 
         // 7: push vals
-        for (popped_values) |v| {
-            try self.stack.push(.{ .value = v });
-        }
+        try self.stack.appendSlice(popped_values);
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#invocation
@@ -222,7 +215,7 @@ pub const Instance = struct {
         try self.stack.push(.{ .frame = aux_frame_init });
 
         // 8: Get `val*`
-        var vals = try self.allocator.alloc(types.Value, module.globals.len);
+        const vals = try self.allocator.alloc(types.Value, module.globals.len);
         defer self.allocator.free(vals);
         for (module.globals, 0..) |global, i| {
             try self.execOneInstruction(instractionFromInitExpr(global.init));
@@ -230,7 +223,7 @@ pub const Instance = struct {
         }
 
         // 9: Get `ref*`
-        var refs = try self.allocator.alloc([]types.RefValue, module.elements.len);
+        const refs = try self.allocator.alloc([]types.RefValue, module.elements.len);
         defer self.allocator.free(refs);
         for (module.elements, 0..) |element, i| {
             // no need to free because refs[i] are assigned to ModuleInst
@@ -636,12 +629,12 @@ pub const Instance = struct {
 
         var array = try self.allocator.alloc(types.StackItem, label.arity);
         defer self.allocator.free(array);
-        const vals = try self.stack.popValues(&array);
+        try self.stack.popValues(&array);
 
         for (0..label_idx + 1) |_| {
             self.stack.popValuesAndUppermostLabel();
         }
-        try self.stack.appendSlice(vals);
+        try self.stack.appendSlice(array);
 
         return FlowControl.newAtOpBr(label);
     }
@@ -1155,8 +1148,6 @@ pub const Instance = struct {
         }
     }
 
-    // numeric instructions
-
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-data-drop-x
     inline fn opDataDrop(self: *Self, data_idx: types.DataIdx) void {
         const module = self.stack.topFrame().module;
@@ -1164,6 +1155,8 @@ pub const Instance = struct {
         const data = &self.store.datas.items[a];
         data.data = &.{};
     }
+
+    // numeric instructions
 
     inline fn instrOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) R) error{CallStackExhausted}!void {
         const value: T = self.stack.pop().value.as(T);

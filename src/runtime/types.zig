@@ -83,15 +83,15 @@ pub const Stack = struct {
     }
 
     /// pops values until `popped_values` is full
-    pub fn popValues(self: *Self, popped_values: *[]StackItem) Error![]const StackItem {
+    pub fn popValues(self: *Self, popped_values: *[]StackItem) Error!void {
         const len = self.array.items.len;
         const num_items = popped_values.len;
         const new_len = len - num_items;
 
         @memcpy(popped_values.*, self.array.items[new_len..len]);
-        self.array.resize(new_len) catch return CallStackExhausted;
+        for (popped_values.*) |v| std.debug.assert(v == .value);
 
-        return popped_values.*;
+        self.array.resize(new_len) catch return CallStackExhausted;
     }
 
     /// returns the current activation frame

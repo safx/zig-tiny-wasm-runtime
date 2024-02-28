@@ -92,7 +92,7 @@ pub const Engine = struct {
 
     fn resolveImports(self: *Self, module: types.Module, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const types.ExternalValue {
         const imports = module.imports;
-        var external_imports = try allocator.alloc(types.ExternalValue, imports.len);
+        const external_imports = try allocator.alloc(types.ExternalValue, imports.len);
         for (imports, 0..) |imp, i| {
             if (self.mod_insts.get(imp.module_name)) |mod_inst| {
                 const exp = try findExport(mod_inst.*, imp.name);
