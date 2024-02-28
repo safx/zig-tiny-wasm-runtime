@@ -134,7 +134,6 @@ pub const Stack = struct {
 
     /// drops all values until the uppermost label and drop the label as well.
     pub fn popValuesAndUppermostLabel(self: *Self) void {
-        // FIXME: find and resize
         while (true) {
             const item = self.pop();
             switch (item) {
@@ -147,7 +146,6 @@ pub const Stack = struct {
 
     /// drops all values and labels until the uppermost frame.
     pub fn popValuesAndLabelsUntilFrame(self: *Self) void {
-        // FIXME: find and resize
         while (true) {
             const item = self.pop();
             if (item == .frame)

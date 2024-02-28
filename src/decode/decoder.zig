@@ -378,12 +378,18 @@ fn ifBlock(reader: *BinaryReader) Error!Instruction.IfBlockInfo {
 }
 
 fn blockType(reader: *BinaryReader) Error!Instruction.BlockType {
-    const byte = try reader.readU8();
-    return switch (byte) {
-        0x40 => .empty,
-        0x6f...0x70, 0x7b...0x7f => .{ .value_type = utils.valueTypeFromNum(byte).? },
-        else => .{ .type_index = byte }, // TODO: handle s33
-    };
+    const byte = try reader.peek();
+    switch (byte) {
+        0x40 => {
+            _ = try reader.readU8();
+            return .empty;
+        },
+        0x6f...0x70, 0x7b...0x7f => {
+            _ = try reader.readU8();
+            return .{ .value_type = utils.valueTypeFromNum(byte).? };
+        },
+        else => return .{ .type_index = try reader.readVarU32() },
+    }
 }
 
 fn brTable(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction.BrTableType {

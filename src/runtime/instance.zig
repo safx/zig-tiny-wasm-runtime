@@ -183,7 +183,7 @@ pub const Instance = struct {
                         return;
                     }
 
-                    // FIXME: the function called from `start` needs this check
+                    // check the empty_frame of the bottom
                     if (self.stack.topFrame().instructions.len == 0) {
                         return;
                     }
@@ -1243,7 +1243,7 @@ pub fn instractionFromInitExpr(init_expr: types.InitExpression) Instruction {
         .i64_const => |val| .{ .i64_const = val },
         .f32_const => |val| .{ .f32_const = val },
         .f64_const => |val| .{ .f64_const = val },
-        .v128_const => unreachable, // FIXME
+        .v128_const => unreachable, // TODO
         .ref_null => |ref_type| .{ .ref_null = ref_type },
         .ref_func => |func_idx| .{ .ref_func = func_idx },
         .global_get => |global_idx| .{ .global_get = global_idx },
