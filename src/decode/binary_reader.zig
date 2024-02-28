@@ -6,22 +6,13 @@ pub const BinaryReader = struct {
 
     buffer: []const u8,
     position: usize,
-    original_offset: usize,
 
     pub fn new(data: []const u8) BinaryReader {
-        return .{ .buffer = data, .position = 0, .original_offset = 0 };
-    }
-
-    pub fn newWithOffset(data: []const u8, offset: usize) BinaryReader {
-        return .{ .buffer = data, .position = 0, .original_offset = offset };
+        return .{ .buffer = data, .position = 0 };
     }
 
     pub fn eof(self: Self) bool {
         return self.position >= self.buffer.len;
-    }
-
-    pub fn originalPosition(self: Self) usize {
-        return self.original_offset + self.position;
     }
 
     pub fn peek(self: Self) error{UnexpectedEndOfBuffer}!u8 {
@@ -31,7 +22,7 @@ pub const BinaryReader = struct {
         return self.buffer[self.position];
     }
 
-    pub fn ensureHasBytes(self: Self, len: usize) error{UnexpectedEndOfBuffer}!void {
+    fn ensureHasBytes(self: Self, len: usize) error{UnexpectedEndOfBuffer}!void {
         if (self.position + len > self.buffer.len) {
             return Error.UnexpectedEndOfBuffer;
         }
