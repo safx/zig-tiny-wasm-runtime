@@ -5,12 +5,13 @@ const types = struct {
 };
 const validate = @import("wasm-validate");
 pub const Instance = @import("./instance.zig").Instance;
+const resolver = @import("./resolver.zig");
 pub const Error = @import("./errors.zig").Error;
 
 /// A type of WebAssembly runtime engine, which wraps `Instance`.
 pub const Engine = struct {
     const Self = @This();
-    const ModuleInstMap = std.StringHashMap(*types.ModuleInst);
+    pub const ModuleInstMap = std.StringHashMap(*types.ModuleInst);
 
     allocator: std.mem.Allocator,
     instance: Instance,
@@ -64,7 +65,7 @@ pub const Engine = struct {
     }
 
     fn loadModule(self: *Self, module: types.Module, module_name: []const u8) (Error || error{OutOfMemory})!*types.ModuleInst {
-        const extern_vals = try self.resolveImports(module, self.allocator);
+        const extern_vals = try resolver.resolveImports(self.instance.store, self.mod_insts, module, self.allocator);
         defer self.allocator.free(extern_vals);
         const mod_inst = try self.instance.instantiate(module, extern_vals);
         try self.registerModule(mod_inst, module_name);
@@ -83,47 +84,10 @@ pub const Engine = struct {
     pub fn invokeFunctionByName(self: *Self, func_name: []const u8, args: []const types.Value) (Error || error{OutOfMemory})![]const types.Value {
         var it = self.mod_insts.valueIterator();
         while (it.next()) |mod_inst| {
-            const exp = try findExport(mod_inst.*.*, func_name);
+            const exp = try resolver.findExport(mod_inst.*.*, func_name);
             return try self.invokeFunctionByAddr(exp.function, args);
         }
         std.debug.print("Unknown function name to call: {s}\n", .{func_name});
-        return Error.UnknownImport;
-    }
-
-    fn resolveImports(self: *Self, module: types.Module, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const types.ExternalValue {
-        const imports = module.imports;
-        const external_imports = try allocator.alloc(types.ExternalValue, imports.len);
-        for (imports, 0..) |imp, i| {
-            if (self.mod_insts.get(imp.module_name)) |mod_inst| {
-                const exp = try findExport(mod_inst.*, imp.name);
-                if (isMatchType(self.instance.store, exp, module, imp.desc)) {
-                    external_imports[i] = exp;
-                } else {
-                    return Error.IncompatibleImportType;
-                }
-            } else {
-                std.debug.print("Unknown import: {s}.{s}\n", .{ imp.module_name, imp.name });
-                return Error.UnknownImport;
-            }
-        }
-        return external_imports;
-    }
-
-    fn isMatchType(store: types.Store, exp: types.ExternalValue, module: types.Module, imp: types.ImportDesc) bool {
-        return switch (exp) {
-            .function => |v| imp == .function and isMatchFuncType(store.funcs.items[v].type, module.types[imp.function]),
-            .table => |v| imp == .table and isMatchTableType(store.tables.items[v].type, imp.table),
-            .memory => |v| imp == .memory and isMatchMemType(store.mems.items[v].type, imp.memory),
-            .global => |v| imp == .global and isMatchGlobalType(store.globals.items[v].type, imp.global),
-        };
-    }
-
-    fn findExport(mod_inst: types.ModuleInst, import_name: []const u8) error{UnknownImport}!types.ExternalValue {
-        for (mod_inst.exports) |exp| {
-            if (std.mem.eql(u8, import_name, exp.name)) {
-                return exp.value;
-            }
-        }
         return Error.UnknownImport;
     }
 };
@@ -135,34 +99,4 @@ fn getFilename(path: []const u8) []const u8 {
         elem = p;
     }
     return elem;
-}
-
-fn isMatchFuncType(a: types.FuncType, b: types.FuncType) bool {
-    return std.mem.eql(types.ValueType, a.parameter_types, b.parameter_types) and
-        std.mem.eql(types.ValueType, a.result_types, b.result_types);
-}
-
-fn isMatchTableType(a: types.TableType, b: types.TableType) bool {
-    return a.ref_type == b.ref_type and isValidLimits(a.limits, b.limits);
-}
-
-fn isMatchMemType(a: types.MemoryType, b: types.MemoryType) bool {
-    return isValidLimits(a.limits, b.limits);
-}
-
-fn isMatchGlobalType(a: types.GlobalType, b: types.GlobalType) bool {
-    return a.mutability == b.mutability and
-        a.value_type == b.value_type;
-}
-
-fn isValidLimits(a: types.Limits, b: types.Limits) bool {
-    if (b.max) |b_max| {
-        if (a.max) |a_max| {
-            if (a_max > b_max)
-                return false;
-        } else {
-            return false;
-        }
-    }
-    return a.min >= b.min;
 }

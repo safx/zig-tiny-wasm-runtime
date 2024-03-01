@@ -203,7 +203,7 @@ pub const Instance = struct {
             return Error.InstantiationFailed;
         }
 
-        // 4: verifying external value is done in engine
+        // 4: verifying external value is done in resolver
 
         // 5: aux module
         var aux_module = try types.ModuleInst.auxiliaryInstance(&self.store, module, extern_vals, self.allocator);
