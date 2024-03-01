@@ -359,8 +359,8 @@ pub const LabelType = union(enum) {
 
 pub const ActivationFrame = struct {
     locals: []Value = &.{},
-    arity: usize = 0,
+    arity: u32 = 0,
     module: *ModuleInst = undefined,
     instructions: []const core.Instruction = &.{},
-    ip: u32 = 0,
+    ip: core.InstractionAddr = 0,
 };

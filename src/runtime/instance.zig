@@ -61,7 +61,7 @@ pub const Instance = struct {
         const num_returns = func_type.result_types.len;
         const frame = types.ActivationFrame{
             .locals = locals,
-            .arity = num_returns,
+            .arity = @intCast(num_returns),
             .module = func_inst.module,
             .instructions = func_inst.code.body,
         };
