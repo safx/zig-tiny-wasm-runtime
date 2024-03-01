@@ -73,7 +73,7 @@ pub const SpecTestRunner = struct {
                     @panic("Test failed.");
                 },
                 .assert_malformed => |arg| try self.expectErrorWhileloadingModule(arg.file_name, arg.trap, false, arg.line),
-                // .assert_invalid => |arg| try self.expectErrorWhileloadingModule(arg.file_name, arg.trap, false, arg.line),
+                .assert_invalid => |arg| try self.expectErrorWhileloadingModule(arg.file_name, arg.trap, false, arg.line),
                 .assert_unlinkable => |arg| try self.expectErrorWhileloadingModule(arg.file_name, arg.trap, true, arg.line),
                 .assert_uninstantiable => |arg| try self.expectErrorWhileloadingModule(arg.file_name, arg.trap, true, arg.line),
                 else => {},
