@@ -35,42 +35,66 @@ pub const ModuleValidator = struct {
     }
 
     fn validateFunction(self: Self, c: Context, func: types.Func) Error!void {
+        std.debug.print("=" ** 40 ++ "\n", .{});
         if (func.type >= c.types.len)
             return Error.UnknownType;
 
-        const cp = try Context.cloneContextForValidatingFunction(c, func, self.allocator);
+        const cp = try Context.cloneWithFunction(c, func, self.allocator);
         try self.validateFunctionBody(cp, func.body, c.types[func.type].result_types);
     }
 
     fn validateFunctionBody(self: Self, c: Context, instrs: []const types.Instruction, expect_types: []const types.ValueType) Error!void {
         var type_stack = try TypeStack.new(self.allocator);
+        try self.loop(c, instrs, 0, @intCast(instrs.len), &type_stack);
 
-        for (instrs) |instr| {
-            try self.validateInstruction(c, instr, &type_stack);
+        std.debug.print(" E {any}\n", .{expect_types});
+        std.debug.print(" S {any}\n", .{type_stack.array.items});
+
+        try type_stack.popValuesWithTypeCheck(expect_types);
+    }
+
+    fn validateBlock(self: Self, c: Context, instrs: []const types.Instruction, ip: u32, end: u32, func_type: types.FuncType) Error!void {
+        var type_stack = try TypeStack.new(self.allocator);
+        for (func_type.parameter_types) |ty|
+            try type_stack.push(ty);
+
+        try self.loop(c, instrs, ip, end, &type_stack);
+
+        std.debug.print(" R {any}\n", .{func_type.result_types});
+        std.debug.print(" S {any}\n", .{type_stack.array.items});
+
+        try type_stack.popValuesWithTypeCheck(func_type.result_types);
+        if (!type_stack.isEmpty())
+            return Error.TypeMismatch;
+    }
+
+    fn loop(self: Self, c: Context, instrs: []const types.Instruction, start: u32, end: u32, type_stack: *TypeStack) Error!void {
+        var ip = start;
+        while (ip < end) {
+            ip = try self.validateInstruction(c, instrs, ip, type_stack);
         }
-
-        // TODO: pop from stack and check with expect_types
-        _ = expect_types;
     }
 
     fn validateBlocktype(self: Self, c: Context, block_type: types.Instruction.BlockType) Error!types.FuncType {
         switch (block_type) {
             .empty => return .{ .parameter_types = &.{}, .result_types = &.{} },
             .type_index => |idx| {
-                if (idx < c.types.len)
+                if (idx >= c.types.len)
                     return Error.UnknownFunction;
                 return c.types[idx];
             },
             .value_type => {
-                const parameter_types = try self.allocator.alloc(types.ValueType, 1);
-                parameter_types[0] = block_type.value_type;
-                return .{ .parameter_types = parameter_types, .result_types = &.{} };
+                const result_types = try self.allocator.alloc(types.ValueType, 1);
+                result_types[0] = block_type.value_type;
+                return .{ .parameter_types = &.{}, .result_types = result_types };
             },
         }
     }
 
-    fn validateInstruction(self: Self, c: Context, instr: types.Instruction, type_stack: *TypeStack) Error!void {
-        switch (instr) {
+    fn validateInstruction(self: Self, c: Context, instrs: []const types.Instruction, ip: u32, type_stack: *TypeStack) Error!u32 {
+        assert(ip < instrs.len);
+        std.debug.print("{} {any} {any}\n", .{ ip, instrs[ip], type_stack.array.items });
+        switch (instrs[ip]) {
             .end => {},
             .@"else" => {},
 
@@ -81,61 +105,75 @@ pub const ModuleValidator = struct {
             },
             .block => |block_info| {
                 const func_type = try self.validateBlocktype(c, block_info.type);
-                const cp = try Context.cloneContextWithPrependingLabel(c, func_type.result_types, self.allocator);
-                _ = cp;
+                const cp = try Context.cloneWithPrependingLabel(c, func_type.result_types, self.allocator);
+                try self.validateBlock(cp, instrs, ip + 1, block_info.end + 1, func_type);
+                try type_stack.popValuesWithTypeCheck(func_type.parameter_types);
+                try type_stack.append(func_type.result_types);
+                return block_info.end + 1;
             },
-            .loop => |block_info| {
+            .loop => |block_info| { // TODO
                 _ = block_info;
             },
-            .@"if" => |block_info| {
+            .@"if" => |block_info| { // TODO
                 _ = block_info;
             },
-            .br => |label_idx| {
+            .br => |label_idx| { // TODO
                 _ = label_idx;
             },
-            .br_if => |label_idx| {
+            .br_if => |label_idx| { // TODO
                 _ = label_idx;
             },
-            .br_table => |table_info| {
+            .br_table => |table_info| { // TODO
                 _ = table_info;
             },
-            .@"return" => {},
-            .call => |func_idx| {
+            .@"return" => {}, // TODO
+            .call => |func_idx| { // TODO
                 _ = func_idx;
             },
-            .call_indirect => |arg| {
+            .call_indirect => |arg| { // TODO
                 _ = arg;
             },
 
             // reference instructions
-            .ref_null => |ref_type| {
+            .ref_null => |ref_type| { // TODO
                 _ = ref_type;
             },
-            .ref_is_null => {},
-            .ref_func => |func_idx| {
+            .ref_is_null => {}, // TODO
+            .ref_func => |func_idx| { // TODO
                 _ = func_idx;
             },
 
             // parametric instructions
-            .drop => {},
-            .select => {},
-            .selectv => {},
+            .drop => _ = try type_stack.pop(),
+            .select => {}, // TODO
+            .selectv => {}, // TODO
 
             // variable instructions
             .local_get => |local_idx| {
-                _ = local_idx;
+                if (local_idx >= c.locals.len)
+                    return Error.UnknownLocal;
+                try type_stack.push(c.locals[local_idx]);
             },
             .local_set => |local_idx| {
-                _ = local_idx;
+                if (local_idx >= c.locals.len)
+                    return Error.UnknownLocal;
+                try type_stack.popValueWithTypeCheck(c.locals[local_idx]);
             },
             .local_tee => |local_idx| {
-                _ = local_idx;
+                if (local_idx >= c.locals.len)
+                    return Error.UnknownLocal;
+                try type_stack.popValueWithTypeCheck(c.locals[local_idx]);
+                try type_stack.push(c.locals[local_idx]);
             },
             .global_get => |global_idx| {
-                _ = global_idx;
+                if (global_idx >= c.globals.len)
+                    return Error.UnknownGlobal;
+                try type_stack.push(c.globals[global_idx].value_type);
             },
             .global_set => |global_idx| {
-                _ = global_idx;
+                if (global_idx >= c.globals.len)
+                    return Error.UnknownGlobal;
+                try type_stack.popValueWithTypeCheck(c.globals[global_idx].value_type);
             },
 
             // table instructions
@@ -246,18 +284,10 @@ pub const ModuleValidator = struct {
             .memory_fill => {},
 
             // numeric instructions (1)
-            .i32_const => |val| {
-                _ = val;
-            },
-            .i64_const => |val| {
-                _ = val;
-            },
-            .f32_const => |val| {
-                _ = val;
-            },
-            .f64_const => |val| {
-                _ = val;
-            },
+            .i32_const => try type_stack.push(types.ValueType.i32),
+            .i64_const => try type_stack.push(types.ValueType.i64),
+            .f32_const => try type_stack.push(types.ValueType.f32),
+            .f64_const => try type_stack.push(types.ValueType.f64),
 
             // numeric instructions (2) i32
             .i32_eqz => {},
@@ -417,6 +447,7 @@ pub const ModuleValidator = struct {
             .i64_trunc_sat_f64_s => {},
             .i64_trunc_sat_f64_u => {},
         }
+        return ip + 1;
     }
 };
 
@@ -435,7 +466,39 @@ const TypeStack = struct {
         };
     }
 
+    pub fn push(self: *Self, value_type: types.ValueType) error{OutOfMemory}!void {
+        try self.array.append(value_type);
+    }
+
+    pub fn append(self: *Self, value_types: []const types.ValueType) error{OutOfMemory}!void {
+        for (value_types) |v|
+            try self.push(v);
+    }
+
+    pub fn pop(self: *Self) error{TypeMismatch}!types.ValueType {
+        if (self.array.items.len == 0)
+            return Error.TypeMismatch;
+        return self.array.pop();
+    }
+
+    pub fn isEmpty(self: *Self) bool {
+        return self.array.items.len == 0;
+    }
+
     pub fn setPolymophic(self: *Self) error{OutOfMemory}!void {
         try self.array.resize(0);
+    }
+
+    pub fn popValueWithTypeCheck(self: *Self, value_type: types.ValueType) error{TypeMismatch}!void {
+        const popped = try self.pop();
+        if (popped != value_type)
+            return Error.TypeMismatch;
+    }
+
+    pub fn popValuesWithTypeCheck(self: *Self, value_types: []const types.ValueType) error{TypeMismatch}!void {
+        var i = value_types.len;
+        while (i > 0) : (i -= 1) {
+            try self.popValueWithTypeCheck(value_types[i - 1]);
+        }
     }
 };

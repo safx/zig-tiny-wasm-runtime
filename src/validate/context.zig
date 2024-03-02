@@ -91,7 +91,7 @@ pub const Context = struct {
         };
     }
 
-    pub fn cloneContextForValidatingFunction(c: Context, func: types.Func, allocator: std.mem.Allocator) (error{OutOfMemory})!Self {
+    pub fn cloneWithFunction(c: Context, func: types.Func, allocator: std.mem.Allocator) (error{OutOfMemory})!Self {
         const ty = c.types[func.type];
 
         var locals = try allocator.alloc(types.ValueType, ty.parameter_types.len + func.locals.len);
@@ -116,7 +116,7 @@ pub const Context = struct {
         };
     }
 
-    pub fn cloneContextWithPrependingLabel(c: Context, result_type: types.ResultType, allocator: std.mem.Allocator) (error{OutOfMemory})!Self {
+    pub fn cloneWithPrependingLabel(c: Context, result_type: types.ResultType, allocator: std.mem.Allocator) (error{OutOfMemory})!Self {
         var labels = try allocator.alloc(types.ResultType, c.labels.len + 1);
         @memcpy(labels[0..c.labels.len], c.labels);
         labels[c.labels.len] = result_type;
