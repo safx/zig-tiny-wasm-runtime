@@ -116,6 +116,26 @@ pub const Context = struct {
         };
     }
 
+    pub fn cloneContextWithPrependingLabel(c: Context, result_type: types.ResultType, allocator: std.mem.Allocator) (error{OutOfMemory})!Self {
+        var labels = try allocator.alloc(types.ResultType, c.labels.len + 1);
+        @memcpy(labels[0..c.labels.len], c.labels);
+        labels[c.labels.len] = result_type;
+
+        return .{
+            .types = c.types,
+            .funcs = c.funcs,
+            .tables = c.tables,
+            .mems = c.mems,
+            .globals = c.globals,
+            .elems = c.elems,
+            .datas = c.datas,
+            .refs = c.refs,
+            .locals = c.locals,
+            .labels = labels,
+            .@"return" = c.@"return",
+        };
+    }
+
     pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
         allocator.free(self.funcs);
         allocator.free(self.tables);
