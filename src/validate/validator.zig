@@ -264,75 +264,29 @@ pub const ModuleValidator = struct {
             },
 
             // memory instructions
-            .i32_load => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i64_load => |mem_arg| {
-                _ = mem_arg;
-            },
-            .f32_load => |mem_arg| {
-                _ = mem_arg;
-            },
-            .f64_load => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i32_load8_s => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i32_load8_u => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i32_load16_s => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i32_load16_u => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i64_load8_s => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i64_load8_u => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i64_load16_s => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i64_load16_u => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i64_load32_s => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i64_load32_u => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i32_store => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i64_store => |mem_arg| {
-                _ = mem_arg;
-            },
-            .f32_store => |mem_arg| {
-                _ = mem_arg;
-            },
-            .f64_store => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i32_store8 => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i32_store16 => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i64_store8 => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i64_store16 => |mem_arg| {
-                _ = mem_arg;
-            },
-            .i64_store32 => |mem_arg| {
-                _ = mem_arg;
-            },
+            .i32_load => |mem_arg| try opLoad(i32, i32, mem_arg, type_stack),
+            .i64_load => |mem_arg| try opLoad(i64, i64, mem_arg, type_stack),
+            .f32_load => |mem_arg| try opLoad(f32, f32, mem_arg, type_stack),
+            .f64_load => |mem_arg| try opLoad(f64, f64, mem_arg, type_stack),
+            .i32_load8_s => |mem_arg| try opLoad(i32, i8, mem_arg, type_stack),
+            .i32_load8_u => |mem_arg| try opLoad(i32, u8, mem_arg, type_stack),
+            .i32_load16_s => |mem_arg| try opLoad(i32, i16, mem_arg, type_stack),
+            .i32_load16_u => |mem_arg| try opLoad(i32, u16, mem_arg, type_stack),
+            .i64_load8_s => |mem_arg| try opLoad(i64, i8, mem_arg, type_stack),
+            .i64_load8_u => |mem_arg| try opLoad(i64, u8, mem_arg, type_stack),
+            .i64_load16_s => |mem_arg| try opLoad(i64, i16, mem_arg, type_stack),
+            .i64_load16_u => |mem_arg| try opLoad(i64, u16, mem_arg, type_stack),
+            .i64_load32_s => |mem_arg| try opLoad(i64, i32, mem_arg, type_stack),
+            .i64_load32_u => |mem_arg| try opLoad(i64, u32, mem_arg, type_stack),
+            .i32_store => |mem_arg| try opStore(i32, 32, mem_arg, type_stack),
+            .i64_store => |mem_arg| try opStore(i64, 64, mem_arg, type_stack),
+            .f32_store => |mem_arg| try opStore(f32, 32, mem_arg, type_stack),
+            .f64_store => |mem_arg| try opStore(f64, 64, mem_arg, type_stack),
+            .i32_store8 => |mem_arg| try opStore(i32, 8, mem_arg, type_stack),
+            .i32_store16 => |mem_arg| try opStore(i32, 16, mem_arg, type_stack),
+            .i64_store8 => |mem_arg| try opStore(i64, 8, mem_arg, type_stack),
+            .i64_store16 => |mem_arg| try opStore(i64, 16, mem_arg, type_stack),
+            .i64_store32 => |mem_arg| try opStore(i64, 32, mem_arg, type_stack),
             .memory_size => {},
             .memory_grow => {},
             .memory_init => |data_idx| {
@@ -567,6 +521,24 @@ const TypeStack = struct {
         }
     }
 };
+
+inline fn opLoad(comptime T: type, comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack) Error!void {
+    // TODO: check
+    _ = N;
+    _ = mem_arg;
+    try type_stack.popWithChecking(.i32);
+    const t = valueTypeFrom(T);
+    try type_stack.push(t);
+}
+
+inline fn opStore(comptime T: type, comptime bit_size: u32, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack) Error!void {
+    // TODO: check
+    _ = bit_size;
+    _ = mem_arg;
+    const t = valueTypeFrom(T);
+    try type_stack.popWithChecking(t);
+    try type_stack.popWithChecking(.i32);
+}
 
 inline fn instrOp(comptime R: type, comptime T: type, type_stack: *TypeStack) Error!void {
     const r = valueTypeFrom(R);
