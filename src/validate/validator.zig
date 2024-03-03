@@ -209,18 +209,30 @@ pub const ModuleValidator = struct {
             },
 
             // reference instructions
-            .ref_null => |ref_type| { // TODO
-                _ = ref_type;
+            .ref_null => |ref_type| try type_stack.push(@enumFromInt(@intFromEnum(ref_type))),
+            .ref_is_null => {
+                _ = try type_stack.pop();
+                try type_stack.push(.i32);
             },
-            .ref_is_null => {}, // TODO
-            .ref_func => |func_idx| { // TODO
-                _ = func_idx;
+            .ref_func => |func_idx| {
+                if (func_idx >= c.funcs.len)
+                    return Error.UnknownFunction;
+                if (func_idx >= c.refs.len)
+                    return Error.UndeclaredFunctionReference;
+
+                try type_stack.push(.func_ref);
             },
 
             // parametric instructions
             .drop => _ = try type_stack.pop(),
-            .select => {}, // TODO
-            .selectv => {}, // TODO
+            .select, .selectv => {
+                try type_stack.popWithChecking(.i32);
+                const t = try type_stack.pop();
+                if (t == .func_ref or t == .extern_ref)
+                    return Error.TypeMismatch;
+                try type_stack.popWithChecking(t);
+                try type_stack.push(t);
+            },
 
             // variable instructions
             .local_get => |local_idx| {
@@ -253,27 +265,35 @@ pub const ModuleValidator = struct {
             // table instructions
             .table_get => |table_idx| {
                 _ = table_idx;
+                unreachable;
             },
             .table_set => |table_idx| {
                 _ = table_idx;
+                unreachable;
             },
             .table_init => |arg| {
                 _ = arg;
+                unreachable;
             },
             .elem_drop => |elem_idx| {
                 _ = elem_idx;
+                unreachable;
             },
             .table_copy => |arg| {
                 _ = arg;
+                unreachable;
             },
             .table_grow => |table_idx| {
                 _ = table_idx;
+                unreachable;
             },
             .table_size => |table_idx| {
                 _ = table_idx;
+                unreachable;
             },
             .table_fill => |table_idx| {
                 _ = table_idx;
+                unreachable;
             },
 
             // memory instructions
@@ -300,22 +320,32 @@ pub const ModuleValidator = struct {
             .i64_store8 => |mem_arg| try opStore(i64, 8, mem_arg, type_stack),
             .i64_store16 => |mem_arg| try opStore(i64, 16, mem_arg, type_stack),
             .i64_store32 => |mem_arg| try opStore(i64, 32, mem_arg, type_stack),
-            .memory_size => {},
-            .memory_grow => {},
+            .memory_size => {
+                unreachable;
+            },
+            .memory_grow => {
+                unreachable;
+            },
             .memory_init => |data_idx| {
                 _ = data_idx;
+                unreachable;
             },
             .data_drop => |data_idx| {
                 _ = data_idx;
+                unreachable;
             },
-            .memory_copy => {},
-            .memory_fill => {},
+            .memory_copy => {
+                unreachable;
+            },
+            .memory_fill => {
+                unreachable;
+            },
 
             // numeric instructions (1)
-            .i32_const => try type_stack.push(types.ValueType.i32),
-            .i64_const => try type_stack.push(types.ValueType.i64),
-            .f32_const => try type_stack.push(types.ValueType.f32),
-            .f64_const => try type_stack.push(types.ValueType.f64),
+            .i32_const => try type_stack.push(.i32),
+            .i64_const => try type_stack.push(.i64),
+            .f32_const => try type_stack.push(.f32),
+            .f64_const => try type_stack.push(.f64),
 
             // numeric instructions (2) i32
             .i32_eqz => try testOp(i32, type_stack),
