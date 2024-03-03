@@ -32,6 +32,19 @@ pub const ModuleValidator = struct {
         for (module.funcs) |func| {
             try self.validateFunction(context, func);
         }
+
+        if (module.start) |idx| {
+            try validateStartFunction(context, idx);
+        }
+    }
+
+    fn validateStartFunction(c: Context, func_idx: types.FuncIdx) Error!void {
+        if (func_idx >= c.funcs.len)
+            return Error.UnknownFunction;
+
+        const ft = c.funcs[func_idx];
+        if (ft.parameter_types.len != 0 or ft.result_types.len != 0)
+            return Error.StartFunction;
     }
 
     fn validateFunction(self: Self, c: Context, func: types.Func) Error!void {
