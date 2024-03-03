@@ -209,7 +209,7 @@ pub const ModuleValidator = struct {
             },
 
             // reference instructions
-            .ref_null => |ref_type| try type_stack.push(@enumFromInt(@intFromEnum(ref_type))),
+            .ref_null => |ref_type| try type_stack.push(valueTypeFromRefType(ref_type)),
             .ref_is_null => {
                 _ = try type_stack.pop();
                 try type_stack.push(.i32);
@@ -264,36 +264,61 @@ pub const ModuleValidator = struct {
 
             // table instructions
             .table_get => |table_idx| {
-                _ = table_idx;
-                unreachable;
+                if (table_idx >= c.tables.len)
+                    return Error.UnknownTable;
+                try type_stack.popWithChecking(.i32);
+                try type_stack.push(valueTypeFromRefType(c.tables[table_idx].ref_type));
             },
             .table_set => |table_idx| {
-                _ = table_idx;
-                unreachable;
+                if (table_idx >= c.tables.len)
+                    return Error.UnknownTable;
+                try type_stack.popWithChecking(valueTypeFromRefType(c.tables[table_idx].ref_type));
+                try type_stack.popWithChecking(.i32);
             },
             .table_init => |arg| {
-                _ = arg;
-                unreachable;
+                if (arg.table_idx >= c.tables.len)
+                    return Error.UnknownTable;
+                if (arg.elem_idx >= c.elems.len)
+                    return Error.UnknownElementSegment;
+                if (c.tables[arg.table_idx].ref_type != c.elems[arg.elem_idx])
+                    return Error.TypeMismatch;
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(.i32);
             },
             .elem_drop => |elem_idx| {
-                _ = elem_idx;
-                unreachable;
+                if (elem_idx >= c.elems.len)
+                    return Error.UnknownElementSegment;
             },
             .table_copy => |arg| {
-                _ = arg;
-                unreachable;
+                if (arg.table_idx_src >= c.tables.len)
+                    return Error.UnknownTable;
+                if (arg.table_idx_dst >= c.tables.len)
+                    return Error.UnknownTable;
+                if (c.tables[arg.table_idx_src].ref_type != c.tables[arg.table_idx_dst].ref_type)
+                    return Error.TypeMismatch;
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(.i32);
             },
             .table_grow => |table_idx| {
-                _ = table_idx;
-                unreachable;
+                if (table_idx >= c.tables.len)
+                    return Error.UnknownTable;
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(valueTypeFromRefType(c.tables[table_idx].ref_type));
+                try type_stack.push(.i32);
             },
             .table_size => |table_idx| {
-                _ = table_idx;
-                unreachable;
+                if (table_idx >= c.tables.len)
+                    return Error.UnknownTable;
+                try type_stack.push(.i32);
             },
             .table_fill => |table_idx| {
-                _ = table_idx;
-                unreachable;
+                if (table_idx >= c.tables.len)
+                    return Error.UnknownTable;
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(valueTypeFromRefType(c.tables[table_idx].ref_type));
+                try type_stack.popWithChecking(.i32);
             },
 
             // memory instructions
@@ -321,24 +346,42 @@ pub const ModuleValidator = struct {
             .i64_store16 => |mem_arg| try opStore(i64, 16, mem_arg, type_stack),
             .i64_store32 => |mem_arg| try opStore(i64, 32, mem_arg, type_stack),
             .memory_size => {
-                unreachable;
+                if (0 >= c.mems.len)
+                    return Error.UnknownMemory;
+                try type_stack.push(.i32);
             },
             .memory_grow => {
-                unreachable;
+                if (0 >= c.mems.len)
+                    return Error.UnknownMemory;
+                try type_stack.popWithChecking(.i32);
+                try type_stack.push(.i32);
             },
             .memory_init => |data_idx| {
-                _ = data_idx;
-                unreachable;
+                if (0 >= c.mems.len)
+                    return Error.UnknownMemory;
+                if (data_idx >= c.datas.len)
+                    return Error.UnknownDataSegment;
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(.i32);
             },
             .data_drop => |data_idx| {
-                _ = data_idx;
-                unreachable;
+                if (data_idx >= c.datas.len)
+                    return Error.UnknownDataSegment;
             },
             .memory_copy => {
-                unreachable;
+                if (0 >= c.mems.len)
+                    return Error.UnknownMemory;
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(.i32);
             },
             .memory_fill => {
-                unreachable;
+                if (0 >= c.mems.len)
+                    return Error.UnknownMemory;
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithChecking(.i32);
             },
 
             // numeric instructions (1)
@@ -637,4 +680,8 @@ fn valueTypeFrom(comptime ty: type) types.ValueType {
         f64 => .f64,
         else => unreachable,
     };
+}
+
+fn valueTypeFromRefType(ref_type: types.RefType) types.ValueType {
+    return @enumFromInt(@intFromEnum(ref_type));
 }
