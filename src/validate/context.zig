@@ -140,11 +140,44 @@ pub const Context = struct {
         };
     }
 
+    pub fn getType(self: Self, idx: types.TypeIdx) Error!types.FuncType {
+        return if (idx < self.types.len) self.types[idx] else Error.UnknownType;
+    }
+
+    pub fn getFunc(self: Self, idx: types.FuncIdx) Error!types.FuncType {
+        return if (idx < self.funcs.len) self.funcs[idx] else Error.UnknownFunction;
+    }
+
+    pub fn getTable(self: Self, idx: types.TableIdx) Error!types.TableType {
+        return if (idx < self.tables.len) self.tables[idx] else Error.UnknownTable;
+    }
+
+    pub fn checkMem(self: Self, idx: types.MemIdx) Error!void {
+        if (idx >= self.mems.len) return Error.UnknownMemory;
+    }
+
+    pub fn getGlobal(self: Self, idx: types.GlobalIdx) Error!types.GlobalType {
+        return if (idx < self.globals.len) self.globals[idx] else Error.UnknownGlobal;
+    }
+
+    pub fn getElem(self: Self, idx: types.ElemIdx) Error!types.RefType {
+        return if (idx < self.elems.len) self.elems[idx] else Error.UnknownElementSegment;
+    }
+
+    pub fn checkData(self: Self, idx: types.DataIdx) Error!void {
+        if (idx >= self.datas.len) return Error.UnknownDataSegment;
+    }
+
+    pub fn checkRef(self: Self, idx: u32) Error!void {
+        if (idx >= self.refs.len) return Error.UndeclaredFunctionReference;
+    }
+
+    pub fn getLocal(self: Self, idx: types.LocalIdx) Error!types.ValueType {
+        return if (idx < self.locals.len) self.locals[idx] else Error.UnknownLocal;
+    }
+
     pub fn getLabel(self: Self, idx: types.LabelIdx) Error!types.ResultType {
-        if (idx < self.labels.len)
-            return self.labels[self.labels.len - idx - 1]
-        else
-            return Error.UnknownLabel;
+        return if (idx < self.labels.len) self.labels[self.labels.len - idx - 1] else Error.UnknownLabel;
     }
 
     pub fn deinit(self: Self, allocator: std.mem.Allocator) void {

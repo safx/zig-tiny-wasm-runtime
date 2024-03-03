@@ -39,21 +39,16 @@ pub const ModuleValidator = struct {
     }
 
     fn validateStartFunction(c: Context, func_idx: types.FuncIdx) Error!void {
-        if (func_idx >= c.funcs.len)
-            return Error.UnknownFunction;
-
-        const ft = c.funcs[func_idx];
+        const ft = try c.getFunc(func_idx);
         if (ft.parameter_types.len != 0 or ft.result_types.len != 0)
             return Error.StartFunction;
     }
 
     fn validateFunction(self: Self, c: Context, func: types.Func) Error!void {
         std.debug.print("=" ** 40 ++ "\n", .{});
-        if (func.type >= c.types.len)
-            return Error.UnknownType;
-
         const cp = try Context.cloneWithFunction(c, func, self.allocator);
-        try self.validateFunctionBody(cp, func.body, c.types[func.type].result_types);
+        const ty = try c.getType(func.type);
+        try self.validateFunctionBody(cp, func.body, ty.result_types);
     }
 
     fn validateFunctionBody(self: Self, c: Context, instrs: []const types.Instruction, expect_types: []const types.ValueType) Error!void {
@@ -94,9 +89,7 @@ pub const ModuleValidator = struct {
         switch (block_type) {
             .empty => return .{ .parameter_types = &.{}, .result_types = &.{} },
             .type_index => |idx| {
-                if (idx >= c.types.len)
-                    return Error.UnknownFunction;
-                return c.types[idx];
+                return try c.getType(idx);
             },
             .value_type => {
                 const result_types = try self.allocator.alloc(types.ValueType, 1);
@@ -150,22 +143,14 @@ pub const ModuleValidator = struct {
                 try type_stack.setPolymophic();
             },
             .br_if => |label_idx| {
-                if (label_idx >= c.labels.len)
-                    return Error.UnknownLabel;
                 try type_stack.popWithChecking(.i32);
                 const label = try c.getLabel(label_idx);
                 try type_stack.popValuesWithChecking(label);
                 try type_stack.append(label);
             },
             .br_table => |table_info| {
-                if (table_info.default_label_idx >= c.labels.len)
-                    return Error.UnknownLabel;
-
                 const default_label = try c.getLabel(table_info.default_label_idx);
                 for (table_info.label_idxs) |label_idx| {
-                    if (label_idx >= c.labels.len)
-                        return Error.UnknownLabel;
-
                     const label = try c.getLabel(label_idx);
                     if (label.len != default_label.len)
                         return Error.TypeMismatch;
@@ -188,22 +173,17 @@ pub const ModuleValidator = struct {
                 }
             },
             .call => |func_idx| {
-                if (func_idx >= c.funcs.len)
-                    return Error.UnknownFunction;
-                const ft = c.funcs[func_idx];
+                const ft = try c.getFunc(func_idx);
                 try type_stack.popValuesWithChecking(ft.parameter_types);
                 try type_stack.append(ft.result_types);
             },
             .call_indirect => |arg| {
-                if (arg.table_idx >= c.tables.len)
-                    return Error.UnknownTable;
-                if (c.tables[arg.table_idx].ref_type != .funcref)
+                const table = try c.getTable(arg.table_idx);
+                if (table.ref_type != .funcref)
                     return Error.TypeMismatch;
-                if (arg.type_idx >= c.types.len)
-                    return Error.UnknownType;
 
                 try type_stack.popWithChecking(.i32);
-                const ft = c.types[arg.type_idx];
+                const ft = try c.getType(arg.type_idx);
                 try type_stack.popValuesWithChecking(ft.parameter_types);
                 try type_stack.append(ft.result_types);
             },
@@ -215,11 +195,8 @@ pub const ModuleValidator = struct {
                 try type_stack.push(.i32);
             },
             .ref_func => |func_idx| {
-                if (func_idx >= c.funcs.len)
-                    return Error.UnknownFunction;
-                if (func_idx >= c.refs.len)
-                    return Error.UndeclaredFunctionReference;
-
+                _ = try c.getFunc(func_idx);
+                _ = try c.checkRef(func_idx);
                 try type_stack.push(.func_ref);
             },
 
@@ -236,88 +213,69 @@ pub const ModuleValidator = struct {
 
             // variable instructions
             .local_get => |local_idx| {
-                if (local_idx >= c.locals.len)
-                    return Error.UnknownLocal;
-                try type_stack.push(c.locals[local_idx]);
+                try type_stack.push(try c.getLocal(local_idx));
             },
             .local_set => |local_idx| {
-                if (local_idx >= c.locals.len)
-                    return Error.UnknownLocal;
-                try type_stack.popWithChecking(c.locals[local_idx]);
+                try type_stack.popWithChecking(try c.getLocal(local_idx));
             },
             .local_tee => |local_idx| {
-                if (local_idx >= c.locals.len)
-                    return Error.UnknownLocal;
-                try type_stack.popWithChecking(c.locals[local_idx]);
-                try type_stack.push(c.locals[local_idx]);
+                const local = try c.getLocal(local_idx);
+                try type_stack.popWithChecking(local);
+                try type_stack.push(local);
             },
             .global_get => |global_idx| {
-                if (global_idx >= c.globals.len)
-                    return Error.UnknownGlobal;
-                try type_stack.push(c.globals[global_idx].value_type);
+                const global = try c.getGlobal(global_idx);
+                try type_stack.push(global.value_type);
             },
             .global_set => |global_idx| {
-                if (global_idx >= c.globals.len)
-                    return Error.UnknownGlobal;
-                try type_stack.popWithChecking(c.globals[global_idx].value_type);
+                const global = try c.getGlobal(global_idx);
+                try type_stack.popWithChecking(global.value_type);
             },
 
             // table instructions
             .table_get => |table_idx| {
-                if (table_idx >= c.tables.len)
-                    return Error.UnknownTable;
+                const table = try c.getTable(table_idx);
                 try type_stack.popWithChecking(.i32);
-                try type_stack.push(valueTypeFromRefType(c.tables[table_idx].ref_type));
+                try type_stack.push(valueTypeFromRefType(table.ref_type));
             },
             .table_set => |table_idx| {
-                if (table_idx >= c.tables.len)
-                    return Error.UnknownTable;
-                try type_stack.popWithChecking(valueTypeFromRefType(c.tables[table_idx].ref_type));
+                const table = try c.getTable(table_idx);
+                try type_stack.popWithChecking(valueTypeFromRefType(table.ref_type));
                 try type_stack.popWithChecking(.i32);
             },
             .table_init => |arg| {
-                if (arg.table_idx >= c.tables.len)
-                    return Error.UnknownTable;
-                if (arg.elem_idx >= c.elems.len)
-                    return Error.UnknownElementSegment;
-                if (c.tables[arg.table_idx].ref_type != c.elems[arg.elem_idx])
+                const table = try c.getTable(arg.table_idx);
+                const elem = try c.getElem(arg.elem_idx);
+                if (table.ref_type != elem)
                     return Error.TypeMismatch;
                 try type_stack.popWithChecking(.i32);
                 try type_stack.popWithChecking(.i32);
                 try type_stack.popWithChecking(.i32);
             },
-            .elem_drop => |elem_idx| {
-                if (elem_idx >= c.elems.len)
-                    return Error.UnknownElementSegment;
-            },
+            .elem_drop => |elem_idx| _ = try c.getElem(elem_idx),
             .table_copy => |arg| {
-                if (arg.table_idx_src >= c.tables.len)
-                    return Error.UnknownTable;
-                if (arg.table_idx_dst >= c.tables.len)
-                    return Error.UnknownTable;
-                if (c.tables[arg.table_idx_src].ref_type != c.tables[arg.table_idx_dst].ref_type)
+                const table_src = try c.getTable(arg.table_idx_src);
+                const table_dst = try c.getTable(arg.table_idx_dst);
+                if (table_src.ref_type != table_dst.ref_type)
                     return Error.TypeMismatch;
                 try type_stack.popWithChecking(.i32);
                 try type_stack.popWithChecking(.i32);
                 try type_stack.popWithChecking(.i32);
             },
             .table_grow => |table_idx| {
-                if (table_idx >= c.tables.len)
-                    return Error.UnknownTable;
+                const table = try c.getTable(table_idx);
                 try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(valueTypeFromRefType(c.tables[table_idx].ref_type));
+                try type_stack.popWithChecking(valueTypeFromRefType(table.ref_type));
                 try type_stack.push(.i32);
             },
             .table_size => |table_idx| {
-                if (table_idx >= c.tables.len)
-                    return Error.UnknownTable;
+                _ = try c.getTable(table_idx);
                 try type_stack.push(.i32);
             },
             .table_fill => |table_idx| {
-                if (table_idx >= c.tables.len)
-                    return Error.UnknownTable;
+                const table = try c.getTable(table_idx);
                 try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(valueTypeFromRefType(c.tables[table_idx].ref_type));
+                try type_stack.popWithChecking(valueTypeFromRefType(table.ref_type));
                 try type_stack.popWithChecking(.i32);
             },
 
@@ -346,39 +304,32 @@ pub const ModuleValidator = struct {
             .i64_store16 => |mem_arg| try opStore(i64, 16, mem_arg, type_stack),
             .i64_store32 => |mem_arg| try opStore(i64, 32, mem_arg, type_stack),
             .memory_size => {
-                if (0 >= c.mems.len)
-                    return Error.UnknownMemory;
+                try c.checkMem(0);
                 try type_stack.push(.i32);
             },
             .memory_grow => {
-                if (0 >= c.mems.len)
-                    return Error.UnknownMemory;
+                try c.checkMem(0);
                 try type_stack.popWithChecking(.i32);
                 try type_stack.push(.i32);
             },
             .memory_init => |data_idx| {
-                if (0 >= c.mems.len)
-                    return Error.UnknownMemory;
-                if (data_idx >= c.datas.len)
-                    return Error.UnknownDataSegment;
+                try c.checkMem(0);
+                try c.checkData(data_idx);
                 try type_stack.popWithChecking(.i32);
                 try type_stack.popWithChecking(.i32);
                 try type_stack.popWithChecking(.i32);
             },
             .data_drop => |data_idx| {
-                if (data_idx >= c.datas.len)
-                    return Error.UnknownDataSegment;
+                try c.checkData(data_idx);
             },
             .memory_copy => {
-                if (0 >= c.mems.len)
-                    return Error.UnknownMemory;
+                try c.checkMem(0);
                 try type_stack.popWithChecking(.i32);
                 try type_stack.popWithChecking(.i32);
                 try type_stack.popWithChecking(.i32);
             },
             .memory_fill => {
-                if (0 >= c.mems.len)
-                    return Error.UnknownMemory;
+                try c.checkMem(0);
                 try type_stack.popWithChecking(.i32);
                 try type_stack.popWithChecking(.i32);
                 try type_stack.popWithChecking(.i32);
