@@ -50,7 +50,7 @@ pub const ModuleValidator = struct {
         std.debug.print(" E {any}\n", .{expect_types});
         std.debug.print(" S {any}\n", .{type_stack.array.items});
 
-        try type_stack.popValuesWithTypeCheck(expect_types);
+        try type_stack.popValuesWithChecking(expect_types);
     }
 
     fn validateBlock(self: Self, c: Context, instrs: []const types.Instruction, start: u32, end: u32, func_type: types.FuncType) Error!void {
@@ -58,12 +58,13 @@ pub const ModuleValidator = struct {
         for (func_type.parameter_types) |ty|
             try type_stack.push(ty);
 
-        try self.loop(c, instrs, ip, end, &type_stack);
+        try self.loop(c, instrs, start, end, &type_stack);
 
         std.debug.print(" R {any}\n", .{func_type.result_types});
         std.debug.print(" S {any}\n", .{type_stack.array.items});
 
-        try type_stack.popValuesWithTypeCheck(func_type.result_types);
+        try type_stack.popValuesWithChecking(func_type.result_types);
+
         if (!type_stack.isEmpty())
             return Error.TypeMismatch;
     }
@@ -93,7 +94,7 @@ pub const ModuleValidator = struct {
 
     fn validateInstruction(self: Self, c: Context, instrs: []const types.Instruction, ip: u32, type_stack: *TypeStack) Error!u32 {
         assert(ip < instrs.len);
-        std.debug.print("{} {any} {any}\n", .{ ip, instrs[ip], type_stack.array.items });
+        std.debug.print("{} {any} {any} {s}\n", .{ ip, instrs[ip], type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
         switch (instrs[ip]) {
             .end => {},
             .@"else" => {},
@@ -105,7 +106,7 @@ pub const ModuleValidator = struct {
                 const func_type = try self.validateBlocktype(c, block_info.type);
                 const cp = try Context.cloneWithPrependingLabel(c, func_type.result_types, self.allocator);
                 try self.validateBlock(cp, instrs, ip + 1, block_info.end + 1, func_type);
-                try type_stack.popValuesWithTypeCheck(func_type.parameter_types);
+                try type_stack.popValuesWithChecking(func_type.parameter_types);
                 try type_stack.append(func_type.result_types);
                 return block_info.end + 1;
             },
@@ -113,11 +114,11 @@ pub const ModuleValidator = struct {
                 const func_type = try self.validateBlocktype(c, block_info.type);
                 const cp = try Context.cloneWithPrependingLabel(c, func_type.parameter_types, self.allocator);
                 try self.validateBlock(cp, instrs, ip + 1, block_info.end + 1, func_type);
-                try type_stack.popValuesWithTypeCheck(func_type.parameter_types);
+                try type_stack.popValuesWithChecking(func_type.parameter_types);
                 try type_stack.append(func_type.result_types);
                 return block_info.end + 1;
             },
-            .@"if" => |block_info| { // TODO
+            .@"if" => |block_info| {
                 const func_type = try self.validateBlocktype(c, block_info.type);
                 const cp = try Context.cloneWithPrependingLabel(c, func_type.result_types, self.allocator);
                 if (block_info.@"else") |els| {
@@ -126,32 +127,58 @@ pub const ModuleValidator = struct {
                 } else {
                     try self.validateBlock(cp, instrs, ip + 1, block_info.end + 1, func_type);
                 }
-                try type_stack.popValuesWithTypeCheck(func_type.parameter_types);
+                try type_stack.popValuesWithChecking(func_type.parameter_types);
                 try type_stack.append(func_type.result_types);
                 return block_info.end + 1;
             },
             .br => |label_idx| {
                 if (label_idx >= c.labels.len)
                     return Error.UnknownLabel;
-                try type_stack.popValuesWithTypeCheck(c.labels[label_idx]);
+                try type_stack.popValuesWithChecking(c.labels[label_idx]);
                 try type_stack.setPolymophic();
             },
             .br_if => |label_idx| {
                 if (label_idx >= c.labels.len)
                     return Error.UnknownLabel;
-                try type_stack.popValueWithTypeCheck(.i32);
-                try type_stack.popValuesWithTypeCheck(c.labels[label_idx]);
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popValuesWithChecking(c.labels[label_idx]);
                 try type_stack.append(c.labels[label_idx]);
             },
-            .br_table => |table_info| { // TODO
-                _ = table_info;
+            .br_table => |table_info| {
+                if (table_info.default_label_idx >= c.labels.len)
+                    return Error.UnknownLabel;
+
+                const default_label = c.labels[table_info.default_label_idx];
+                for (table_info.label_idxs) |label_idx| {
+                    if (label_idx >= c.labels.len)
+                        return Error.UnknownLabel;
+
+                    const label = c.labels[label_idx];
+                    if (label.len != default_label.len)
+                        return Error.TypeMismatch;
+
+                    try type_stack.popWithChecking(.i32);
+                    try type_stack.popValuesWithChecking(label);
+                    try type_stack.setPolymophic();
+                }
+
+                try type_stack.popWithChecking(.i32);
+                try type_stack.popValuesWithChecking(default_label);
+                try type_stack.setPolymophic();
             },
-            .@"return" => {}, // TODO
+            .@"return" => {
+                if (c.@"return") |ty| {
+                    try type_stack.popValuesWithChecking(ty);
+                    try type_stack.setPolymophic();
+                } else {
+                    return Error.TypeMismatch;
+                }
+            },
             .call => |func_idx| {
                 if (func_idx >= c.funcs.len)
                     return Error.UnknownFunction;
                 const ft = c.funcs[func_idx];
-                try type_stack.popValuesWithTypeCheck(ft.parameter_types);
+                try type_stack.popValuesWithChecking(ft.parameter_types);
                 try type_stack.append(ft.result_types);
             },
             .call_indirect => |arg| {
@@ -162,9 +189,9 @@ pub const ModuleValidator = struct {
                 if (arg.type_idx >= c.types.len)
                     return Error.UnknownType;
 
-                try type_stack.popValueWithTypeCheck(.i32);
+                try type_stack.popWithChecking(.i32);
                 const ft = c.types[arg.type_idx];
-                try type_stack.popValuesWithTypeCheck(ft.parameter_types);
+                try type_stack.popValuesWithChecking(ft.parameter_types);
                 try type_stack.append(ft.result_types);
             },
 
@@ -191,12 +218,12 @@ pub const ModuleValidator = struct {
             .local_set => |local_idx| {
                 if (local_idx >= c.locals.len)
                     return Error.UnknownLocal;
-                try type_stack.popValueWithTypeCheck(c.locals[local_idx]);
+                try type_stack.popWithChecking(c.locals[local_idx]);
             },
             .local_tee => |local_idx| {
                 if (local_idx >= c.locals.len)
                     return Error.UnknownLocal;
-                try type_stack.popValueWithTypeCheck(c.locals[local_idx]);
+                try type_stack.popWithChecking(c.locals[local_idx]);
                 try type_stack.push(c.locals[local_idx]);
             },
             .global_get => |global_idx| {
@@ -207,7 +234,7 @@ pub const ModuleValidator = struct {
             .global_set => |global_idx| {
                 if (global_idx >= c.globals.len)
                     return Error.UnknownGlobal;
-                try type_stack.popValueWithTypeCheck(c.globals[global_idx].value_type);
+                try type_stack.popWithChecking(c.globals[global_idx].value_type);
             },
 
             // table instructions
@@ -324,162 +351,162 @@ pub const ModuleValidator = struct {
             .f64_const => try type_stack.push(types.ValueType.f64),
 
             // numeric instructions (2) i32
-            .i32_eqz => {},
-            .i32_eq => {},
-            .i32_ne => {},
-            .i32_lt_s => {},
-            .i32_lt_u => {},
-            .i32_gt_s => {},
-            .i32_gt_u => {},
-            .i32_le_s => {},
-            .i32_le_u => {},
-            .i32_ge_s => {},
-            .i32_ge_u => {},
+            .i32_eqz => try testOp(i32, type_stack),
+            .i32_eq => try relOp(i32, type_stack),
+            .i32_ne => try relOp(i32, type_stack),
+            .i32_lt_s => try relOp(i32, type_stack),
+            .i32_lt_u => try relOp(u32, type_stack),
+            .i32_gt_s => try relOp(i32, type_stack),
+            .i32_gt_u => try relOp(u32, type_stack),
+            .i32_le_s => try relOp(i32, type_stack),
+            .i32_le_u => try relOp(u32, type_stack),
+            .i32_ge_s => try relOp(i32, type_stack),
+            .i32_ge_u => try relOp(u32, type_stack),
 
             // numeric instructions (2) i64
-            .i64_eqz => {},
-            .i64_eq => {},
-            .i64_ne => {},
-            .i64_lt_s => {},
-            .i64_lt_u => {},
-            .i64_gt_s => {},
-            .i64_gt_u => {},
-            .i64_le_s => {},
-            .i64_le_u => {},
-            .i64_ge_s => {},
-            .i64_ge_u => {},
+            .i64_eqz => try testOp(i64, type_stack),
+            .i64_eq => try relOp(i64, type_stack),
+            .i64_ne => try relOp(i64, type_stack),
+            .i64_lt_s => try relOp(i64, type_stack),
+            .i64_lt_u => try relOp(u64, type_stack),
+            .i64_gt_s => try relOp(i64, type_stack),
+            .i64_gt_u => try relOp(u64, type_stack),
+            .i64_le_s => try relOp(i64, type_stack),
+            .i64_le_u => try relOp(u64, type_stack),
+            .i64_ge_s => try relOp(i64, type_stack),
+            .i64_ge_u => try relOp(u64, type_stack),
 
             // numeric instructions (2) f32
-            .f32_eq => {},
-            .f32_ne => {},
-            .f32_lt => {},
-            .f32_gt => {},
-            .f32_le => {},
-            .f32_ge => {},
+            .f32_eq => try relOp(f32, type_stack),
+            .f32_ne => try relOp(f32, type_stack),
+            .f32_lt => try relOp(f32, type_stack),
+            .f32_gt => try relOp(f32, type_stack),
+            .f32_le => try relOp(f32, type_stack),
+            .f32_ge => try relOp(f32, type_stack),
 
             // numeric instructions (2) f64
-            .f64_eq => {},
-            .f64_ne => {},
-            .f64_lt => {},
-            .f64_gt => {},
-            .f64_le => {},
-            .f64_ge => {},
+            .f64_eq => try relOp(f64, type_stack),
+            .f64_ne => try relOp(f64, type_stack),
+            .f64_lt => try relOp(f64, type_stack),
+            .f64_gt => try relOp(f64, type_stack),
+            .f64_le => try relOp(f64, type_stack),
+            .f64_ge => try relOp(f64, type_stack),
 
             // numeric instructions (3) i32
-            .i32_clz => {},
-            .i32_ctz => {},
-            .i32_popcnt => {},
-            .i32_add => {},
-            .i32_sub => {},
-            .i32_mul => {},
-            .i32_div_s => {},
-            .i32_div_u => {},
-            .i32_rem_s => {},
-            .i32_rem_u => {},
-            .i32_and => {},
-            .i32_or => {},
-            .i32_xor => {},
-            .i32_shl => {},
-            .i32_shr_s => {},
-            .i32_shr_u => {},
-            .i32_rotl => {},
-            .i32_rotr => {},
+            .i32_clz => try unOp(i32, type_stack),
+            .i32_ctz => try unOp(i32, type_stack),
+            .i32_popcnt => try unOp(i32, type_stack),
+            .i32_add => try binOp(i32, type_stack),
+            .i32_sub => try binOp(i32, type_stack),
+            .i32_mul => try binOp(i32, type_stack),
+            .i32_div_s => try binOp(i32, type_stack),
+            .i32_div_u => try binOp(u32, type_stack),
+            .i32_rem_s => try binOp(i32, type_stack),
+            .i32_rem_u => try binOp(u32, type_stack),
+            .i32_and => try binOp(i32, type_stack),
+            .i32_or => try binOp(i32, type_stack),
+            .i32_xor => try binOp(i32, type_stack),
+            .i32_shl => try binOp(i32, type_stack),
+            .i32_shr_s => try binOp(i32, type_stack),
+            .i32_shr_u => try binOp(u32, type_stack),
+            .i32_rotl => try binOp(i32, type_stack),
+            .i32_rotr => try binOp(i32, type_stack),
 
             // numeric instructions (3) i64
-            .i64_clz => {},
-            .i64_ctz => {},
-            .i64_popcnt => {},
-            .i64_add => {},
-            .i64_sub => {},
-            .i64_mul => {},
-            .i64_div_s => {},
-            .i64_div_u => {},
-            .i64_rem_s => {},
-            .i64_rem_u => {},
-            .i64_and => {},
-            .i64_or => {},
-            .i64_xor => {},
-            .i64_shl => {},
-            .i64_shr_s => {},
-            .i64_shr_u => {},
-            .i64_rotl => {},
-            .i64_rotr => {},
+            .i64_clz => try unOp(i64, type_stack),
+            .i64_ctz => try unOp(i64, type_stack),
+            .i64_popcnt => try unOp(i64, type_stack),
+            .i64_add => try binOp(i64, type_stack),
+            .i64_sub => try binOp(i64, type_stack),
+            .i64_mul => try binOp(i64, type_stack),
+            .i64_div_s => try binOp(i64, type_stack),
+            .i64_div_u => try binOp(u64, type_stack),
+            .i64_rem_s => try binOp(i64, type_stack),
+            .i64_rem_u => try binOp(u64, type_stack),
+            .i64_and => try binOp(i64, type_stack),
+            .i64_or => try binOp(i64, type_stack),
+            .i64_xor => try binOp(i64, type_stack),
+            .i64_shl => try binOp(i64, type_stack),
+            .i64_shr_s => try binOp(i64, type_stack),
+            .i64_shr_u => try binOp(u64, type_stack),
+            .i64_rotl => try binOp(i64, type_stack),
+            .i64_rotr => try binOp(i64, type_stack),
 
             // numeric instructions (3) f32
-            .f32_abs => {},
-            .f32_neg => {},
-            .f32_ceil => {},
-            .f32_floor => {},
-            .f32_trunc => {},
-            .f32_nearest => {},
-            .f32_sqrt => {},
-            .f32_add => {},
-            .f32_sub => {},
-            .f32_mul => {},
-            .f32_div => {},
-            .f32_min => {},
-            .f32_max => {},
-            .f32_copy_sign => {},
+            .f32_abs => try unOp(f32, type_stack),
+            .f32_neg => try unOp(f32, type_stack),
+            .f32_ceil => try unOp(f32, type_stack),
+            .f32_floor => try unOp(f32, type_stack),
+            .f32_trunc => try unOp(f32, type_stack),
+            .f32_nearest => try unOp(f32, type_stack),
+            .f32_sqrt => try unOp(f32, type_stack),
+            .f32_add => try binOp(f32, type_stack),
+            .f32_sub => try binOp(f32, type_stack),
+            .f32_mul => try binOp(f32, type_stack),
+            .f32_div => try binOp(f32, type_stack),
+            .f32_min => try binOp(f32, type_stack),
+            .f32_max => try binOp(f32, type_stack),
+            .f32_copy_sign => try binOp(f32, type_stack),
 
             // numeric instructions (3) f64
-            .f64_abs => {},
-            .f64_neg => {},
-            .f64_ceil => {},
-            .f64_floor => {},
-            .f64_trunc => {},
-            .f64_nearest => {},
-            .f64_sqrt => {},
-            .f64_add => {},
-            .f64_sub => {},
-            .f64_mul => {},
-            .f64_div => {},
-            .f64_min => {},
-            .f64_max => {},
-            .f64_copy_sign => {},
+            .f64_abs => try unOp(f64, type_stack),
+            .f64_neg => try unOp(f64, type_stack),
+            .f64_ceil => try unOp(f64, type_stack),
+            .f64_floor => try unOp(f64, type_stack),
+            .f64_trunc => try unOp(f64, type_stack),
+            .f64_nearest => try unOp(f64, type_stack),
+            .f64_sqrt => try unOp(f64, type_stack),
+            .f64_add => try binOp(f64, type_stack),
+            .f64_sub => try binOp(f64, type_stack),
+            .f64_mul => try binOp(f64, type_stack),
+            .f64_div => try binOp(f64, type_stack),
+            .f64_min => try binOp(f64, type_stack),
+            .f64_max => try binOp(f64, type_stack),
+            .f64_copy_sign => try binOp(f64, type_stack),
 
             // numeric instructions (4)
-            .i32_wrap_i64 => {},
-            .i32_trunc_f32_s => {},
-            .i32_trunc_f32_u => {},
-            .i32_trunc_f64_s => {},
-            .i32_trunc_f64_u => {},
-            .i64_extend_i32_s => {},
-            .i64_extend_i32_u => {},
-            .i64_trunc_f32_s => {},
-            .i64_trunc_f32_u => {},
-            .i64_trunc_f64_s => {},
-            .i64_trunc_f64_u => {},
-            .f32_convert_i32_s => {},
-            .f32_convert_i32_u => {},
-            .f32_convert_i64_s => {},
-            .f32_convert_i64_u => {},
-            .f32_demote_f64 => {},
-            .f64_convert_i32_s => {},
-            .f64_convert_i32_u => {},
-            .f64_convert_i64_s => {},
-            .f64_convert_i64_u => {},
-            .f64_promote_f32 => {},
-            .i32_reinterpret_f32 => {},
-            .i64_reinterpret_f64 => {},
-            .f32_reinterpret_i32 => {},
-            .f64_reinterpret_i64 => {},
+            .i32_wrap_i64 => try instrOp(u32, u64, type_stack),
+            .i32_trunc_f32_s => try instrTryOp(i32, f32, type_stack),
+            .i32_trunc_f32_u => try instrTryOp(u32, f32, type_stack),
+            .i32_trunc_f64_s => try instrTryOp(i32, f64, type_stack),
+            .i32_trunc_f64_u => try instrTryOp(u32, f64, type_stack),
+            .i64_extend_i32_s => try instrExtOp(i64, i32, i32, type_stack),
+            .i64_extend_i32_u => try instrExtOp(u64, u32, u32, type_stack),
+            .i64_trunc_f32_s => try instrTryOp(i64, f32, type_stack),
+            .i64_trunc_f32_u => try instrTryOp(u64, f32, type_stack),
+            .i64_trunc_f64_s => try instrTryOp(i64, f64, type_stack),
+            .i64_trunc_f64_u => try instrTryOp(u64, f64, type_stack),
+            .f32_convert_i32_s => try instrOp(f32, i32, type_stack),
+            .f32_convert_i32_u => try instrOp(f32, u32, type_stack),
+            .f32_convert_i64_s => try instrOp(f32, i64, type_stack),
+            .f32_convert_i64_u => try instrOp(f32, u64, type_stack),
+            .f32_demote_f64 => try instrOp(f32, f64, type_stack),
+            .f64_convert_i32_s => try instrOp(f64, i32, type_stack),
+            .f64_convert_i32_u => try instrOp(f64, u32, type_stack),
+            .f64_convert_i64_s => try instrOp(f64, i64, type_stack),
+            .f64_convert_i64_u => try instrOp(f64, u64, type_stack),
+            .f64_promote_f32 => try instrOp(f64, f32, type_stack),
+            .i32_reinterpret_f32 => try instrOp(i32, f32, type_stack),
+            .i64_reinterpret_f64 => try instrOp(i64, f64, type_stack),
+            .f32_reinterpret_i32 => try instrOp(f32, i32, type_stack),
+            .f64_reinterpret_i64 => try instrOp(f64, i64, type_stack),
 
             // numeric instructions (5)
-            .i32_extend8_s => {},
-            .i32_extend16_s => {},
-            .i64_extend8_s => {},
-            .i64_extend16_s => {},
-            .i64_extend32_s => {},
+            .i32_extend8_s => try instrExtOp(i32, i32, i8, type_stack),
+            .i32_extend16_s => try instrExtOp(i32, i32, i16, type_stack),
+            .i64_extend8_s => try instrExtOp(i64, i64, i8, type_stack),
+            .i64_extend16_s => try instrExtOp(i64, i64, i16, type_stack),
+            .i64_extend32_s => try instrExtOp(i64, i64, i32, type_stack),
 
             // saturating truncation instructions
-            .i32_trunc_sat_f32_s => {},
-            .i32_trunc_sat_f32_u => {},
-            .i32_trunc_sat_f64_s => {},
-            .i32_trunc_sat_f64_u => {},
-            .i64_trunc_sat_f32_s => {},
-            .i64_trunc_sat_f32_u => {},
-            .i64_trunc_sat_f64_s => {},
-            .i64_trunc_sat_f64_u => {},
+            .i32_trunc_sat_f32_s => try cvtOp(i32, f32, type_stack),
+            .i32_trunc_sat_f32_u => try cvtOp(u32, f32, type_stack),
+            .i32_trunc_sat_f64_s => try cvtOp(i32, f64, type_stack),
+            .i32_trunc_sat_f64_u => try cvtOp(u32, f64, type_stack),
+            .i64_trunc_sat_f32_s => try cvtOp(i64, f32, type_stack),
+            .i64_trunc_sat_f32_u => try cvtOp(u64, f32, type_stack),
+            .i64_trunc_sat_f64_s => try cvtOp(i64, f64, type_stack),
+            .i64_trunc_sat_f64_u => try cvtOp(u64, f64, type_stack),
         }
         return ip + 1;
     }
@@ -490,6 +517,7 @@ const TypeStack = struct {
     const Stack = std.ArrayList(types.ValueType);
 
     array: Stack,
+    polymophic: bool = false,
     allocator: std.mem.Allocator,
 
     pub fn new(allocator: std.mem.Allocator) error{OutOfMemory}!Self {
@@ -509,7 +537,7 @@ const TypeStack = struct {
     }
 
     pub fn pop(self: *Self) error{TypeMismatch}!types.ValueType {
-        if (self.array.items.len == 0)
+        if (self.isEmpty())
             return Error.TypeMismatch;
         return self.array.pop();
     }
@@ -520,18 +548,78 @@ const TypeStack = struct {
 
     pub fn setPolymophic(self: *Self) error{OutOfMemory}!void {
         try self.array.resize(0);
+        self.polymophic = true;
     }
 
-    pub fn popValueWithTypeCheck(self: *Self, value_type: types.ValueType) error{TypeMismatch}!void {
+    pub fn popWithChecking(self: *Self, value_type: types.ValueType) error{TypeMismatch}!void {
+        if (self.polymophic)
+            return;
+
         const popped = try self.pop();
         if (popped != value_type)
             return Error.TypeMismatch;
     }
 
-    pub fn popValuesWithTypeCheck(self: *Self, value_types: []const types.ValueType) error{TypeMismatch}!void {
+    pub fn popValuesWithChecking(self: *Self, value_types: []const types.ValueType) error{TypeMismatch}!void {
         var i = value_types.len;
         while (i > 0) : (i -= 1) {
-            try self.popValueWithTypeCheck(value_types[i - 1]);
+            try self.popWithChecking(value_types[i - 1]);
         }
     }
 };
+
+inline fn instrOp(comptime R: type, comptime T: type, type_stack: *TypeStack) Error!void {
+    const r = valueTypeFrom(R);
+    const t = valueTypeFrom(T);
+    try type_stack.popWithChecking(t);
+    try type_stack.push(r);
+}
+
+inline fn instrExtOp(comptime R: type, comptime T: type, comptime _: type, type_stack: *TypeStack) Error!void {
+    try instrOp(R, T, type_stack);
+}
+
+const instrTryOp = instrOp;
+
+inline fn unOp(comptime T: type, type_stack: *TypeStack) Error!void {
+    const t = valueTypeFrom(T);
+    try type_stack.popWithChecking(t);
+    try type_stack.push(t);
+}
+
+inline fn binOp(comptime T: type, type_stack: *TypeStack) Error!void {
+    const t = valueTypeFrom(T);
+    try type_stack.popWithChecking(t);
+    try type_stack.popWithChecking(t);
+    try type_stack.push(t);
+}
+
+inline fn testOp(comptime T: type, type_stack: *TypeStack) Error!void {
+    const t = valueTypeFrom(T);
+    try type_stack.popWithChecking(t);
+    try type_stack.push(.i32);
+}
+
+inline fn relOp(comptime T: type, type_stack: *TypeStack) Error!void {
+    const t = valueTypeFrom(T);
+    try type_stack.popWithChecking(t);
+    try type_stack.popWithChecking(t);
+    try type_stack.push(.i32);
+}
+
+inline fn cvtOp(comptime T2: type, comptime T1: type, type_stack: *TypeStack) Error!void {
+    const t1 = valueTypeFrom(T1);
+    const t2 = valueTypeFrom(T2);
+    try type_stack.popWithChecking(t1);
+    try type_stack.push(t2);
+}
+
+fn valueTypeFrom(comptime ty: type) types.ValueType {
+    return switch (ty) {
+        i32 => .i32,
+        i64 => .i64,
+        f32 => .f32,
+        f64 => .f64,
+        else => unreachable,
+    };
+}
