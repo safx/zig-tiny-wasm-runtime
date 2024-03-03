@@ -1,9 +1,11 @@
 const std = @import("std");
 const types = struct {
     usingnamespace @import("wasm-core");
+    usingnamespace @import("./types.zig");
 };
+const TypeStack = types.TypeStack;
 const Context = @import("./context.zig").Context;
-pub const Error = @import("./errors.zig").Error || error{OutOfMemory};
+const Error = @import("./errors.zig").Error || error{OutOfMemory};
 
 pub const ModuleValidator = struct {
     const Self = @This();
@@ -58,7 +60,7 @@ pub const ModuleValidator = struct {
         std.debug.print(" E {any}\n", .{expect_types});
         std.debug.print(" S {any} {s}\n", .{ type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
 
-        try type_stack.popValuesWithChecking(expect_types);
+        try type_stack.popValuesWithCheckingValueType(expect_types);
         if (!type_stack.isEmpty())
             return Error.TypeMismatch;
     }
@@ -66,14 +68,14 @@ pub const ModuleValidator = struct {
     fn validateBlock(self: Self, c: Context, instrs: []const types.Instruction, start: u32, end: u32, func_type: types.FuncType) Error!void {
         var type_stack = try TypeStack.new(self.allocator);
         for (func_type.parameter_types) |ty|
-            try type_stack.push(ty);
+            try type_stack.pushValueType(ty);
 
         try self.loop(c, instrs, start, end, &type_stack);
 
         std.debug.print(" R {any}\n", .{func_type.result_types});
         std.debug.print(" S {any} {s}\n", .{ type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
 
-        try type_stack.popValuesWithChecking(func_type.result_types);
+        try type_stack.popValuesWithCheckingValueType(func_type.result_types);
         if (!type_stack.isEmpty())
             return Error.TypeMismatch;
     }
@@ -113,16 +115,16 @@ pub const ModuleValidator = struct {
                 const func_type = try self.validateBlocktype(c, block_info.type);
                 const cp = try Context.cloneWithPrependingLabel(c, func_type.result_types, self.allocator);
                 try self.validateBlock(cp, instrs, ip + 1, block_info.end + 1, func_type);
-                try type_stack.popValuesWithChecking(func_type.parameter_types);
-                try type_stack.append(func_type.result_types);
+                try type_stack.popValuesWithCheckingValueType(func_type.parameter_types);
+                try type_stack.appendValueType(func_type.result_types);
                 return block_info.end + 1;
             },
             .loop => |block_info| {
                 const func_type = try self.validateBlocktype(c, block_info.type);
                 const cp = try Context.cloneWithPrependingLabel(c, func_type.parameter_types, self.allocator);
                 try self.validateBlock(cp, instrs, ip + 1, block_info.end + 1, func_type);
-                try type_stack.popValuesWithChecking(func_type.parameter_types);
-                try type_stack.append(func_type.result_types);
+                try type_stack.popValuesWithCheckingValueType(func_type.parameter_types);
+                try type_stack.appendValueType(func_type.result_types);
                 return block_info.end + 1;
             },
             .@"if" => |block_info| {
@@ -134,20 +136,20 @@ pub const ModuleValidator = struct {
                 } else {
                     try self.validateBlock(cp, instrs, ip + 1, block_info.end + 1, func_type);
                 }
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popValuesWithChecking(func_type.parameter_types);
-                try type_stack.append(func_type.result_types);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popValuesWithCheckingValueType(func_type.parameter_types);
+                try type_stack.appendValueType(func_type.result_types);
                 return block_info.end + 1;
             },
             .br => |label_idx| {
-                try type_stack.popValuesWithChecking(try c.getLabel(label_idx));
+                try type_stack.popValuesWithCheckingValueType(try c.getLabel(label_idx));
                 try type_stack.setPolymophic();
             },
             .br_if => |label_idx| {
-                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
                 const label = try c.getLabel(label_idx);
-                try type_stack.popValuesWithChecking(label);
-                try type_stack.append(label);
+                try type_stack.popValuesWithCheckingValueType(label);
+                try type_stack.appendValueType(label);
             },
             .br_table => |table_info| {
                 const default_label = try c.getLabel(table_info.default_label_idx);
@@ -156,18 +158,18 @@ pub const ModuleValidator = struct {
                     if (label.len != default_label.len)
                         return Error.TypeMismatch;
 
-                    try type_stack.popWithChecking(.i32);
-                    try type_stack.popValuesWithChecking(label);
+                    try type_stack.popWithCheckingValueType(.i32);
+                    try type_stack.popValuesWithCheckingValueType(label);
                     try type_stack.setPolymophic();
                 }
 
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popValuesWithChecking(default_label);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popValuesWithCheckingValueType(default_label);
                 try type_stack.setPolymophic();
             },
             .@"return" => {
                 if (c.@"return") |ty| {
-                    try type_stack.popValuesWithChecking(ty);
+                    try type_stack.popValuesWithCheckingValueType(ty);
                     try type_stack.setPolymophic();
                 } else {
                     return Error.TypeMismatch;
@@ -175,37 +177,37 @@ pub const ModuleValidator = struct {
             },
             .call => |func_idx| {
                 const ft = try c.getFunc(func_idx);
-                try type_stack.popValuesWithChecking(ft.parameter_types);
-                try type_stack.append(ft.result_types);
+                try type_stack.popValuesWithCheckingValueType(ft.parameter_types);
+                try type_stack.appendValueType(ft.result_types);
             },
             .call_indirect => |arg| {
                 const table = try c.getTable(arg.table_idx);
                 if (table.ref_type != .funcref)
                     return Error.TypeMismatch;
 
-                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
                 const ft = try c.getType(arg.type_idx);
-                try type_stack.popValuesWithChecking(ft.parameter_types);
-                try type_stack.append(ft.result_types);
+                try type_stack.popValuesWithCheckingValueType(ft.parameter_types);
+                try type_stack.appendValueType(ft.result_types);
             },
 
             // reference instructions
-            .ref_null => |ref_type| try type_stack.push(valueTypeFromRefType(ref_type)),
+            .ref_null => |ref_type| try type_stack.pushValueType(valueTypeFromRefType(ref_type)),
             .ref_is_null => {
-                _ = try type_stack.pop();
-                try type_stack.push(.i32);
+                _ = try type_stack.polymophicPop();
+                try type_stack.pushValueType(.i32);
             },
             .ref_func => |func_idx| {
                 _ = try c.getFunc(func_idx);
                 _ = try c.checkRef(func_idx);
-                try type_stack.push(.func_ref);
+                try type_stack.pushValueType(.func_ref);
             },
 
             // parametric instructions
-            .drop => _ = try type_stack.pop(),
+            .drop => _ = try type_stack.polymophicPop(),
             .select, .selectv => {
-                try type_stack.popWithChecking(.i32);
-                const t = try type_stack.pop();
+                try type_stack.popWithCheckingValueType(.i32);
+                const t = try type_stack.polymophicPop();
                 if (t == .func_ref or t == .extern_ref)
                     return Error.TypeMismatch;
                 try type_stack.popWithChecking(t);
@@ -214,44 +216,44 @@ pub const ModuleValidator = struct {
 
             // variable instructions
             .local_get => |local_idx| {
-                try type_stack.push(try c.getLocal(local_idx));
+                try type_stack.pushValueType(try c.getLocal(local_idx));
             },
             .local_set => |local_idx| {
-                try type_stack.popWithChecking(try c.getLocal(local_idx));
+                try type_stack.popWithCheckingValueType(try c.getLocal(local_idx));
             },
             .local_tee => |local_idx| {
                 const local = try c.getLocal(local_idx);
-                try type_stack.popWithChecking(local);
-                try type_stack.push(local);
+                try type_stack.popWithCheckingValueType(local);
+                try type_stack.pushValueType(local);
             },
             .global_get => |global_idx| {
                 const global = try c.getGlobal(global_idx);
-                try type_stack.push(global.value_type);
+                try type_stack.pushValueType(global.value_type);
             },
             .global_set => |global_idx| {
                 const global = try c.getGlobal(global_idx);
-                try type_stack.popWithChecking(global.value_type);
+                try type_stack.popWithCheckingValueType(global.value_type);
             },
 
             // table instructions
             .table_get => |table_idx| {
                 const table = try c.getTable(table_idx);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.push(valueTypeFromRefType(table.ref_type));
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.pushValueType(valueTypeFromRefType(table.ref_type));
             },
             .table_set => |table_idx| {
                 const table = try c.getTable(table_idx);
-                try type_stack.popWithChecking(valueTypeFromRefType(table.ref_type));
-                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithCheckingValueType(valueTypeFromRefType(table.ref_type));
+                try type_stack.popWithCheckingValueType(.i32);
             },
             .table_init => |arg| {
                 const table = try c.getTable(arg.table_idx);
                 const elem = try c.getElem(arg.elem_idx);
                 if (table.ref_type != elem)
                     return Error.TypeMismatch;
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
             },
             .elem_drop => |elem_idx| _ = try c.getElem(elem_idx),
             .table_copy => |arg| {
@@ -259,25 +261,25 @@ pub const ModuleValidator = struct {
                 const table_dst = try c.getTable(arg.table_idx_dst);
                 if (table_src.ref_type != table_dst.ref_type)
                     return Error.TypeMismatch;
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
             },
             .table_grow => |table_idx| {
                 const table = try c.getTable(table_idx);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(valueTypeFromRefType(table.ref_type));
-                try type_stack.push(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(valueTypeFromRefType(table.ref_type));
+                try type_stack.pushValueType(.i32);
             },
             .table_size => |table_idx| {
                 _ = try c.getTable(table_idx);
-                try type_stack.push(.i32);
+                try type_stack.pushValueType(.i32);
             },
             .table_fill => |table_idx| {
                 const table = try c.getTable(table_idx);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(valueTypeFromRefType(table.ref_type));
-                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(valueTypeFromRefType(table.ref_type));
+                try type_stack.popWithCheckingValueType(.i32);
             },
 
             // memory instructions
@@ -306,41 +308,41 @@ pub const ModuleValidator = struct {
             .i64_store32 => |mem_arg| try opStore(i64, 32, mem_arg, type_stack),
             .memory_size => {
                 try c.checkMem(0);
-                try type_stack.push(.i32);
+                try type_stack.pushValueType(.i32);
             },
             .memory_grow => {
                 try c.checkMem(0);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.push(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.pushValueType(.i32);
             },
             .memory_init => |data_idx| {
                 try c.checkMem(0);
                 try c.checkData(data_idx);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
             },
             .data_drop => |data_idx| {
                 try c.checkData(data_idx);
             },
             .memory_copy => {
                 try c.checkMem(0);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
             },
             .memory_fill => {
                 try c.checkMem(0);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(.i32);
-                try type_stack.popWithChecking(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(.i32);
             },
 
             // numeric instructions (1)
-            .i32_const => try type_stack.push(.i32),
-            .i64_const => try type_stack.push(.i64),
-            .f32_const => try type_stack.push(.f32),
-            .f64_const => try type_stack.push(.f64),
+            .i32_const => try type_stack.pushValueType(.i32),
+            .i64_const => try type_stack.pushValueType(.i64),
+            .f32_const => try type_stack.pushValueType(.f32),
+            .f64_const => try type_stack.pushValueType(.f64),
 
             // numeric instructions (2) i32
             .i32_eqz => try testOp(i32, type_stack),
@@ -504,85 +506,29 @@ pub const ModuleValidator = struct {
     }
 };
 
-const TypeStack = struct {
-    const Self = @This();
-    const Stack = std.ArrayList(types.ValueType);
-
-    array: Stack,
-    polymophic: bool = false,
-    allocator: std.mem.Allocator,
-
-    pub fn new(allocator: std.mem.Allocator) error{OutOfMemory}!Self {
-        return .{
-            .array = Stack.init(allocator),
-            .allocator = allocator,
-        };
-    }
-
-    pub fn push(self: *Self, value_type: types.ValueType) error{OutOfMemory}!void {
-        try self.array.append(value_type);
-    }
-
-    pub fn append(self: *Self, value_types: []const types.ValueType) error{OutOfMemory}!void {
-        for (value_types) |v|
-            try self.push(v);
-    }
-
-    pub fn pop(self: *Self) error{TypeMismatch}!types.ValueType {
-        if (self.isEmpty())
-            return Error.TypeMismatch;
-        return self.array.pop();
-    }
-
-    pub fn isEmpty(self: *Self) bool {
-        return self.array.items.len == 0;
-    }
-
-    pub fn setPolymophic(self: *Self) error{OutOfMemory}!void {
-        try self.array.resize(0);
-        self.polymophic = true;
-    }
-
-    pub fn popWithChecking(self: *Self, expected_value_type: types.ValueType) error{TypeMismatch}!void {
-        if (self.polymophic and self.isEmpty())
-            return;
-
-        const popped = try self.pop();
-        if (popped != expected_value_type)
-            return Error.TypeMismatch;
-    }
-
-    pub fn popValuesWithChecking(self: *Self, expected_value_types: []const types.ValueType) error{TypeMismatch}!void {
-        var i = expected_value_types.len;
-        while (i > 0) : (i -= 1) {
-            try self.popWithChecking(expected_value_types[i - 1]);
-        }
-    }
-};
-
 inline fn opLoad(comptime T: type, comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack) Error!void {
     // TODO: check
     _ = N;
     _ = mem_arg;
-    try type_stack.popWithChecking(.i32);
-    const t = valueTypeFrom(T);
-    try type_stack.push(t);
+    try type_stack.popWithCheckingValueType(.i32);
+    const t = valueTypeOf(T);
+    try type_stack.pushValueType(t);
 }
 
 inline fn opStore(comptime T: type, comptime bit_size: u32, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack) Error!void {
     // TODO: check
     _ = bit_size;
     _ = mem_arg;
-    const t = valueTypeFrom(T);
-    try type_stack.popWithChecking(t);
-    try type_stack.popWithChecking(.i32);
+    const t = valueTypeOf(T);
+    try type_stack.popWithCheckingValueType(t);
+    try type_stack.popWithCheckingValueType(.i32);
 }
 
 inline fn instrOp(comptime R: type, comptime T: type, type_stack: *TypeStack) Error!void {
-    const r = valueTypeFrom(R);
-    const t = valueTypeFrom(T);
-    try type_stack.popWithChecking(t);
-    try type_stack.push(r);
+    const r = valueTypeOf(R);
+    const t = valueTypeOf(T);
+    try type_stack.popWithCheckingValueType(t);
+    try type_stack.pushValueType(r);
 }
 
 inline fn instrExtOp(comptime R: type, comptime T: type, comptime _: type, type_stack: *TypeStack) Error!void {
@@ -592,39 +538,39 @@ inline fn instrExtOp(comptime R: type, comptime T: type, comptime _: type, type_
 const instrTryOp = instrOp;
 
 inline fn unOp(comptime T: type, type_stack: *TypeStack) Error!void {
-    const t = valueTypeFrom(T);
-    try type_stack.popWithChecking(t);
-    try type_stack.push(t);
+    const t = valueTypeOf(T);
+    try type_stack.popWithCheckingValueType(t);
+    try type_stack.pushValueType(t);
 }
 
 inline fn binOp(comptime T: type, type_stack: *TypeStack) Error!void {
-    const t = valueTypeFrom(T);
-    try type_stack.popWithChecking(t);
-    try type_stack.popWithChecking(t);
-    try type_stack.push(t);
+    const t = valueTypeOf(T);
+    try type_stack.popWithCheckingValueType(t);
+    try type_stack.popWithCheckingValueType(t);
+    try type_stack.pushValueType(t);
 }
 
 inline fn testOp(comptime T: type, type_stack: *TypeStack) Error!void {
-    const t = valueTypeFrom(T);
-    try type_stack.popWithChecking(t);
-    try type_stack.push(.i32);
+    const t = valueTypeOf(T);
+    try type_stack.popWithCheckingValueType(t);
+    try type_stack.pushValueType(.i32);
 }
 
 inline fn relOp(comptime T: type, type_stack: *TypeStack) Error!void {
-    const t = valueTypeFrom(T);
-    try type_stack.popWithChecking(t);
-    try type_stack.popWithChecking(t);
-    try type_stack.push(.i32);
+    const t = valueTypeOf(T);
+    try type_stack.popWithCheckingValueType(t);
+    try type_stack.popWithCheckingValueType(t);
+    try type_stack.pushValueType(.i32);
 }
 
 inline fn cvtOp(comptime T2: type, comptime T1: type, type_stack: *TypeStack) Error!void {
-    const t1 = valueTypeFrom(T1);
-    const t2 = valueTypeFrom(T2);
-    try type_stack.popWithChecking(t1);
-    try type_stack.push(t2);
+    const t1 = valueTypeOf(T1);
+    const t2 = valueTypeOf(T2);
+    try type_stack.popWithCheckingValueType(t1);
+    try type_stack.pushValueType(t2);
 }
 
-fn valueTypeFrom(comptime ty: type) types.ValueType {
+fn valueTypeOf(comptime ty: type) types.ValueType {
     return switch (ty) {
         i32 => .i32,
         u32 => .i32,
