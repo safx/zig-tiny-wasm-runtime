@@ -592,7 +592,7 @@ const TypeStack = struct {
     }
 
     pub fn popWithChecking(self: *Self, value_type: types.ValueType) error{TypeMismatch}!void {
-        if (self.polymophic)
+        if (self.polymophic and self.isEmpty())
             return;
 
         const popped = try self.pop();
