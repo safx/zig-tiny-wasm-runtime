@@ -19,7 +19,7 @@ pub const Context = struct {
     locals: []types.ValueType = &.{},
     labels: []types.ResultType = &.{},
     @"return": ?types.ResultType = null,
-    refs: []types.FuncIdx = &.{},
+    refs: []const types.FuncIdx = &.{},
 
     pub fn new(module: types.Module, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Self {
         const imports = try ImportGroup.new(module, allocator);
@@ -36,7 +36,6 @@ pub const Context = struct {
         var globals = try allocator.alloc(types.GlobalType, num_import_globals + module.globals.len);
         var elems = try allocator.alloc(types.RefType, module.elements.len);
         var datas = try allocator.alloc(bool, module.datas.len);
-        var refs = std.ArrayList(types.FuncIdx).init(allocator);
 
         for (imports.functions, 0..) |func_idx, i| {
             if (func_idx >= module.types.len)
@@ -68,6 +67,51 @@ pub const Context = struct {
             datas[i] = false;
         }
 
+        return .{
+            .types = module.types,
+            .funcs = funcs,
+            .tables = tables,
+            .mems = mems,
+            .globals = globals,
+            .elems = elems,
+            .datas = datas,
+            .refs = try createRefs(module, allocator),
+        };
+    }
+
+    pub fn newLimitedContext(module: types.Module, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Self {
+        const imports = try ImportGroup.new(module, allocator);
+        defer imports.deinit(allocator);
+
+        var num_import_funcs = imports.functions.len;
+        var num_import_globals = imports.globals.len;
+
+        var funcs = try allocator.alloc(types.FuncType, num_import_funcs + module.funcs.len);
+        var globals = try allocator.alloc(types.GlobalType, num_import_globals);
+
+        for (imports.functions, 0..) |func_idx, i| {
+            if (func_idx >= module.types.len)
+                return Error.UnknownType;
+            funcs[i] = module.types[func_idx];
+        }
+        for (module.funcs, num_import_funcs..) |func, i| {
+            if (func.type >= module.types.len)
+                return Error.UnknownType;
+            funcs[i] = module.types[func.type];
+        }
+
+        @memcpy(globals, imports.globals);
+
+        return .{
+            .funcs = funcs,
+            .globals = globals,
+            .refs = try createRefs(module, allocator),
+        };
+    }
+
+    fn createRefs(module: types.Module, allocator: std.mem.Allocator) error{OutOfMemory}![]const types.FuncIdx {
+        var refs = std.ArrayList(types.FuncIdx).init(allocator);
+
         // create the set of function indices occurring in the module, except in its functions or start function.
         for (module.globals) |global| {
             if (global.init == .ref_func) try refs.append(global.init.ref_func);
@@ -83,19 +127,10 @@ pub const Context = struct {
             if (exp.desc == .function) try refs.append(exp.desc.function);
         }
 
-        return .{
-            .types = module.types,
-            .funcs = funcs,
-            .tables = tables,
-            .mems = mems,
-            .globals = globals,
-            .elems = elems,
-            .datas = datas,
-            .refs = try refs.toOwnedSlice(),
-        };
+        return try refs.toOwnedSlice();
     }
 
-    pub fn cloneWithFunction(c: Context, func: types.Func, allocator: std.mem.Allocator) (error{OutOfMemory})!Self {
+    pub fn cloneWithFunction(c: Context, func: types.Func, allocator: std.mem.Allocator) error{OutOfMemory}!Self {
         const ty = c.types[func.type];
 
         var locals = try allocator.alloc(types.ValueType, ty.parameter_types.len + func.locals.len);

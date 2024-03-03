@@ -30,25 +30,27 @@ pub const ModuleValidator = struct {
     }
 
     fn validateModule(self: Self, module: types.Module) Error!void {
-        const context = try Context.new(module, self.allocator);
-        for (module.funcs) |func| {
-            try self.validateFunction(context, func);
-        }
+        const c = try Context.new(module, self.allocator);
+        const cp = try Context.newLimitedContext(module, self.allocator);
 
-        if (module.start) |idx| {
-            try validateStartFunction(context, idx);
-        }
+        for (module.funcs) |func|
+            try self.validateFunction(c, func);
 
-        try validateImports(context, module.imports);
+        if (module.start) |idx|
+            try validateStartFunction(c, idx);
 
-        if (context.mems.len > 1)
+        for (module.imports) |imp|
+            try validateImport(c, imp);
+
+        for (module.globals) |global|
+            try validateGlobal(cp, global);
+
+        if (c.mems.len > 1)
             return Error.MultipleMemories;
     }
 
-    fn validateImports(c: Context, imports: []const types.Import) Error!void {
-        for (imports) |imp| {
-            try validateImportDesc(c, imp.desc);
-        }
+    fn validateImport(c: Context, imp: types.Import) Error!void {
+        try validateImportDesc(c, imp.desc);
     }
 
     fn validateImportDesc(c: Context, import_desc: types.ImportDesc) Error!void {
@@ -58,6 +60,10 @@ pub const ModuleValidator = struct {
             .memory => |ty| try validateMemoryType(ty),
             .global => {},
         }
+    }
+
+    fn validateGlobal(c: Context, global: types.Global) Error!void {
+        try validateInitExpression(c, global.init, global.type.value_type);
     }
 
     fn validateTableType(table_type: types.TableType) Error!void {
@@ -84,6 +90,26 @@ pub const ModuleValidator = struct {
         const ft = try c.getFunc(func_idx);
         if (ft.parameter_types.len != 0 or ft.result_types.len != 0)
             return Error.StartFunction;
+    }
+
+    fn validateInitExpression(c: Context, init_expr: types.InitExpression, expected_type: types.ValueType) Error!void {
+        std.debug.print("+++++++++++++ {any}\n", .{init_expr});
+        std.debug.print("+++++++++++++ {any}\n", .{c.globals});
+        const result: bool = switch (init_expr) {
+            .i32_const => expected_type == .i32,
+            .i64_const => expected_type == .i64,
+            .f32_const => expected_type == .f32,
+            .f64_const => expected_type == .f64,
+            .v128_const => expected_type == .v128,
+            .ref_null => |t| switch (t) {
+                .funcref => expected_type == .func_ref,
+                .externref => expected_type == .extern_ref,
+            },
+            .ref_func => expected_type == .func_ref,
+            .global_get => |idx| (try c.getGlobal(idx)).value_type == expected_type,
+        };
+        if (!result)
+            return Error.TypeMismatch;
     }
 
     fn validateFunction(self: Self, c: Context, func: types.Func) Error!void {
@@ -272,6 +298,8 @@ pub const ModuleValidator = struct {
             },
             .global_set => |global_idx| {
                 const global = try c.getGlobal(global_idx);
+                if (global.mutability == .immutable)
+                    return Error.ImmutableGlobal;
                 try type_stack.popWithCheckingValueType(global.value_type);
             },
 
