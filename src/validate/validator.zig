@@ -93,8 +93,6 @@ pub const ModuleValidator = struct {
     }
 
     fn validateInitExpression(c: Context, init_expr: types.InitExpression, expected_type: types.ValueType) Error!void {
-        std.debug.print("+++++++++++++ {any}\n", .{init_expr});
-        std.debug.print("+++++++++++++ {any}\n", .{c.globals});
         const result: bool = switch (init_expr) {
             .i32_const => expected_type == .i32,
             .i64_const => expected_type == .i64,
