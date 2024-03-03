@@ -38,6 +38,46 @@ pub const ModuleValidator = struct {
         if (module.start) |idx| {
             try validateStartFunction(context, idx);
         }
+
+        try validateImports(context, module.imports);
+
+        if (context.mems.len > 1)
+            return Error.MultipleMemories;
+    }
+
+    fn validateImports(c: Context, imports: []const types.Import) Error!void {
+        for (imports) |imp| {
+            try validateImportDesc(c, imp.desc);
+        }
+    }
+
+    fn validateImportDesc(c: Context, import_desc: types.ImportDesc) Error!void {
+        switch (import_desc) {
+            .function => |idx| _ = try c.getType(idx),
+            .table => |ty| try validateTableType(ty),
+            .memory => |ty| try validateMemoryType(ty),
+            .global => {},
+        }
+    }
+
+    fn validateTableType(table_type: types.TableType) Error!void {
+        try validateLimits(table_type.limits);
+    }
+
+    fn validateMemoryType(memory_type: types.MemoryType) Error!void {
+        try validateLimits(memory_type.limits);
+    }
+
+    fn validateLimits(limits: types.Limits) Error!void {
+        if (limits.min >= std.math.maxInt(u32))
+            return Error.MemorySizeExceeded; // FIXME
+
+        if (limits.max) |max| {
+            if (max >= std.math.maxInt(u32))
+                return Error.MemorySizeExceeded; // FIXME
+            if (max < limits.min)
+                return Error.MemorySizeExceeded; // FIXME
+        }
     }
 
     fn validateStartFunction(c: Context, func_idx: types.FuncIdx) Error!void {
