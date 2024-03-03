@@ -61,9 +61,11 @@ pub const ModuleValidator = struct {
         try self.loop(c, instrs, 0, @intCast(instrs.len), &type_stack);
 
         std.debug.print(" E {any}\n", .{expect_types});
-        std.debug.print(" S {any}\n", .{type_stack.array.items});
+        std.debug.print(" S {any} {s}\n", .{ type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
 
         try type_stack.popValuesWithChecking(expect_types);
+        if (!type_stack.isEmpty())
+            return Error.TypeMismatch;
     }
 
     fn validateBlock(self: Self, c: Context, instrs: []const types.Instruction, start: u32, end: u32, func_type: types.FuncType) Error!void {
@@ -74,10 +76,9 @@ pub const ModuleValidator = struct {
         try self.loop(c, instrs, start, end, &type_stack);
 
         std.debug.print(" R {any}\n", .{func_type.result_types});
-        std.debug.print(" S {any}\n", .{type_stack.array.items});
+        std.debug.print(" S {any} {s}\n", .{ type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
 
         try type_stack.popValuesWithChecking(func_type.result_types);
-
         if (!type_stack.isEmpty())
             return Error.TypeMismatch;
     }
@@ -107,7 +108,7 @@ pub const ModuleValidator = struct {
 
     fn validateInstruction(self: Self, c: Context, instrs: []const types.Instruction, ip: u32, type_stack: *TypeStack) Error!u32 {
         assert(ip < instrs.len);
-        std.debug.print("{} {any} {any} {s}\n", .{ ip, instrs[ip], type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
+        std.debug.print("[{}] {any} label: {any} stack: {any} {s}\n", .{ ip, instrs[ip], c.labels, type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
         switch (instrs[ip]) {
             .end => {},
             .@"else" => {},
@@ -145,28 +146,27 @@ pub const ModuleValidator = struct {
                 return block_info.end + 1;
             },
             .br => |label_idx| {
-                if (label_idx >= c.labels.len)
-                    return Error.UnknownLabel;
-                try type_stack.popValuesWithChecking(c.labels[label_idx]);
+                try type_stack.popValuesWithChecking(try c.getLabel(label_idx));
                 try type_stack.setPolymophic();
             },
             .br_if => |label_idx| {
                 if (label_idx >= c.labels.len)
                     return Error.UnknownLabel;
                 try type_stack.popWithChecking(.i32);
-                try type_stack.popValuesWithChecking(c.labels[label_idx]);
-                try type_stack.append(c.labels[label_idx]);
+                const label = try c.getLabel(label_idx);
+                try type_stack.popValuesWithChecking(label);
+                try type_stack.append(label);
             },
             .br_table => |table_info| {
                 if (table_info.default_label_idx >= c.labels.len)
                     return Error.UnknownLabel;
 
-                const default_label = c.labels[table_info.default_label_idx];
+                const default_label = try c.getLabel(table_info.default_label_idx);
                 for (table_info.label_idxs) |label_idx| {
                     if (label_idx >= c.labels.len)
                         return Error.UnknownLabel;
 
-                    const label = c.labels[label_idx];
+                    const label = try c.getLabel(label_idx);
                     if (label.len != default_label.len)
                         return Error.TypeMismatch;
 
@@ -591,19 +591,19 @@ const TypeStack = struct {
         self.polymophic = true;
     }
 
-    pub fn popWithChecking(self: *Self, value_type: types.ValueType) error{TypeMismatch}!void {
+    pub fn popWithChecking(self: *Self, expected_value_type: types.ValueType) error{TypeMismatch}!void {
         if (self.polymophic and self.isEmpty())
             return;
 
         const popped = try self.pop();
-        if (popped != value_type)
+        if (popped != expected_value_type)
             return Error.TypeMismatch;
     }
 
-    pub fn popValuesWithChecking(self: *Self, value_types: []const types.ValueType) error{TypeMismatch}!void {
-        var i = value_types.len;
+    pub fn popValuesWithChecking(self: *Self, expected_value_types: []const types.ValueType) error{TypeMismatch}!void {
+        var i = expected_value_types.len;
         while (i > 0) : (i -= 1) {
-            try self.popWithChecking(value_types[i - 1]);
+            try self.popWithChecking(expected_value_types[i - 1]);
         }
     }
 };

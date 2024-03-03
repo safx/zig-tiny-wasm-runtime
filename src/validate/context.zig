@@ -21,7 +21,7 @@ pub const Context = struct {
     @"return": ?types.ResultType = null,
     refs: []types.FuncIdx = &.{},
 
-    pub fn new(module: types.Module, allocator: std.mem.Allocator) (error{OutOfMemory})!Self {
+    pub fn new(module: types.Module, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Self {
         const imports = try ImportGroup.new(module, allocator);
         defer imports.deinit(allocator);
 
@@ -38,10 +38,14 @@ pub const Context = struct {
         var datas = try allocator.alloc(bool, module.datas.len);
         var refs = std.ArrayList(types.FuncIdx).init(allocator);
 
-        for (imports.functions, 0..) |func, i| {
-            funcs[i] = module.types[func];
+        for (imports.functions, 0..) |func_idx, i| {
+            if (func_idx >= module.types.len)
+                return Error.UnknownType;
+            funcs[i] = module.types[func_idx];
         }
         for (module.funcs, num_import_funcs..) |func, i| {
+            if (func.type >= module.types.len)
+                return Error.UnknownType;
             funcs[i] = module.types[func.type];
         }
 
@@ -134,6 +138,13 @@ pub const Context = struct {
             .labels = labels,
             .@"return" = c.@"return",
         };
+    }
+
+    pub fn getLabel(self: Self, idx: types.LabelIdx) Error!types.ResultType {
+        if (idx < self.labels.len)
+            return self.labels[self.labels.len - idx - 1]
+        else
+            return Error.UnknownLabel;
     }
 
     pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
