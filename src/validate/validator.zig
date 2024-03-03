@@ -270,13 +270,22 @@ pub const ModuleValidator = struct {
 
             // parametric instructions
             .drop => _ = try type_stack.polymophicPop(),
-            .select, .selectv => {
+            .select => {
                 try type_stack.popWithCheckingValueType(.i32);
                 const t = try type_stack.polymophicPop();
                 if (t == .func_ref or t == .extern_ref)
                     return Error.TypeMismatch;
                 try type_stack.popWithChecking(t);
                 try type_stack.push(t);
+            },
+            .selectv => |v| {
+                if (v.len != 1)
+                    return Error.InvalidResultArity;
+                const t = v[0];
+                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(t);
+                try type_stack.popWithCheckingValueType(t);
+                try type_stack.pushValueType(t);
             },
 
             // variable instructions
