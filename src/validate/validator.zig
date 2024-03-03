@@ -30,84 +30,45 @@ pub const ModuleValidator = struct {
     }
 
     fn validateModule(self: Self, module: types.Module) Error!void {
-        const c = try Context.new(module, self.allocator);
-        const cp = try Context.newLimitedContext(module, self.allocator);
+        // under the context c
+        {
+            const c = try Context.new(module, self.allocator);
+            for (module.funcs) |func|
+                try self.validateFunction(c, func);
 
-        for (module.funcs) |func|
-            try self.validateFunction(c, func);
+            if (module.start) |idx|
+                try validateStartFunction(c, idx);
 
-        if (module.start) |idx|
-            try validateStartFunction(c, idx);
+            for (module.imports) |imp|
+                try validateImport(c, imp);
 
-        for (module.imports) |imp|
-            try validateImport(c, imp);
+            // TODO: export
 
-        for (module.globals) |global|
-            try validateGlobal(cp, global);
-
-        if (c.mems.len > 1)
-            return Error.MultipleMemories;
-    }
-
-    fn validateImport(c: Context, imp: types.Import) Error!void {
-        try validateImportDesc(c, imp.desc);
-    }
-
-    fn validateImportDesc(c: Context, import_desc: types.ImportDesc) Error!void {
-        switch (import_desc) {
-            .function => |idx| _ = try c.getType(idx),
-            .table => |ty| try validateTableType(ty),
-            .memory => |ty| try validateMemoryType(ty),
-            .global => {},
+            if (c.mems.len > 1)
+                return Error.MultipleMemories;
         }
-    }
 
-    fn validateGlobal(c: Context, global: types.Global) Error!void {
-        try validateInitExpression(c, global.init, global.type.value_type);
-    }
+        // under the context c'
+        {
+            const cp = try Context.newLimitedContext(module, self.allocator);
 
-    fn validateTableType(table_type: types.TableType) Error!void {
-        try validateLimits(table_type.limits);
-    }
+            for (module.tables) |table|
+                try validateTableType(table);
 
-    fn validateMemoryType(memory_type: types.MemoryType) Error!void {
-        try validateLimits(memory_type.limits);
-    }
+            for (module.memories) |memory|
+                try validateMemoryType(memory);
 
-    fn validateLimits(limits: types.Limits) Error!void {
-        if (limits.min >= std.math.maxInt(u32))
-            return Error.MemorySizeExceeded; // FIXME
+            for (module.globals) |global|
+                try validateGlobal(cp, global);
 
-        if (limits.max) |max| {
-            if (max >= std.math.maxInt(u32))
-                return Error.MemorySizeExceeded; // FIXME
-            if (max < limits.min)
-                return Error.MemorySizeExceeded; // FIXME
+            for (module.elements) |elem|
+                try validateElement(cp, elem);
+
+            // TODO: data
+
         }
-    }
 
-    fn validateStartFunction(c: Context, func_idx: types.FuncIdx) Error!void {
-        const ft = try c.getFunc(func_idx);
-        if (ft.parameter_types.len != 0 or ft.result_types.len != 0)
-            return Error.StartFunction;
-    }
-
-    fn validateInitExpression(c: Context, init_expr: types.InitExpression, expected_type: types.ValueType) Error!void {
-        const result: bool = switch (init_expr) {
-            .i32_const => expected_type == .i32,
-            .i64_const => expected_type == .i64,
-            .f32_const => expected_type == .f32,
-            .f64_const => expected_type == .f64,
-            .v128_const => expected_type == .v128,
-            .ref_null => |t| switch (t) {
-                .funcref => expected_type == .func_ref,
-                .externref => expected_type == .extern_ref,
-            },
-            .ref_func => expected_type == .func_ref,
-            .global_get => |idx| (try c.getGlobal(idx)).value_type == expected_type,
-        };
-        if (!result)
-            return Error.TypeMismatch;
+        // TODO: All export names must be different
     }
 
     fn validateFunction(self: Self, c: Context, func: types.Func) Error!void {
@@ -644,6 +605,89 @@ inline fn cvtOp(comptime T2: type, comptime T1: type, type_stack: *TypeStack) Er
     const t2 = valueTypeOf(T2);
     try type_stack.popWithCheckingValueType(t1);
     try type_stack.pushValueType(t2);
+}
+
+fn validateImport(c: Context, imp: types.Import) Error!void {
+    try validateImportDesc(c, imp.desc);
+}
+
+fn validateImportDesc(c: Context, import_desc: types.ImportDesc) Error!void {
+    switch (import_desc) {
+        .function => |idx| _ = try c.getType(idx),
+        .table => |ty| try validateTableType(ty),
+        .memory => |ty| try validateMemoryType(ty),
+        .global => {},
+    }
+}
+
+fn validateGlobal(c: Context, global: types.Global) Error!void {
+    try validateInitExpression(c, global.init, global.type.value_type);
+}
+
+fn validateElement(c: Context, element: types.Element) Error!void {
+    for (element.init) |i| {
+        try validateInitExpression(c, i, valueTypeFromRefType(element.type));
+    }
+
+    switch (element.mode) {
+        .active => |eat| {
+            try validateInitExpression(c, eat.offset, .i32);
+
+            // const tt = try c.getTable(eat.table_idx);
+            // if (element.type != tt.ref_type)
+            //     return Error.TypeMismatch;
+        },
+        else => {},
+    }
+}
+
+fn validateMemory(c: Context, global: types.Global) Error!void {
+    try validateInitExpression(c, global.init, global.type.value_type);
+}
+
+fn validateTableType(table_type: types.TableType) Error!void {
+    try validateLimits(std.math.maxInt(u32), table_type.limits);
+}
+
+fn validateMemoryType(memory_type: types.MemoryType) Error!void {
+    try validateLimits(std.math.maxInt(u32), memory_type.limits);
+}
+
+fn validateLimits(comptime limit_max: u32, limits: types.Limits) Error!void {
+    if (limits.min > limit_max)
+        return Error.MemorySizeExceeded; // FIXME
+
+    if (limits.max) |max| {
+        if (max > limit_max)
+            return Error.MemorySizeExceeded; // FIXME
+        if (max < limits.min)
+            return Error.MemorySizeExceeded; // FIXME
+    }
+}
+
+fn validateStartFunction(c: Context, func_idx: types.FuncIdx) Error!void {
+    const ft = try c.getFunc(func_idx);
+    if (ft.parameter_types.len != 0 or ft.result_types.len != 0)
+        return Error.StartFunction;
+}
+
+fn validateInitExpression(c: Context, init_expr: types.InitExpression, expected_type: types.ValueType) Error!void {
+    std.debug.print("* init = {any}\n", .{init_expr});
+    const result: bool = switch (init_expr) {
+        .i32_const => expected_type == .i32,
+        .i64_const => expected_type == .i64,
+        .f32_const => expected_type == .f32,
+        .f64_const => expected_type == .f64,
+        .v128_const => expected_type == .v128,
+        .ref_null => |t| switch (t) {
+            .funcref => expected_type == .func_ref,
+            .externref => expected_type == .extern_ref,
+        },
+        .ref_func => expected_type == .func_ref,
+        .global_get => |idx| (try c.getGlobal(idx)).value_type == expected_type,
+    };
+    if (!result)
+        return Error.TypeMismatch;
 }
 
 fn valueTypeOf(comptime ty: type) types.ValueType {
