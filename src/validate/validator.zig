@@ -199,6 +199,7 @@ pub const ModuleValidator = struct {
                     try self.validateBlock(cp, instrs, els, block_info.end + 1, func_type);
                 } else {
                     try self.validateBlock(cp, instrs, ip + 1, block_info.end + 1, func_type);
+                    try self.validateBlock(cp, instrs, block_info.end, block_info.end + 1, func_type); // `end` only
                 }
                 try type_stack.popWithCheckingValueType(.i32);
                 try type_stack.popValuesWithCheckingValueType(func_type.parameter_types);
