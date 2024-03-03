@@ -627,7 +627,9 @@ inline fn cvtOp(comptime T2: type, comptime T1: type, type_stack: *TypeStack) Er
 fn valueTypeFrom(comptime ty: type) types.ValueType {
     return switch (ty) {
         i32 => .i32,
+        u32 => .i32,
         i64 => .i64,
+        u64 => .i64,
         f32 => .f32,
         f64 => .f64,
         else => unreachable,
