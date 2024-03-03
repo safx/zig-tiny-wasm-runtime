@@ -45,7 +45,7 @@ pub const ModuleValidator = struct {
     }
 
     fn validateFunction(self: Self, c: Context, func: types.Func) Error!void {
-        std.debug.print("=" ** 40 ++ "\n", .{});
+        std.debug.print("=" ** 40 ++ " {any} \n", .{c.types[func.type]});
         const cp = try Context.cloneWithFunction(c, func, self.allocator);
         const ty = try c.getType(func.type);
         try self.validateFunctionBody(cp, func.body, ty.result_types);
@@ -101,7 +101,7 @@ pub const ModuleValidator = struct {
 
     fn validateInstruction(self: Self, c: Context, instrs: []const types.Instruction, ip: u32, type_stack: *TypeStack) Error!u32 {
         assert(ip < instrs.len);
-        std.debug.print("[{}] {any} label: {any} stack: {any} {s}\n", .{ ip, instrs[ip], c.labels, type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
+        std.debug.print("[{}] {any}   label: {any} stack: {any} {s}\n", .{ ip, instrs[ip], c.labels, type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
         switch (instrs[ip]) {
             .end => {},
             .@"else" => {},
@@ -134,6 +134,7 @@ pub const ModuleValidator = struct {
                 } else {
                     try self.validateBlock(cp, instrs, ip + 1, block_info.end + 1, func_type);
                 }
+                try type_stack.popWithChecking(.i32);
                 try type_stack.popValuesWithChecking(func_type.parameter_types);
                 try type_stack.append(func_type.result_types);
                 return block_info.end + 1;
