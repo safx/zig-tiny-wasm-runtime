@@ -94,8 +94,7 @@ pub const ModuleValidator = struct {
 
     fn validateBlock(self: Self, c: Context, instrs: []const types.Instruction, start: u32, end: u32, func_type: types.FuncType) Error!void {
         var type_stack = try TypeStack.new(self.allocator);
-        for (func_type.parameter_types) |ty|
-            try type_stack.pushValueType(ty);
+        try type_stack.appendValueType(func_type.parameter_types);
 
         try self.loop(c, instrs, start, end, &type_stack);
 
@@ -114,9 +113,7 @@ pub const ModuleValidator = struct {
     fn validateBlocktype(self: Self, c: Context, block_type: types.Instruction.BlockType) Error!types.FuncType {
         switch (block_type) {
             .empty => return .{ .parameter_types = &.{}, .result_types = &.{} },
-            .type_index => |idx| {
-                return try c.getType(idx);
-            },
+            .type_index => |idx| return try c.getType(idx),
             .value_type => {
                 const result_types = try self.allocator.alloc(types.ValueType, 1);
                 result_types[0] = block_type.value_type;
@@ -638,9 +635,8 @@ fn validateGlobal(c: Context, global: types.Global) Error!void {
 }
 
 fn validateElement(c: Context, element: types.Element) Error!void {
-    for (element.init) |i| {
-        try validateInitExpression(c, i, valueTypeFromRefType(element.type));
-    }
+    for (element.init) |init|
+        try validateInitExpression(c, init, valueTypeFromRefType(element.type));
 
     switch (element.mode) {
         .active => |eat| {
