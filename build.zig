@@ -9,6 +9,7 @@ pub fn build(b: *std.Build) void {
     const validate = ModuleInfo.init(b, "wasm-validate", "src/validate/mod.zig", &.{core});
     const runtime = ModuleInfo.init(b, "wasm-runtime", "src/runtime/mod.zig", &.{ core, decode, validate });
     const spec = ModuleInfo.init(b, "wasm-spec-test", "src/spec_test/mod.zig", &.{ core, decode, validate, runtime });
+    const all_modules = .{ core, decode, validate, runtime, spec };
 
     {
         const modules = .{ core, decode, runtime };
@@ -34,8 +35,8 @@ pub fn build(b: *std.Build) void {
         run_step.dependOn(&run_cmd.step);
     }
 
-    const spectest_modules = .{ core, decode, validate, runtime, spec };
     {
+        const spectest_modules = all_modules;
         const exe = b.addExecutable(.{
             .name = "spec_test",
             .root_source_file = .{ .path = "src/spec_test.zig" },
@@ -66,18 +67,16 @@ pub fn build(b: *std.Build) void {
         const run_unit_tests = b.addRunArtifact(unit_tests);
 
         const test_step = b.step("test", "Run unit tests");
-        inline for (spectest_modules) |info| {
+        inline for (all_modules) |info| {
             const unit_test = b.addTest(.{
                 .root_source_file = .{ .path = info.path },
                 .target = target,
                 .optimize = optimize,
             });
 
-            inline for (spectest_modules) |i| {
+            inline for (all_modules) |i| {
                 unit_test.addModule(i.name, i.module);
             }
-            //const test_step = b.step(info.name, "Run unit tests");
-            //b.installArtifact(unit_test);
             const run_unit_test = b.addRunArtifact(unit_test);
             test_step.dependOn(&run_unit_test.step);
         }
