@@ -95,6 +95,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#invocation
+    /// The coller should free the returned slice
     pub fn invokeFunctionByAddr(self: *Self, func_addr: types.FuncAddr, args: []const types.Value) (Error || error{OutOfMemory})![]const types.Value {
         // 1:
         assert(func_addr < self.store.funcs.items.len);
@@ -207,6 +208,7 @@ pub const Instance = struct {
 
         // 5: aux module
         var aux_module = try types.ModuleInst.auxiliaryInstance(&self.store, module, extern_vals, self.allocator);
+        defer aux_module.deinit(self.allocator);
 
         // 6, 7: push aux frame to stack
         const aux_frame_init = types.ActivationFrame{

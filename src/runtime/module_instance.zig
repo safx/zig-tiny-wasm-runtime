@@ -112,6 +112,16 @@ pub const ModuleInst = struct {
         }
         return mod_inst;
     }
+
+    pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.func_addrs);
+        allocator.free(self.table_addrs);
+        allocator.free(self.mem_addrs);
+        allocator.free(self.global_addrs);
+        allocator.free(self.elem_addrs);
+        allocator.free(self.data_addrs);
+        allocator.free(self.exports);
+    }
 };
 
 /// `allocfunc` in wasm spec

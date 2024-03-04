@@ -45,6 +45,7 @@ pub fn main() !void {
     }
     if (func_name) |func| {
         const return_values = try engine.invokeFunctionByName(func, wasm_args.items);
+        defer allocator.free(return_values);
         std.debug.print("=> {any}\n", .{return_values});
     } else if (wasm_files.items.len == 0) {
         std.debug.print("usage: file.wasm -v -r func -a arg1 -a arg2\n", .{});

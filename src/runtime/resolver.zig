@@ -6,6 +6,7 @@ const types = struct {
 const Error = @import("./errors.zig").Error;
 const Engine = @import("./engine.zig").Engine;
 
+/// The coller should free the returned slice
 pub fn resolveImports(store: types.Store, mod_insts: Engine.ModuleInstMap, module: types.Module, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const types.ExternalValue {
     const imports = module.imports;
     const external_imports = try allocator.alloc(types.ExternalValue, imports.len);
