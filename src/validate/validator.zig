@@ -30,8 +30,7 @@ pub const ModuleValidator = struct {
     }
 
     fn validateModule(self: Self, module: types.Module) Error!void {
-        // under the context c
-        {
+        { // under the context c
             const c = try Context.new(module, self.allocator);
             for (module.funcs) |func|
                 try self.validateFunction(c, func);
@@ -49,8 +48,7 @@ pub const ModuleValidator = struct {
                 return Error.MultipleMemories;
         }
 
-        // under the context c'
-        {
+        { // under the context c'
             const cp = try Context.newLimitedContext(module, self.allocator);
 
             for (module.tables) |table|
@@ -79,7 +77,7 @@ pub const ModuleValidator = struct {
     }
 
     fn validateFunction(self: Self, c: Context, func: types.Func) Error!void {
-        std.debug.print("=" ** 40 ++ " {any} \n", .{c.types[func.type]});
+        // std.debug.print("=" ** 40 ++ " {any} \n", .{c.types[func.type]});
         const cp = try Context.cloneWithFunction(c, func, self.allocator);
         const ty = try c.getType(func.type);
         try self.validateFunctionBody(cp, func.body, ty.result_types);
@@ -88,9 +86,6 @@ pub const ModuleValidator = struct {
     fn validateFunctionBody(self: Self, c: Context, instrs: []const types.Instruction, expect_types: []const types.ValueType) Error!void {
         var type_stack = try TypeStack.new(self.allocator);
         try self.loop(c, instrs, 0, @intCast(instrs.len), &type_stack);
-
-        std.debug.print(" E {any}\n", .{expect_types});
-        std.debug.print(" S {any} {s}\n", .{ type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
 
         try type_stack.popValuesWithCheckingValueType(expect_types);
         if (!type_stack.isEmpty())
@@ -103,9 +98,6 @@ pub const ModuleValidator = struct {
             try type_stack.pushValueType(ty);
 
         try self.loop(c, instrs, start, end, &type_stack);
-
-        std.debug.print(" R {any}\n", .{func_type.result_types});
-        std.debug.print(" S {any} {s}\n", .{ type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
 
         try type_stack.popValuesWithCheckingValueType(func_type.result_types);
         if (!type_stack.isEmpty())
@@ -135,7 +127,7 @@ pub const ModuleValidator = struct {
 
     fn validateInstruction(self: Self, c: Context, instrs: []const types.Instruction, ip: u32, type_stack: *TypeStack) Error!u32 {
         assert(ip < instrs.len);
-        std.debug.print("[{}] {any}   label: {any} stack: {any} {s}\n", .{ ip, instrs[ip], c.labels, type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
+        //std.debug.print("[{}] {any}   label: {any} stack: {any} {s}\n", .{ ip, instrs[ip], c.labels, type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
         switch (instrs[ip]) {
             .end => {},
             .@"else" => {},
