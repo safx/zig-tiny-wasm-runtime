@@ -21,7 +21,17 @@ pub const Context = struct {
     @"return": ?types.ResultType = null,
     refs: []const types.FuncIdx = &.{},
 
+    /// creates the context C in sec 3.4.10
     pub fn new(module: types.Module, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Self {
+        return try newContext(module, true, allocator);
+    }
+
+    /// creates the context C' in sec 3.4.10
+    pub fn newLimitedContext(module: types.Module, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Self {
+        return try newContext(module, false, allocator);
+    }
+
+    fn newContext(module: types.Module, comptime with_global: bool, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Self {
         const imports = try ImportGroup.new(module, allocator);
         defer imports.deinit(allocator);
 
@@ -31,7 +41,7 @@ pub const Context = struct {
 
         var tables = try allocator.alloc(types.TableType, num_import_tables + module.tables.len);
         var mems = try allocator.alloc(types.MemoryType, num_import_mems + module.memories.len);
-        var globals = try allocator.alloc(types.GlobalType, num_import_globals + module.globals.len);
+        var globals = try allocator.alloc(types.GlobalType, num_import_globals + if (with_global) module.globals.len else 0);
         var elems = try allocator.alloc(types.RefType, module.elements.len);
         var datas = try allocator.alloc(bool, module.datas.len);
 
@@ -42,8 +52,10 @@ pub const Context = struct {
         @memcpy(mems[num_import_mems..mems.len], module.memories);
 
         @memcpy(globals[0..num_import_globals], imports.globals);
-        for (module.globals, 0..) |global, i| {
-            globals[num_import_globals + i] = global.type;
+        if (with_global) {
+            for (module.globals, 0..) |global, i| {
+                globals[num_import_globals + i] = global.type;
+            }
         }
 
         for (module.elements, 0..) |element, i| {
@@ -66,20 +78,6 @@ pub const Context = struct {
         };
     }
 
-    pub fn newLimitedContext(module: types.Module, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Self {
-        const imports = try ImportGroup.new(module, allocator);
-        defer imports.deinit(allocator);
-
-        var globals = try allocator.alloc(types.GlobalType, imports.globals.len);
-        @memcpy(globals, imports.globals);
-
-        return .{
-            .funcs = try createFuncs(module, imports, allocator),
-            .globals = globals,
-            .refs = try createRefs(module, allocator),
-        };
-    }
-
     fn createFuncs(module: types.Module, imports: ImportGroup, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const types.FuncType {
         const num_import_funcs = imports.functions.len;
         var funcs = try allocator.alloc(types.FuncType, num_import_funcs + module.funcs.len);
@@ -96,16 +94,16 @@ pub const Context = struct {
         return funcs;
     }
 
+    /// creates the set of function indices occurring in the module, except in its functions or start function.
     fn createRefs(module: types.Module, allocator: std.mem.Allocator) error{OutOfMemory}![]const types.FuncIdx {
         var refs = std.ArrayList(types.FuncIdx).init(allocator);
 
-        // create the set of function indices occurring in the module, except in its functions or start function.
         for (module.globals) |global| {
             if (global.init == .ref_func) try refs.append(global.init.ref_func);
         }
         for (module.elements) |element| {
-            for (element.init) |i|
-                if (i == .ref_func) try refs.append(i.ref_func);
+            for (element.init) |init|
+                if (init == .ref_func) try refs.append(init.ref_func);
         }
         for (module.imports) |import| {
             if (import.desc == .function) try refs.append(import.desc.function);
@@ -117,6 +115,7 @@ pub const Context = struct {
         return try refs.toOwnedSlice();
     }
 
+    /// creates the context C' in sec 3.4.1 Functions
     pub fn cloneWithFunction(c: Context, func: types.Func, allocator: std.mem.Allocator) error{OutOfMemory}!Self {
         const ty = c.types[func.type];
 
@@ -142,6 +141,7 @@ pub const Context = struct {
         };
     }
 
+    /// create the context C' for block (sec 3.3.8.3, 3.3.8.4 and 3.3.8.5)
     pub fn cloneWithPrependingLabel(c: Context, result_type: types.ResultType, allocator: std.mem.Allocator) (error{OutOfMemory})!Self {
         var labels = try allocator.alloc(types.ResultType, c.labels.len + 1);
         @memcpy(labels[0..c.labels.len], c.labels);

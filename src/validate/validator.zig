@@ -42,7 +42,8 @@ pub const ModuleValidator = struct {
             for (module.imports) |imp|
                 try validateImport(c, imp);
 
-            // TODO: export
+            for (module.exports) |exp|
+                try validateExport(c, exp);
 
             if (c.mems.len > 1)
                 return Error.MultipleMemories;
@@ -64,11 +65,17 @@ pub const ModuleValidator = struct {
             for (module.elements) |elem|
                 try validateElement(cp, elem);
 
-            // TODO: data
-
+            for (module.datas) |data|
+                try validateData(cp, data);
         }
 
-        // TODO: All export names must be different
+        // All export names must be different
+        var map = std.StringHashMap(bool).init(self.allocator);
+        defer map.deinit();
+        for (module.exports) |exp| {
+            if (try map.fetchPut(exp.name, true)) |_|
+                return Error.DuplicateExportName;
+        }
     }
 
     fn validateFunction(self: Self, c: Context, func: types.Func) Error!void {
@@ -320,29 +327,29 @@ pub const ModuleValidator = struct {
             },
 
             // memory instructions
-            .i32_load => |mem_arg| try opLoad(i32, i32, mem_arg, type_stack),
-            .i64_load => |mem_arg| try opLoad(i64, i64, mem_arg, type_stack),
-            .f32_load => |mem_arg| try opLoad(f32, f32, mem_arg, type_stack),
-            .f64_load => |mem_arg| try opLoad(f64, f64, mem_arg, type_stack),
-            .i32_load8_s => |mem_arg| try opLoad(i32, i8, mem_arg, type_stack),
-            .i32_load8_u => |mem_arg| try opLoad(i32, u8, mem_arg, type_stack),
-            .i32_load16_s => |mem_arg| try opLoad(i32, i16, mem_arg, type_stack),
-            .i32_load16_u => |mem_arg| try opLoad(i32, u16, mem_arg, type_stack),
-            .i64_load8_s => |mem_arg| try opLoad(i64, i8, mem_arg, type_stack),
-            .i64_load8_u => |mem_arg| try opLoad(i64, u8, mem_arg, type_stack),
-            .i64_load16_s => |mem_arg| try opLoad(i64, i16, mem_arg, type_stack),
-            .i64_load16_u => |mem_arg| try opLoad(i64, u16, mem_arg, type_stack),
-            .i64_load32_s => |mem_arg| try opLoad(i64, i32, mem_arg, type_stack),
-            .i64_load32_u => |mem_arg| try opLoad(i64, u32, mem_arg, type_stack),
-            .i32_store => |mem_arg| try opStore(i32, 32, mem_arg, type_stack),
-            .i64_store => |mem_arg| try opStore(i64, 64, mem_arg, type_stack),
-            .f32_store => |mem_arg| try opStore(f32, 32, mem_arg, type_stack),
-            .f64_store => |mem_arg| try opStore(f64, 64, mem_arg, type_stack),
-            .i32_store8 => |mem_arg| try opStore(i32, 8, mem_arg, type_stack),
-            .i32_store16 => |mem_arg| try opStore(i32, 16, mem_arg, type_stack),
-            .i64_store8 => |mem_arg| try opStore(i64, 8, mem_arg, type_stack),
-            .i64_store16 => |mem_arg| try opStore(i64, 16, mem_arg, type_stack),
-            .i64_store32 => |mem_arg| try opStore(i64, 32, mem_arg, type_stack),
+            .i32_load => |mem_arg| try opLoad(i32, i32, mem_arg, type_stack, c),
+            .i64_load => |mem_arg| try opLoad(i64, i64, mem_arg, type_stack, c),
+            .f32_load => |mem_arg| try opLoad(f32, f32, mem_arg, type_stack, c),
+            .f64_load => |mem_arg| try opLoad(f64, f64, mem_arg, type_stack, c),
+            .i32_load8_s => |mem_arg| try opLoad(i32, i8, mem_arg, type_stack, c),
+            .i32_load8_u => |mem_arg| try opLoad(i32, u8, mem_arg, type_stack, c),
+            .i32_load16_s => |mem_arg| try opLoad(i32, i16, mem_arg, type_stack, c),
+            .i32_load16_u => |mem_arg| try opLoad(i32, u16, mem_arg, type_stack, c),
+            .i64_load8_s => |mem_arg| try opLoad(i64, i8, mem_arg, type_stack, c),
+            .i64_load8_u => |mem_arg| try opLoad(i64, u8, mem_arg, type_stack, c),
+            .i64_load16_s => |mem_arg| try opLoad(i64, i16, mem_arg, type_stack, c),
+            .i64_load16_u => |mem_arg| try opLoad(i64, u16, mem_arg, type_stack, c),
+            .i64_load32_s => |mem_arg| try opLoad(i64, i32, mem_arg, type_stack, c),
+            .i64_load32_u => |mem_arg| try opLoad(i64, u32, mem_arg, type_stack, c),
+            .i32_store => |mem_arg| try opStore(i32, 32, mem_arg, type_stack, c),
+            .i64_store => |mem_arg| try opStore(i64, 64, mem_arg, type_stack, c),
+            .f32_store => |mem_arg| try opStore(f32, 32, mem_arg, type_stack, c),
+            .f64_store => |mem_arg| try opStore(f64, 64, mem_arg, type_stack, c),
+            .i32_store8 => |mem_arg| try opStore(i32, 8, mem_arg, type_stack, c),
+            .i32_store16 => |mem_arg| try opStore(i32, 16, mem_arg, type_stack, c),
+            .i64_store8 => |mem_arg| try opStore(i64, 8, mem_arg, type_stack, c),
+            .i64_store16 => |mem_arg| try opStore(i64, 16, mem_arg, type_stack, c),
+            .i64_store32 => |mem_arg| try opStore(i64, 32, mem_arg, type_stack, c),
             .memory_size => {
                 try c.checkMem(0);
                 try type_stack.pushValueType(.i32);
@@ -543,19 +550,28 @@ pub const ModuleValidator = struct {
     }
 };
 
-inline fn opLoad(comptime T: type, comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack) Error!void {
-    // TODO: check
-    _ = N;
-    _ = mem_arg;
+inline fn exp2(n: u32) error{NegativeNumberAlignment}!u32 {
+    if (n >= 32)
+        return Error.NegativeNumberAlignment;
+
+    return @as(u32, 1) << @intCast(n);
+}
+
+inline fn opLoad(comptime T: type, comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+    if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8)
+        return Error.NegativeNumberAlignment;
+    try c.checkMem(0);
+
     try type_stack.popWithCheckingValueType(.i32);
     const t = valueTypeOf(T);
     try type_stack.pushValueType(t);
 }
 
-inline fn opStore(comptime T: type, comptime bit_size: u32, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack) Error!void {
-    // TODO: check
-    _ = bit_size;
-    _ = mem_arg;
+inline fn opStore(comptime T: type, comptime bit_size: u32, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+    if (try exp2(mem_arg.@"align") > bit_size / 8)
+        return Error.NegativeNumberAlignment;
+    try c.checkMem(0);
+
     const t = valueTypeOf(T);
     try type_stack.popWithCheckingValueType(t);
     try type_stack.popWithCheckingValueType(.i32);
@@ -608,15 +624,20 @@ inline fn cvtOp(comptime T2: type, comptime T1: type, type_stack: *TypeStack) Er
 }
 
 fn validateImport(c: Context, imp: types.Import) Error!void {
-    try validateImportDesc(c, imp.desc);
-}
-
-fn validateImportDesc(c: Context, import_desc: types.ImportDesc) Error!void {
-    switch (import_desc) {
+    switch (imp.desc) {
         .function => |idx| _ = try c.getType(idx),
         .table => |ty| try validateTableType(ty),
         .memory => |ty| try validateMemoryType(ty),
         .global => {},
+    }
+}
+
+fn validateExport(c: Context, exp: types.Export) Error!void {
+    switch (exp.desc) {
+        .function => |idx| _ = try c.getFunc(idx),
+        .table => |idx| _ = try c.getTable(idx),
+        .memory => |idx| try c.checkMem(idx),
+        .global => |idx| _ = try c.getGlobal(idx),
     }
 }
 
@@ -633,9 +654,19 @@ fn validateElement(c: Context, element: types.Element) Error!void {
         .active => |eat| {
             try validateInitExpression(c, eat.offset, .i32);
 
-            // const tt = try c.getTable(eat.table_idx);
-            // if (element.type != tt.ref_type)
-            //     return Error.TypeMismatch;
+            const tt = try c.getTable(eat.table_idx);
+            if (element.type != tt.ref_type)
+                return Error.TypeMismatch;
+        },
+        else => {},
+    }
+}
+
+fn validateData(c: Context, data: types.Data) Error!void {
+    switch (data.mode) {
+        .active => |dat| {
+            try c.checkMem(dat.mem_idx);
+            try validateInitExpression(c, dat.offset, .i32);
         },
         else => {},
     }
@@ -650,18 +681,18 @@ fn validateTableType(table_type: types.TableType) Error!void {
 }
 
 fn validateMemoryType(memory_type: types.MemoryType) Error!void {
-    try validateLimits(std.math.maxInt(u32), memory_type.limits);
+    try validateLimits(1 << 16, memory_type.limits);
 }
 
 fn validateLimits(comptime limit_max: u32, limits: types.Limits) Error!void {
     if (limits.min > limit_max)
-        return Error.MemorySizeExceeded; // FIXME
+        return Error.MemorySizeExceeded;
 
     if (limits.max) |max| {
         if (max > limit_max)
-            return Error.MemorySizeExceeded; // FIXME
+            return Error.MemorySizeExceeded;
         if (max < limits.min)
-            return Error.MemorySizeExceeded; // FIXME
+            return Error.MemorySizeExceeded;
     }
 }
 
@@ -672,22 +703,32 @@ fn validateStartFunction(c: Context, func_idx: types.FuncIdx) Error!void {
 }
 
 fn validateInitExpression(c: Context, init_expr: types.InitExpression, expected_type: types.ValueType) Error!void {
-    std.debug.print("* init = {any}\n", .{init_expr});
-    const result: bool = switch (init_expr) {
-        .i32_const => expected_type == .i32,
-        .i64_const => expected_type == .i64,
-        .f32_const => expected_type == .f32,
-        .f64_const => expected_type == .f64,
-        .v128_const => expected_type == .v128,
-        .ref_null => |t| switch (t) {
+    // std.debug.print("* init = {any}\n", .{init_expr});
+    if (!try checkInitExpression(c, init_expr, expected_type))
+        return Error.TypeMismatch;
+}
+
+fn checkInitExpression(c: Context, init_expr: types.InitExpression, expected_type: types.ValueType) Error!bool {
+    switch (init_expr) {
+        .i32_const => return expected_type == .i32,
+        .i64_const => return expected_type == .i64,
+        .f32_const => return expected_type == .f32,
+        .f64_const => return expected_type == .f64,
+        .v128_const => return expected_type == .v128,
+        .ref_null => |t| return switch (t) {
             .funcref => expected_type == .func_ref,
             .externref => expected_type == .extern_ref,
         },
-        .ref_func => expected_type == .func_ref,
-        .global_get => |idx| (try c.getGlobal(idx)).value_type == expected_type,
-    };
-    if (!result)
-        return Error.TypeMismatch;
+        .ref_func => |idx| {
+            _ = try c.getFunc(idx);
+            _ = try c.checkRef(idx);
+            return expected_type == .func_ref;
+        },
+        .global_get => |idx| {
+            const g = try c.getGlobal(idx);
+            return g.value_type == expected_type;
+        },
+    }
 }
 
 fn valueTypeOf(comptime ty: type) types.ValueType {
