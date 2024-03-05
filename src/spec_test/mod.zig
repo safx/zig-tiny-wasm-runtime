@@ -18,7 +18,12 @@ pub fn doWasmSpecTest() !void {
     while (try it.next()) |entry| {
         const ext = getExtention(entry.name);
         if (std.mem.eql(u8, ext, "json")) {
-            //try execSpecTestsFromFile(entry.name, 2);
+            var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+            defer arena.deinit();
+            const allocator = arena.allocator();
+
+            var runner = try SpecTestRunneer.new(allocator, ".", 1);
+            try runner.execFromFile(entry.name);
         }
     }
 }
