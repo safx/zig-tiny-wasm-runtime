@@ -95,6 +95,7 @@ pub const ModuleInst = struct {
 
     pub fn auxiliaryInstance(store: *types.Store, module: types.Module, extern_vals: []const types.ExternalValue, allocator: std.mem.Allocator) error{OutOfMemory}!ModuleInst {
         const externals = try ExternalValueGroup.new(extern_vals, allocator);
+        defer externals.deinit(allocator);
         const num_import_funcs = externals.functions.len;
         const num_import_globals = externals.globals.len;
 

@@ -691,32 +691,29 @@ fn validateStartFunction(c: Context, func_idx: types.FuncIdx) Error!void {
 }
 
 fn validateInitExpression(c: Context, init_expr: types.InitExpression, expected_type: types.ValueType) Error!void {
-    // std.debug.print("* init = {any}\n", .{init_expr});
-    if (!try checkInitExpression(c, init_expr, expected_type))
-        return Error.TypeMismatch;
-}
-
-fn checkInitExpression(c: Context, init_expr: types.InitExpression, expected_type: types.ValueType) Error!bool {
-    switch (init_expr) {
-        .i32_const => return expected_type == .i32,
-        .i64_const => return expected_type == .i64,
-        .f32_const => return expected_type == .f32,
-        .f64_const => return expected_type == .f64,
-        .v128_const => return expected_type == .v128,
-        .ref_null => |t| return switch (t) {
+    const ok = switch (init_expr) {
+        .i32_const => expected_type == .i32,
+        .i64_const => expected_type == .i64,
+        .f32_const => expected_type == .f32,
+        .f64_const => expected_type == .f64,
+        .v128_const => expected_type == .v128,
+        .ref_null => |t| switch (t) {
             .funcref => expected_type == .func_ref,
             .externref => expected_type == .extern_ref,
         },
-        .ref_func => |idx| {
+        .ref_func => |idx| blk: {
             _ = try c.getFunc(idx);
             _ = try c.checkRef(idx);
-            return expected_type == .func_ref;
+            break :blk expected_type == .func_ref;
         },
-        .global_get => |idx| {
+        .global_get => |idx| blk: {
             const g = try c.getGlobal(idx);
-            return g.value_type == expected_type;
+            break :blk g.value_type == expected_type;
         },
-    }
+    };
+
+    if (!ok)
+        return Error.TypeMismatch;
 }
 
 fn valueTypeOf(comptime ty: type) types.ValueType {

@@ -682,12 +682,11 @@ pub const Instance = struct {
         if (ft_expect.parameter_types.len != ft_actual.parameter_types.len or ft_expect.result_types.len != ft_actual.result_types.len)
             return Error.IndirectCallTypeMismatch;
 
-        for (ft_expect.parameter_types, ft_actual.parameter_types) |ex, ac| {
+        for (ft_expect.parameter_types, ft_actual.parameter_types) |ex, ac|
             if (ex != ac) return Error.IndirectCallTypeMismatch;
-        }
-        for (ft_expect.result_types, ft_actual.result_types) |ex, ac| {
+
+        for (ft_expect.result_types, ft_actual.result_types) |ex, ac|
             if (ex != ac) return Error.IndirectCallTypeMismatch;
-        }
 
         return .{ .call = a };
     }
@@ -841,9 +840,9 @@ pub const Instance = struct {
     inline fn growtable(table_inst: types.TableInst, n: u32, val: types.RefValue, allocator: std.mem.Allocator) error{OutOfMemory}![]types.RefValue {
         const table_len: u32 = @intCast(table_inst.elem.len);
         const len_with_overflow = @addWithOverflow(table_len, n);
-        if (len_with_overflow[1] == 1) {
+        if (len_with_overflow[1] == 1)
             return std.mem.Allocator.Error.OutOfMemory;
-        }
+
         const len = len_with_overflow[0];
 
         const old_elem = table_inst.elem;
@@ -889,14 +888,12 @@ pub const Instance = struct {
         var d: u32 = self.stack.pop().value.asU32();
 
         const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > tab_s.elem.len) {
+        if (s_plus_n[1] == 1 or s_plus_n[0] > tab_s.elem.len)
             return Error.OutOfBoundsTableAccess;
-        }
 
         const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > tab_d.elem.len) {
+        if (d_plus_n[1] == 1 or d_plus_n[0] > tab_d.elem.len)
             return Error.OutOfBoundsTableAccess;
-        }
 
         while (n > 0) : (n -= 1) {
             if (d <= s) {
@@ -963,7 +960,6 @@ pub const Instance = struct {
         const mem = &self.store.mems.items[a];
 
         const ea: u32 = self.stack.pop().value.asU32();
-
         const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
         if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len) {
             return Error.OutOfBoundsMemoryAccess;
@@ -1046,9 +1042,9 @@ pub const Instance = struct {
     fn growmem(mem_inst: types.MemInst, n: u32, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
         const data_len: u32 = @intCast(mem_inst.data.len / page_size);
         const len: u32 = data_len + n;
-        if (len + n > 65536) {
+        if (len + n > 65536)
             return std.mem.Allocator.Error.OutOfMemory;
-        }
+
         const old_data = mem_inst.data;
         const new_data = try allocator.alloc(u8, len * page_size);
         @memcpy(new_data[0..old_data.len], old_data);
@@ -1069,9 +1065,8 @@ pub const Instance = struct {
         var d: u32 = self.stack.pop().value.asU32();
 
         const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > mem_inst.data.len) {
+        if (d_plus_n[1] == 1 or d_plus_n[0] > mem_inst.data.len)
             return Error.OutOfBoundsMemoryAccess;
-        }
 
         while (n > 0) : (n -= 1) {
             try self.stack.pushValueAs(u32, d);
@@ -1092,14 +1087,12 @@ pub const Instance = struct {
         var d: u32 = self.stack.pop().value.asU32();
 
         const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > mem_inst.data.len) {
+        if (s_plus_n[1] == 1 or s_plus_n[0] > mem_inst.data.len)
             return Error.OutOfBoundsMemoryAccess;
-        }
 
         const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > mem_inst.data.len) {
+        if (d_plus_n[1] == 1 or d_plus_n[0] > mem_inst.data.len)
             return Error.OutOfBoundsMemoryAccess;
-        }
 
         while (n > 0) : (n -= 1) {
             if (d <= s) {
@@ -1131,14 +1124,12 @@ pub const Instance = struct {
         var d: u32 = self.stack.pop().value.asU32();
 
         const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > data.data.len) {
+        if (s_plus_n[1] == 1 or s_plus_n[0] > data.data.len)
             return Error.OutOfBoundsMemoryAccess;
-        }
 
         const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > mem.data.len) {
+        if (d_plus_n[1] == 1 or d_plus_n[0] > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
-        }
 
         while (n > 0) : (n -= 1) {
             const b = data.data[s];
@@ -1314,9 +1305,8 @@ fn opTrunc(comptime R: type, comptime T: type, value: T) Error!R {
     if (std.math.isPositiveInf(value))
         return Error.IntegerOverflow;
 
-    if (!canConvert(R, T, value)) {
+    if (!canConvert(R, T, value))
         return Error.IntegerOverflow;
-    }
 
     return @intFromFloat(value);
 }
