@@ -23,6 +23,7 @@ pub fn build(b: *std.Build) void {
         inline for (modules) |info| {
             exe.addModule(info.name, info.module);
         }
+        exe.linkLibC();
         b.installArtifact(exe);
 
         const run_cmd = b.addRunArtifact(exe);
@@ -46,6 +47,7 @@ pub fn build(b: *std.Build) void {
         inline for (spectest_modules) |info| {
             exe.addModule(info.name, info.module);
         }
+        exe.linkLibC();
         b.installArtifact(exe);
 
         const run_cmd = b.addRunArtifact(exe);
@@ -77,6 +79,8 @@ pub fn build(b: *std.Build) void {
             inline for (all_modules) |i| {
                 unit_test.addModule(i.name, i.module);
             }
+            unit_test.linkLibC();
+
             const run_unit_test = b.addRunArtifact(unit_test);
             test_step.dependOn(&run_unit_test.step);
         }
