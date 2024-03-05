@@ -42,37 +42,31 @@ pub const ModuleInst = struct {
 
         // 2, 8, 14: function
         @memcpy(mod_inst.func_addrs[0..num_import_funcs], externals.functions);
-        for (module.funcs, num_import_funcs..) |func, i| {
+        for (module.funcs, num_import_funcs..) |func, i|
             mod_inst.func_addrs[i] = try allocFunc(store, func, mod_inst);
-        }
 
         // 3, 9, 15: table
         @memcpy(mod_inst.table_addrs[0..num_import_tables], externals.tables);
-        for (module.tables, num_import_tables..) |table, i| {
+        for (module.tables, num_import_tables..) |table, i|
             mod_inst.table_addrs[i] = try allocTable(store, table, allocator);
-        }
 
         // 4, 10, 16: memory
         @memcpy(mod_inst.mem_addrs[0..num_import_mems], externals.memories);
-        for (module.memories, num_import_mems..) |mem, i| {
+        for (module.memories, num_import_mems..) |mem, i|
             mod_inst.mem_addrs[i] = try allocMemory(store, mem, allocator);
-        }
 
         // 5, 11, 17: global
         @memcpy(mod_inst.global_addrs[0..num_import_globals], externals.globals);
-        for (module.globals, 0..) |global, i| {
+        for (module.globals, 0..) |global, i|
             mod_inst.global_addrs[num_import_globals + i] = try allocGlobal(store, global, values[i]);
-        }
 
         // 6, 12: element segment
-        for (module.elements, 0..) |element, i| {
+        for (module.elements, 0..) |element, i|
             mod_inst.elem_addrs[i] = try allocElement(store, element, refs[i]);
-        }
 
         // 7, 13: data segment
-        for (module.datas, 0..) |data, i| {
+        for (module.datas, 0..) |data, i|
             mod_inst.data_addrs[i] = try allocData(store, data);
-        }
 
         // 18, 19: export
         for (module.exports, 0..) |exp, i| {
@@ -108,9 +102,9 @@ pub const ModuleInst = struct {
         @memcpy(mod_inst.func_addrs[0..num_import_funcs], externals.functions);
         @memcpy(mod_inst.global_addrs[0..num_import_globals], externals.globals);
 
-        for (module.funcs, num_import_funcs..) |func, i| {
+        for (module.funcs, num_import_funcs..) |func, i|
             mod_inst.func_addrs[i] = try allocFunc(store, func, &mod_inst);
-        }
+
         return mod_inst;
     }
 

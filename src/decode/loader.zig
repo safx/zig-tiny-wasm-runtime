@@ -27,9 +27,8 @@ pub const ModuleLoader = struct {
 
         self.reader = BinaryReader.new(buffer);
         const version = try self.readHeaderVersion();
-        if (version != 1) {
+        if (version != 1)
             return Error.UnknownBinaryVersion;
-        }
 
         var types_: []const types.FuncType = &.{};
         var imports: []const types.Import = &.{};
@@ -65,9 +64,9 @@ pub const ModuleLoader = struct {
 
             if (sec != .custom) {
                 const current_section = @intFromEnum(sec);
-                if (sections[current_section]) {
+                if (sections[current_section])
                     return Error.UnexpectedContentAfterLastSection;
-                }
+
                 sections[current_section] = true;
             }
         }
@@ -115,9 +114,9 @@ pub const ModuleLoader = struct {
 
     pub fn readHeaderVersion(self: *Self) Error!u32 {
         const magic_number = try self.reader.readBytes(4);
-        if (!std.mem.eql(u8, magic_number, &std.wasm.magic)) {
+        if (!std.mem.eql(u8, magic_number, &std.wasm.magic))
             return Error.MagicHeaderNotDetected;
-        }
+
         return self.reader.readU32();
     }
 
@@ -129,9 +128,8 @@ pub const ModuleLoader = struct {
         const start_pos = self.reader.position;
         const sec = try self.sectionInternal(sect, size);
         const pos = self.reader.position;
-        if (pos - start_pos != size) {
+        if (pos - start_pos != size)
             return Error.SectionSizeMismatch;
-        }
 
         return sec;
     }
@@ -158,9 +156,9 @@ pub const ModuleLoader = struct {
     // section
     fn funcType(self: *Self) (Error || error{OutOfMemory})!types.FuncType {
         const marker = try self.reader.readU8();
-        if (marker != std.wasm.function_type) {
+        if (marker != std.wasm.function_type)
             return Error.MalformedFunctypeMagicNumber;
-        }
+
         const param_types = try self.resultType();
         const result_types = try self.resultType();
         return .{
@@ -173,9 +171,8 @@ pub const ModuleLoader = struct {
         const mod = try self.name();
         const nm = try self.name();
 
-        if (!std.unicode.utf8ValidateSlice(mod) or !std.unicode.utf8ValidateSlice(nm)) {
+        if (!std.unicode.utf8ValidateSlice(mod) or !std.unicode.utf8ValidateSlice(nm))
             return Error.MalformedUtf8Encoding;
-        }
 
         const desc = try self.importdesc();
         return .{ .module_name = mod, .name = nm, .desc = desc };
@@ -279,7 +276,6 @@ pub const ModuleLoader = struct {
             },
             else => return Error.MalformedElemKind,
         }
-        unreachable;
     }
 
     fn code(self: *Self) (Error || error{OutOfMemory})!ModFunc {
@@ -322,9 +318,8 @@ pub const ModuleLoader = struct {
         if (size < consumed)
             return Error.UnexpectedEndOfBuffer;
 
-        if (!std.unicode.utf8ValidateSlice(cname)) {
+        if (!std.unicode.utf8ValidateSlice(cname))
             return Error.MalformedUtf8Encoding;
-        }
 
         const len = size - consumed;
         const cdata = try self.reader.readBytes(len);

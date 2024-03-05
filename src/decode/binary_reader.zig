@@ -16,16 +16,15 @@ pub const BinaryReader = struct {
     }
 
     pub fn peek(self: Self) error{UnexpectedEndOfBuffer}!u8 {
-        if (self.eof()) {
+        if (self.eof())
             return Error.UnexpectedEndOfBuffer;
-        }
+
         return self.buffer[self.position];
     }
 
     fn ensureHasBytes(self: Self, len: usize) error{UnexpectedEndOfBuffer}!void {
-        if (self.position + len > self.buffer.len) {
+        if (self.position + len > self.buffer.len)
             return Error.UnexpectedEndOfBuffer;
-        }
     }
 
     pub fn readBytes(self: *Self, size: usize) error{UnexpectedEndOfBuffer}![]const u8 {
@@ -89,9 +88,8 @@ pub const BinaryReader = struct {
         while (true) : (shift += 7) {
             const byte = try self.readU8();
 
-            if (shift == max_shift) {
+            if (shift == max_shift)
                 try checkIntegerTooLarge(NumType, byte);
-            }
 
             const num = @as(NumType, byte) & 0x7f;
             result |= num << shift;
@@ -110,28 +108,27 @@ pub const BinaryReader = struct {
 };
 
 inline fn checkIntegerTooLarge(comptime NumType: type, byte: u8) (error{IntegerRepresentationTooLong} || error{IntegerTooLarge})!void {
-    if (byte & 0x80 > 0)
-        return Error.IntegerRepresentationTooLong;
-
-    switch (NumType) {
-        u32 => if (byte & 0xf0 > 0) return Error.IntegerTooLarge,
-        u64 => if (byte & 0xfe > 0) return Error.IntegerTooLarge,
-        i32 => {
+    const too_large = switch (NumType) {
+        u32 => byte & 0xf0 > 0,
+        u64 => byte & 0xfe > 0,
+        i32 => blk: {
             const sign_bit = byte & 0x08 != 0;
             const top_bits = byte & 0xf0;
-            if ((sign_bit and top_bits != 0x70) or (!sign_bit and top_bits != 0)) {
-                return Error.IntegerTooLarge;
-            }
+            break :blk (sign_bit and top_bits != 0x70) or (!sign_bit and top_bits != 0);
         },
-        i64 => {
+        i64 => blk: {
             const sign_bit = byte & 0x01 != 0;
             const top_bits = byte & 0x7e;
-            if ((sign_bit and top_bits != 0x7e) or (!sign_bit and top_bits != 0)) {
-                return Error.IntegerTooLarge;
-            }
+            break :blk (sign_bit and top_bits != 0x7e) or (!sign_bit and top_bits != 0);
         },
         else => unreachable,
-    }
+    };
+
+    if (too_large)
+        return Error.IntegerTooLarge;
+
+    if (byte & 0x80 > 0)
+        return Error.IntegerRepresentationTooLong;
 }
 
 test BinaryReader {

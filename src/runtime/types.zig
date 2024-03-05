@@ -37,9 +37,8 @@ pub const Stack = struct {
     }
 
     inline fn checkStackExhausted(self: Self) Error!void {
-        if (self.array.items.len > max_stack_size) {
+        if (self.array.items.len > max_stack_size)
             return CallStackExhausted;
-        }
     }
 
     pub fn pushValueAs(self: *Self, comptime T: type, value: T) Error!void {

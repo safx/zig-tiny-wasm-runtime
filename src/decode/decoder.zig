@@ -291,7 +291,7 @@ pub const Decoder = struct {
     fn miscOpcode(reader: *BinaryReader) (Error || error{OutOfMemory})!Instruction {
         const n = std.wasm.miscOpcode;
         const op_code = try reader.readVarU32();
-        const inst: Instruction = switch (op_code) {
+        return switch (op_code) {
             // table instructions
             n(.table_init) => .{ .table_init = try tableInitArg(reader) },
             n(.elem_drop) => .{ .elem_drop = try reader.readVarU32() },
@@ -321,7 +321,6 @@ pub const Decoder = struct {
                 unreachable;
             },
         };
-        return inst;
     }
 };
 
@@ -367,9 +366,9 @@ fn block(reader: *BinaryReader) Error!Instruction.BlockInfo {
 fn selectv(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]types.ValueType {
     const len = try reader.readVarU32();
     const array = try allocator.alloc(types.ValueType, len); // freed by arena allocator in Module
-    for (0..len) |i| {
+    for (0..len) |i|
         array[i] = try valueType(reader);
-    }
+
     return array;
 }
 
@@ -396,9 +395,8 @@ fn brTable(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{
     const size = try reader.readVarU32();
     const label_idxs = try allocator.alloc(types.LabelIdx, size); // freed by arena allocator in Module
 
-    for (0..size) |i| {
+    for (0..size) |i|
         label_idxs[i] = try reader.readVarU32();
-    }
 
     const default = try reader.readVarU32();
     return .{ .label_idxs = label_idxs, .default_label_idx = default };

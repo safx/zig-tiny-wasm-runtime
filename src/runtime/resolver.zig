@@ -12,11 +12,9 @@ pub fn resolveImports(store: types.Store, mod_insts: Engine.ModuleInstMap, modul
     const external_imports = try allocator.alloc(types.ExternalValue, imports.len);
     for (imports, 0..) |imp, i| {
         const exp = try findExportFromModules(mod_insts, imp.module_name, imp.name);
-        if (isMatchType(store, exp, module, imp.desc)) {
-            external_imports[i] = exp;
-        } else {
+        if (!isMatchType(store, exp, module, imp.desc))
             return Error.IncompatibleImportType;
-        }
+        external_imports[i] = exp;
     }
     return external_imports;
 }
@@ -32,9 +30,8 @@ fn findExportFromModules(mod_insts: Engine.ModuleInstMap, module_name: []const u
 
 pub fn findExport(mod_inst: types.ModuleInst, import_name: []const u8) error{UnknownImport}!types.ExternalValue {
     for (mod_inst.exports) |exp| {
-        if (std.mem.eql(u8, import_name, exp.name)) {
+        if (std.mem.eql(u8, import_name, exp.name))
             return exp.value;
-        }
     }
     return Error.UnknownImport;
 }

@@ -105,21 +105,20 @@ pub const ModuleValidator = struct {
 
     fn loop(self: Self, c: Context, instrs: []const types.Instruction, start: u32, end: u32, type_stack: *TypeStack) Error!void {
         var ip = start;
-        while (ip < end) {
+        while (ip < end)
             ip = try self.validateInstruction(c, instrs, ip, type_stack);
-        }
     }
 
     fn validateBlocktype(self: Self, c: Context, block_type: types.Instruction.BlockType) Error!types.FuncType {
-        switch (block_type) {
-            .empty => return .{ .parameter_types = &.{}, .result_types = &.{} },
-            .type_index => |idx| return try c.getType(idx),
-            .value_type => {
+        return switch (block_type) {
+            .empty => .{ .parameter_types = &.{}, .result_types = &.{} },
+            .type_index => |idx| try c.getType(idx),
+            .value_type => blk: {
                 const result_types = try self.allocator.alloc(types.ValueType, 1);
                 result_types[0] = block_type.value_type;
-                return .{ .parameter_types = &.{}, .result_types = result_types };
+                break :blk .{ .parameter_types = &.{}, .result_types = result_types };
             },
-        }
+        };
     }
 
     fn validateInstruction(self: Self, c: Context, instrs: []const types.Instruction, ip: u32, type_stack: *TypeStack) Error!u32 {
@@ -540,10 +539,10 @@ pub const ModuleValidator = struct {
 };
 
 inline fn exp2(n: u32) error{NegativeNumberAlignment}!u32 {
-    if (n >= 32)
-        return Error.NegativeNumberAlignment;
-
-    return @as(u32, 1) << @intCast(n);
+    return if (n < 32)
+        @as(u32, 1) << @intCast(n)
+    else
+        Error.NegativeNumberAlignment;
 }
 
 inline fn opLoad(comptime T: type, comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {

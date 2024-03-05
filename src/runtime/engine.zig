@@ -41,9 +41,8 @@ pub const Engine = struct {
 
     fn findExternValue(mod_inst: *types.ModuleInst, name: []const u8) ?types.ExternalValue {
         for (mod_inst.exports) |exp| {
-            if (std.mem.eql(u8, exp.name, name)) {
+            if (std.mem.eql(u8, exp.name, name))
                 return exp.value;
-            }
         }
         return null;
     }
@@ -95,8 +94,8 @@ pub const Engine = struct {
 fn getFilename(path: []const u8) []const u8 {
     var parts = std.mem.split(u8, path, "/");
     var elem: []const u8 = "";
-    while (parts.next()) |p| {
+    while (parts.next()) |p|
         elem = p;
-    }
+
     return elem;
 }
