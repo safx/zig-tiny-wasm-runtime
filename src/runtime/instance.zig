@@ -69,9 +69,8 @@ pub const Instance = struct {
         try self.stack.push(.{ .label = .{ .arity = @intCast(num_returns), .type = .root } });
 
         self.debugPrint("---------------\n", .{});
-        for (func_inst.code.body, 0..) |op, idx| {
+        for (func_inst.code.body, 0..) |op, idx|
             self.debugPrint("[{}] {}\n", .{ idx, op });
-        }
         self.debugPrint("---------------\n", .{});
     }
 
@@ -105,9 +104,8 @@ pub const Instance = struct {
         const func_type = func_inst.type;
 
         // 4:
-        if (func_type.parameter_types.len != args.len) {
+        if (func_type.parameter_types.len != args.len)
             return Error.InvocationParameterMismatch;
-        }
 
         // 5:
         for (func_type.parameter_types, args) |p, a| {
@@ -121,9 +119,8 @@ pub const Instance = struct {
         try self.stack.push(.{ .frame = empty_frame });
 
         // 8:
-        for (args) |arg| {
+        for (args) |arg|
             try self.stack.push(.{ .value = arg });
-        }
 
         // 9:
         try self.invokeFunction(func_addr);
@@ -160,9 +157,8 @@ pub const Instance = struct {
 
             const flow_ctrl = try self.execInstruction(instr);
 
-            if (flow_ctrl != .none) {
+            if (flow_ctrl != .none)
                 self.debugPrint("\t-> {}\n", .{flow_ctrl});
-            }
 
             switch (flow_ctrl) {
                 .none => self.stack.updateTopFrameIp(ip + 1),
@@ -173,14 +169,12 @@ pub const Instance = struct {
                 },
                 .exit => {
                     try self.returnFunction();
-                    if (!self.stack.hasFrame()) {
+                    if (!self.stack.hasFrame())
                         return;
-                    }
 
                     // check the empty_frame of the bottom
-                    if (self.stack.topFrame().instructions.len == 0) {
+                    if (self.stack.topFrame().instructions.len == 0)
                         return;
-                    }
                 },
             }
         }
@@ -200,9 +194,8 @@ pub const Instance = struct {
         // 1, 2: validate
 
         // 3: check length
-        if (module.imports.len != extern_vals.len) {
+        if (module.imports.len != extern_vals.len)
             return Error.InstantiationFailed;
-        }
 
         // 4: verifying external value is done in resolver
 
@@ -633,9 +626,9 @@ pub const Instance = struct {
         defer self.allocator.free(array);
         try self.stack.popValues(&array);
 
-        for (0..label_idx + 1) |_| {
+        for (0..label_idx + 1) |_|
             self.stack.popValuesAndUppermostLabel();
-        }
+
         try self.stack.appendSlice(array);
 
         return FlowControl.newAtOpBr(label);
@@ -723,11 +716,7 @@ pub const Instance = struct {
         const c = self.stack.pop().value.asU32();
         const val2 = self.stack.pop();
         const val1 = self.stack.pop();
-        if (c != 0) {
-            try self.stack.push(val1);
-        } else {
-            try self.stack.push(val2);
-        }
+        try self.stack.push(if (c != 0) val1 else val2);
     }
 
     // variable instructions
@@ -925,14 +914,12 @@ pub const Instance = struct {
         var d: u32 = self.stack.pop().value.asU32();
 
         const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > elem.elem.len) {
+        if (s_plus_n[1] == 1 or s_plus_n[0] > elem.elem.len)
             return Error.OutOfBoundsTableAccess;
-        }
 
         const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > tab.elem.len) {
+        if (d_plus_n[1] == 1 or d_plus_n[0] > tab.elem.len)
             return Error.OutOfBoundsTableAccess;
-        }
 
         while (n > 0) : (n -= 1) {
             const ref_val = elem.elem[s];
@@ -961,16 +948,15 @@ pub const Instance = struct {
 
         const ea: u32 = self.stack.pop().value.asU32();
         const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
-        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len) {
+        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
-        }
 
         const ea_start = ea_start_with_overflow[0];
         const size = @sizeOf(N);
         const ea_end_with_overflow = @addWithOverflow(ea_start, size);
-        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len) {
+        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
-        }
+
         const ea_end = ea_end_with_overflow[0];
 
         const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
@@ -992,9 +978,8 @@ pub const Instance = struct {
         const byte_size = bit_size / 8;
 
         const ea_plus_byte_size = @addWithOverflow(ea, byte_size);
-        if (ea_plus_byte_size[1] == 1 or ea_plus_byte_size[0] > mem.data.len) {
+        if (ea_plus_byte_size[1] == 1 or ea_plus_byte_size[0] > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
-        }
 
         inline for (0..byte_size) |idx| {
             mem.data[ea + idx] = @intCast((c >> idx * 8) & 0xff);
