@@ -341,7 +341,7 @@ pub const Decoder = struct {
             n(.v128_load32_splat) => .{ .v128_load32_splat = try memArg(reader) },
             n(.v128_load64_splat) => .{ .v128_load64_splat = try memArg(reader) },
             n(.v128_store) => .{ .v128_store = try memArg(reader) },
-            n(.v128_const) => .{ .v128_const = try v128(reader) },
+            n(.v128_const) => .{ .v128_const = try reader.readI128() },
             n(.i8x16_shuffle) => .{ .i8x16_shuffle = try laneIdxs(reader, allocator) },
             n(.i8x16_swizzle) => .i8x16_swizzle,
             n(.i8x16_splat) => .i8x16_splat,
@@ -596,15 +596,6 @@ pub const Decoder = struct {
         };
     }
 };
-
-fn v128(reader: *BinaryReader) Error!i128 {
-    const buf = try reader.readBytes(16);
-    var val: u128 = 0;
-    for (buf, 0..) |v, i| {
-        val |= @as(u128, v) << (@as(u7, @intCast(i)) * 8);
-    }
-    return @bitCast(val);
-}
 
 fn laneIdxs(reader: *BinaryReader, _: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction.LaneIdx16 {
     const buf = try reader.readBytes(16);
