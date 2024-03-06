@@ -58,6 +58,7 @@ pub fn decodeErrorFromString(str: []const u8) DecodeError {
     if (strcmp(str, "unknown operator")) return E.OtherError; // FIXME
     if (strcmp(str, "unknown type")) return E.OtherError; // FIXME
     if (strcmp(str, "zero byte expected")) return E.ZeroByteExpected;
+    if (strcmp(str, "wrong number of lane literals")) return E.OtherError; // FIXME
 
     std.debug.print("? Unknown validation error \"{s}\"\n", .{str});
     unreachable;

@@ -88,6 +88,9 @@ fn argArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]const
 
 fn argFromJson(json: std.json.Value) !Value {
     const type_ = json.object.get("type").?.string;
+    if (strcmp(type_, "v128"))
+        return try vectorFromJson(json);
+
     const value = json.object.get("value").?.string;
     if (strcmp(type_, "i32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
@@ -128,6 +131,9 @@ fn resultArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]co
 
 fn resultFromJson(json: std.json.Value) !Result {
     const type_ = json.object.get("type").?.string;
+    if (strcmp(type_, "v128"))
+        return .{ .@"const" = try vectorFromJson(json) };
+
     const value = json.object.get("value").?.string;
     if (strcmp(type_, "i32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
@@ -159,6 +165,37 @@ fn resultFromJson(json: std.json.Value) !Result {
         std.debug.print("? Unknown result {s}\n", .{type_});
         unreachable;
     }
+}
+
+fn vectorFromJson(json: std.json.Value) !Value {
+    const lane_type = json.object.get("lane_type").?.string;
+    const arr = json.object.get("value").?.array;
+
+    var val = if (strcmp(lane_type, "i8"))
+        vectorFromJsonNumArray(u8, arr)
+    else if (strcmp(lane_type, "i16"))
+        vectorFromJsonNumArray(u16, arr)
+    else if (strcmp(lane_type, "i32"))
+        vectorFromJsonNumArray(u32, arr)
+    else if (strcmp(lane_type, "i64"))
+        vectorFromJsonNumArray(u64, arr)
+    else if (strcmp(lane_type, "f32"))
+        vectorFromJsonNumArray(u32, arr)
+    else if (strcmp(lane_type, "f64"))
+        vectorFromJsonNumArray(u64, arr)
+    else
+        unreachable;
+
+    return .{ .v128 = try val };
+}
+
+fn vectorFromJsonNumArray(comptime T: type, arr: std.json.Array) !i128 {
+    var val: u128 = 0;
+    for (arr.items, 0..) |v, i| {
+        const p = try std.fmt.parseInt(T, v.string, 10);
+        val |= @as(u128, p) << (@as(u7, @intCast(i)) * @bitSizeOf(T));
+    }
+    return @bitCast(val);
 }
 
 fn actionFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Action {
