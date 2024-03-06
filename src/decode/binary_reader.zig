@@ -34,6 +34,15 @@ pub const BinaryReader = struct {
         return self.buffer[start..self.position];
     }
 
+    pub fn readI128(reader: *BinaryReader) Error!i128 {
+        const buf = try reader.readBytes(16);
+        var val: u128 = 0;
+        for (buf, 0..) |v, i| {
+            val |= @as(u128, v) << (@as(u7, @intCast(i)) * 8);
+        }
+        return @bitCast(val);
+    }
+
     pub fn readU32(self: *Self) error{UnexpectedEndOfBuffer}!u32 {
         return try self.readNumber(u32);
     }

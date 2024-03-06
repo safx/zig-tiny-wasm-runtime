@@ -383,6 +383,16 @@ pub const ModuleLoader = struct {
             n(.global_get) => .{ .global_get = try self.reader.readVarU32() },
             0xd0 => .{ .ref_null = @enumFromInt(try self.reader.readU8()) },
             0xd2 => .{ .ref_func = try self.reader.readVarU32() },
+
+            n(.simd_prefix) => {
+                const s = std.wasm.simdOpcode;
+                const op2 = try self.reader.readVarU32();
+                return switch (op2) {
+                    s(.v128_const) => .{ .v128_const = try self.reader.readI128() },
+                    else => Error.IllegalOpcode,
+                };
+            },
+
             else => return Error.IllegalOpcode,
         };
     }

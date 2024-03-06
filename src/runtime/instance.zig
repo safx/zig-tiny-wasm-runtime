@@ -1477,7 +1477,7 @@ pub fn instractionFromInitExpr(init_expr: types.InitExpression) Instruction {
         .i64_const => |val| .{ .i64_const = val },
         .f32_const => |val| .{ .f32_const = val },
         .f64_const => |val| .{ .f64_const = val },
-        .v128_const => unreachable, // TODO
+        .v128_const => |val| .{ .v128_const = val },
         .ref_null => |ref_type| .{ .ref_null = ref_type },
         .ref_func => |func_idx| .{ .ref_func = func_idx },
         .global_get => |global_idx| .{ .global_get = global_idx },

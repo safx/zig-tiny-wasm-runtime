@@ -535,18 +535,18 @@ pub const ModuleValidator = struct {
             .i64_trunc_sat_f64_u => try cvtOp(u64, f64, type_stack),
 
             // SIMD instructions
-            .v128_load => unreachable,
-            .v128_load8x8_s => unreachable,
-            .v128_load8x8_u => unreachable,
-            .v128_load16x4_s => unreachable,
-            .v128_load16x4_u => unreachable,
-            .v128_load32x2_s => unreachable,
-            .v128_load32x2_u => unreachable,
-            .v128_load8_splat => unreachable,
-            .v128_load16_splat => unreachable,
-            .v128_load32_splat => unreachable,
-            .v128_load64_splat => unreachable,
-            .v128_store => unreachable,
+            .v128_load => |mem_arg| try opLoad(i128, i128, mem_arg, type_stack, c),
+            .v128_load8x8_s => |mem_arg| try opV128LoadNxM(i8, 8, mem_arg, type_stack, c),
+            .v128_load8x8_u => |mem_arg| try opV128LoadNxM(u8, 8, mem_arg, type_stack, c),
+            .v128_load16x4_s => |mem_arg| try opV128LoadNxM(i16, 4, mem_arg, type_stack, c),
+            .v128_load16x4_u => |mem_arg| try opV128LoadNxM(u16, 4, mem_arg, type_stack, c),
+            .v128_load32x2_s => |mem_arg| try opV128LoadNxM(i32, 2, mem_arg, type_stack, c),
+            .v128_load32x2_u => |mem_arg| try opV128LoadNxM(u32, 2, mem_arg, type_stack, c),
+            .v128_load8_splat => |mem_arg| try opV128LoadNSplit(i8, mem_arg, type_stack, c),
+            .v128_load16_splat => |mem_arg| try opV128LoadNSplit(i16, mem_arg, type_stack, c),
+            .v128_load32_splat => |mem_arg| try opV128LoadNSplit(i32, mem_arg, type_stack, c),
+            .v128_load64_splat => |mem_arg| try opV128LoadNSplit(i64, mem_arg, type_stack, c),
+            .v128_store => |mem_arg| try opStore(i128, 128, mem_arg, type_stack, c),
             .v128_const => try type_stack.pushValueType(.v128),
             .i8x16_shuffle => unreachable,
             .i8x16_swizzle => unreachable,
@@ -612,13 +612,13 @@ pub const ModuleValidator = struct {
             .f64x2_le => unreachable,
             .f32x4_ge => unreachable,
             .f64x2_ge => unreachable,
-            .v128_not => unreachable,
-            .v128_and => unreachable,
-            .v128_andnot => unreachable,
-            .v128_or => unreachable,
-            .v128_xor => unreachable,
-            .v128_bitselect => unreachable,
-            .v128_any_true => unreachable,
+            .v128_not => try vvUnOp(type_stack),
+            .v128_and => try vvBinOp(type_stack),
+            .v128_andnot => try vvBinOp(type_stack),
+            .v128_or => try vvBinOp(type_stack),
+            .v128_xor => try vvBinOp(type_stack),
+            .v128_bitselect => try vvTernOp(type_stack),
+            .v128_any_true => try vvTestOp(type_stack),
             .v128_load8_lane => unreachable,
             .v128_load16_lane => unreachable,
             .v128_load32_lane => unreachable,
@@ -816,6 +816,26 @@ inline fn opLoad(comptime T: type, comptime N: type, mem_arg: types.Instruction.
     try type_stack.pushValueType(t);
 }
 
+inline fn opV128LoadNxM(comptime N: type, comptime M: u8, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+    if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8 * M)
+        return Error.NegativeNumberAlignment;
+    try c.checkMem(0);
+
+    try type_stack.popWithCheckingValueType(.i32);
+    const t = valueTypeOf(N);
+    try type_stack.pushValueType(t);
+}
+
+inline fn opV128LoadNSplit(comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+    if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8)
+        return Error.NegativeNumberAlignment;
+    try c.checkMem(0);
+
+    try type_stack.popWithCheckingValueType(.i32);
+    const t = valueTypeOf(N);
+    try type_stack.pushValueType(t);
+}
+
 inline fn opStore(comptime T: type, comptime bit_size: u32, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > bit_size / 8)
         return Error.NegativeNumberAlignment;
@@ -870,6 +890,47 @@ inline fn cvtOp(comptime T2: type, comptime T1: type, type_stack: *TypeStack) Er
     const t2 = valueTypeOf(T2);
     try type_stack.popWithCheckingValueType(t1);
     try type_stack.pushValueType(t2);
+}
+
+inline fn vUnOp(type_stack: *TypeStack) Error!void {
+    try unOp(i128, type_stack);
+}
+
+inline fn vBinOp(type_stack: *TypeStack) Error!void {
+    try binOp(i128, type_stack);
+}
+
+inline fn vTestOp(type_stack: *TypeStack) Error!void {
+    try testOp(i128, type_stack);
+}
+
+inline fn vRelOp(type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.pushValueType(.v128);
+}
+
+inline fn vCvtOp(type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.pushValueType(.i32);
+}
+
+const vvUnOp = vUnOp;
+const vvBinOp = vBinOp;
+
+inline fn vvTernOp(type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.pushValueType(.v128);
+}
+
+const vvTestOp = vTestOp;
+
+inline fn viShiftOp(type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.popWithCheckingValueType(.i32);
+    try type_stack.pushValueType(.i128);
 }
 
 fn validateImport(c: Context, imp: types.Import) Error!void {
@@ -984,6 +1045,8 @@ fn valueTypeOf(comptime ty: type) types.ValueType {
         u64 => .i64,
         f32 => .f32,
         f64 => .f64,
+        i128 => .v128,
+        u128 => .v128,
         else => unreachable,
     };
 }
