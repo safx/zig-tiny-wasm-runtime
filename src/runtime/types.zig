@@ -230,6 +230,8 @@ pub const Value = union(core.ValueType) {
             u64 => .{ .i64 = @bitCast(v) },
             f32 => .{ .f32 = @bitCast(v) },
             f64 => .{ .f64 = @bitCast(v) },
+            i128 => .{ .v128 = v },
+            u128 => .{ .v128 = @bitCast(v) },
             else => @panic("unknown type: " ++ @typeName(@TypeOf(v))),
         };
     }
