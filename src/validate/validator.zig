@@ -220,7 +220,7 @@ pub const ModuleValidator = struct {
             },
             .ref_func => |func_idx| {
                 _ = try c.getFunc(func_idx);
-                _ = try c.checkRef(func_idx);
+                try c.checkRef(func_idx);
                 try type_stack.pushValueType(.func_ref);
             },
 
@@ -702,7 +702,7 @@ fn validateInitExpression(c: Context, init_expr: types.InitExpression, expected_
         },
         .ref_func => |idx| blk: {
             _ = try c.getFunc(idx);
-            _ = try c.checkRef(idx);
+            try c.checkRef(idx);
             break :blk expected_type == .func_ref;
         },
         .global_get => |idx| blk: {

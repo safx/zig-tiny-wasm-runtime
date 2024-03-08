@@ -935,6 +935,7 @@ pub const Instance = struct {
     inline fn opElemDrop(self: *Self, elem_idx: types.ElemIdx) void {
         const module = self.stack.topFrame().module;
         const a = module.elem_addrs[elem_idx];
+        self.allocator.free(self.store.elems.items[a].elem);
         self.store.elems.items[a].elem = &.{};
     }
 
@@ -1131,6 +1132,7 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const a = module.data_addrs[data_idx];
         const data = &self.store.datas.items[a];
+        self.allocator.free(data.data);
         data.data = &.{};
     }
 

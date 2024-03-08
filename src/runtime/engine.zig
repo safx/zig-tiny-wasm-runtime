@@ -30,13 +30,13 @@ pub const Engine = struct {
     }
 
     pub fn getValueFromGlobal(self: *Self, mod_inst: *types.ModuleInst, field_name: []const u8) ?types.Value {
-        const externval = findExternValue(mod_inst, field_name);
-        if (externval != null and externval.? == .global) {
-            const glb = self.instance.store.globals.items[@intCast(externval.?.global)];
-            return glb.value;
-        } else {
-            return null;
+        if (findExternValue(mod_inst, field_name)) |externval| {
+            return switch (externval) {
+                .global => |glb| self.instance.store.globals.items[@intCast(glb)].value,
+                else => null,
+            };
         }
+        return null;
     }
 
     fn findExternValue(mod_inst: *types.ModuleInst, name: []const u8) ?types.ExternalValue {
