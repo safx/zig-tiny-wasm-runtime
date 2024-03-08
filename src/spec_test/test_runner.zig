@@ -14,11 +14,7 @@ pub const SpecTestRunner = struct {
     allocator: std.mem.Allocator,
     verbose_level: u32,
 
-    pub fn new(allocator: std.mem.Allocator, base_dir: []const u8, verbose_level: u8) !Self {
-        var buf: [4096]u8 = undefined;
-        const cwd = std.fs.cwd();
-        try std.os.chdir(try cwd.realpath(base_dir, &buf));
-
+    pub fn new(allocator: std.mem.Allocator, verbose_level: u8) !Self {
         const engine = types.Engine.new(allocator, verbose_level >= 2);
         return .{ .engine = engine, .allocator = allocator, .verbose_level = verbose_level };
     }

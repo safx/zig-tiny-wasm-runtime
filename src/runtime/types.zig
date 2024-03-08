@@ -138,7 +138,7 @@ pub const Stack = struct {
             switch (item) {
                 .value => continue,
                 .label => return,
-                .frame => std.debug.assert(false),
+                .frame => unreachable,
             }
         }
     }

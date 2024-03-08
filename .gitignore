@@ -1,4 +1,7 @@
 *~
 /zig-cache
 /zig-out
-/spec_test
+/spec_test/*.wasm
+/spec_test/*.wat
+/spec_test/*.json
+/spec_test/testsuite

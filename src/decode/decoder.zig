@@ -277,7 +277,7 @@ pub const Decoder = struct {
             n(.i64_extend16_s) => .i64_extend16_s,
             n(.i64_extend32_s) => .i64_extend32_s,
 
-            0xFC => try miscOpcode(reader),
+            n(.misc_prefix) => try miscOpcode(reader),
 
             else => {
                 std.debug.print("?? Unknown opcode: 0x{x}\n", .{op_code});
