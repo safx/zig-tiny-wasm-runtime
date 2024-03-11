@@ -467,8 +467,8 @@ pub const Instance = struct {
             .i32_mul => try self.binOp(i32, opIntMul),
             .i32_div_s => try self.binOp(i32, opIntDivS),
             .i32_div_u => try self.binOp(u32, opIntDivU),
-            .i32_rem_s => try self.binOp(i32, opIntRemS),
-            .i32_rem_u => try self.binOp(u32, opIntRemU),
+            .i32_rem_s => try self.binOp(i32, opIntRem),
+            .i32_rem_u => try self.binOp(u32, opIntRem),
             .i32_and => try self.binOp(i32, opIntAnd),
             .i32_or => try self.binOp(i32, opIntOr),
             .i32_xor => try self.binOp(i32, opIntXor),
@@ -487,8 +487,8 @@ pub const Instance = struct {
             .i64_mul => try self.binOp(i64, opIntMul),
             .i64_div_s => try self.binOp(i64, opIntDivS),
             .i64_div_u => try self.binOp(u64, opIntDivU),
-            .i64_rem_s => try self.binOp(i64, opIntRemS),
-            .i64_rem_u => try self.binOp(u64, opIntRemU),
+            .i64_rem_s => try self.binOp(i64, opIntRem),
+            .i64_rem_u => try self.binOp(u64, opIntRem),
             .i64_and => try self.binOp(i64, opIntAnd),
             .i64_or => try self.binOp(i64, opIntOr),
             .i64_xor => try self.binOp(i64, opIntXor),
@@ -1423,43 +1423,9 @@ fn opIntDivU(comptime T: type, lhs: T, rhs: T) Error!T {
     return @bitCast(res);
 }
 
-fn opIntRemS(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opIntRem(comptime T: type, lhs: T, rhs: T) Error!T {
     if (rhs == 0) return Error.IntegerDivideByZero;
-    if (T == i32) {
-        if (lhs == -2147483648 and rhs == -1) return 0;
-        if (lhs >= 0 and rhs > 0) {
-            return @mod(lhs, rhs);
-        } else {
-            // note: @mod of negative number returns unintended result.
-            //  -  @mod(-2147483647,  1000) == 353 (not -647)
-            //  -  @mod(-2147483647, -1000) -> panic
-            const num: i33 = @intCast(lhs);
-            const den: i33 = @intCast(rhs);
-            const res_tmp = @mod(if (num > 0) num else -num, if (den > 0) den else -den);
-            const res: i32 = @intCast(if (lhs > 0) res_tmp else -res_tmp);
-            return res;
-        }
-    } else {
-        if (lhs == -9223372036854775808 and rhs == -1) return 0;
-        if (lhs >= 0 and rhs > 0) {
-            return @mod(lhs, rhs);
-        } else {
-            // note: @mod of negative number returns unintended result.
-            //  -  @mod(-2147483647,  1000) == 353 (not -647)
-            //  -  @mod(-2147483647, -1000) -> panic
-            const num: i65 = @intCast(lhs);
-            const den: i65 = @intCast(rhs);
-            const res_tmp = @mod(if (num > 0) num else -num, if (den > 0) den else -den);
-            const res: i64 = @intCast(if (lhs > 0) res_tmp else -res_tmp);
-            return res;
-        }
-    }
-}
-
-fn opIntRemU(comptime T: type, lhs: T, rhs: T) Error!T {
-    if (rhs == 0) return Error.IntegerDivideByZero;
-    const res = @mod(lhs, rhs);
-    return @bitCast(res);
+    return @rem(lhs, rhs);
 }
 
 fn opIntAnd(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -1488,33 +1454,16 @@ fn opIntShrU(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opIntRotl(comptime T: type, lhs: T, rhs: T) Error!T {
-    if (T != i32 and T != i64)
-        @compileError("Invalid Number Type");
-
     const UnsignedType = if (T == i32) u32 else u64;
-    const ShiftType = if (T == i32) u5 else u6;
     const num: UnsignedType = @bitCast(lhs);
-    const b = @bitSizeOf(T);
-    const r = @mod(rhs, b);
-    const r1: ShiftType = @intCast(r);
-    const r2: ShiftType = @intCast(@mod(b - r, b));
-    const res = (num << r1) | (num >> r2);
-
+    const res = std.math.rotl(UnsignedType, num, rhs);
     return @bitCast(res);
 }
 
 fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
-    if (T != i32 and T != i64)
-        @compileError("Invalid Number Type");
-
     const UnsignedType = if (T == i32) u32 else u64;
-    const ShiftType = if (T == i32) u5 else u6;
     const num: UnsignedType = @bitCast(lhs);
-    const b = @bitSizeOf(T);
-    const r = @mod(rhs, b);
-    const r1: ShiftType = @intCast(r);
-    const r2: ShiftType = @intCast(@mod(b - r, b));
-    const res = (num >> r1) | (num << r2);
+    const res = std.math.rotr(UnsignedType, num, rhs);
     return @bitCast(res);
 }
 
