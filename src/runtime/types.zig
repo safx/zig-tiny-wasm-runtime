@@ -31,9 +31,7 @@ pub const Stack = struct {
     array: std.ArrayList(StackItem),
 
     pub fn new(allocator: std.mem.Allocator) Stack {
-        return .{
-            .array = std.ArrayList(StackItem).init(allocator),
-        };
+        return .{ .array = std.ArrayList(StackItem).init(allocator) };
     }
 
     inline fn checkStackExhausted(self: Self) Error!void {
@@ -93,42 +91,33 @@ pub const Stack = struct {
         self.array.resize(new_len) catch return CallStackExhausted;
     }
 
-    /// returns the current activation frame
-    pub fn topFrame(self: Self) ActivationFrame {
+    fn find(self: Self, comptime item_type: StackItemType) usize {
         var i = self.array.items.len;
         while (i > 0) : (i -= 1) {
             const item = self.array.items[i - 1];
-            if (item == .frame)
-                return item.frame;
+            if (item == item_type)
+                return i - 1;
         }
         unreachable;
+    }
+
+    /// returns the current activation frame
+    pub fn topFrame(self: Self) ActivationFrame {
+        const idx = self.find(.frame);
+        return self.array.items[idx].frame;
     }
 
     /// updates instraction pointer in the current frame
     pub fn updateTopFrameIp(self: *Self, ip: u32) void {
-        var i = self.array.items.len;
-        while (i > 0) : (i -= 1) {
-            const item = self.array.items[i - 1];
-            if (item == .frame) {
-                self.array.items[i - 1].frame.ip = ip;
-                return;
-            }
-        }
-        unreachable;
+        const idx = self.find(.frame);
+        self.array.items[idx].frame.ip = ip;
     }
 
     /// finds the uppermost label and remove it.
     pub fn popUppermostLabel(self: *Self) ?Label {
-        var len = self.array.items.len;
-        while (len > 0) : (len -= 1) {
-            const pos = len - 1;
-            const item = self.array.items[pos];
-            if (item == .label) {
-                const ret = self.array.orderedRemove(pos);
-                return ret.label;
-            }
-        }
-        return null;
+        const idx = self.find(.label);
+        const ret = self.array.orderedRemove(idx);
+        return ret.label;
     }
 
     /// drops all values until the uppermost label and drop the label as well.
@@ -161,7 +150,13 @@ pub const Stack = struct {
     }
 };
 
-pub const StackItem = union(enum) {
+pub const StackItemType = enum {
+    value,
+    label,
+    frame,
+};
+
+pub const StackItem = union(StackItemType) {
     value: Value,
     label: Label,
     frame: ActivationFrame,

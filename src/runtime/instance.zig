@@ -1550,16 +1550,14 @@ fn opFloatDiv(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opFloatMin(comptime T: type, lhs: T, rhs: T) Error!T {
-    if (std.math.isNan(lhs) or std.math.isNan(rhs)) {
+    if (std.math.isNan(lhs) or std.math.isNan(rhs))
         return canonNan(T);
-    }
     return @min(lhs, rhs);
 }
 
 fn opFloatMax(comptime T: type, lhs: T, rhs: T) Error!T {
-    if (std.math.isNan(lhs) or std.math.isNan(rhs)) {
+    if (std.math.isNan(lhs) or std.math.isNan(rhs))
         return canonNan(T);
-    }
     return @max(lhs, rhs);
 }
 
