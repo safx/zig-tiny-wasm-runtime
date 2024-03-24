@@ -239,6 +239,8 @@ pub const Value = union(core.ValueType) {
     pub fn fromVec(val: anytype) Self {
         const BaseType = @typeInfo(@TypeOf(val)).Vector.child;
         const v: V128 = switch (BaseType) {
+            i8 => .{ .i8 = val },
+            i16 => .{ .i16 = val },
             i32 => .{ .i32 = val },
             i64 => .{ .i64 = val },
             else => @panic("unknown type: " ++ @typeName(@TypeOf(val))),
@@ -281,6 +283,8 @@ pub const Value = union(core.ValueType) {
             u64 => @bitCast(self.i64),
             f32 => @bitCast(self.f32),
             f64 => @bitCast(self.f64),
+            i128 => self.v128,
+            u128 => @bitCast(self.v128),
             else => @panic("unknown type: " ++ @typeName(T)),
         };
     }
@@ -289,6 +293,8 @@ pub const Value = union(core.ValueType) {
         const BaseType = @typeInfo(T).Vector.child;
         const v = V128{ .i128 = self.v128 };
         return switch (BaseType) {
+            i8 => v.i8,
+            i16 => v.i16,
             i32 => v.i32,
             i64 => v.i64,
             else => @panic("unknown type: " ++ @typeName(T)),
