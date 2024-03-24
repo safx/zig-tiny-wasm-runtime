@@ -641,14 +641,14 @@ pub const ModuleValidator = struct {
             .i64x2_neg => unreachable,
             .i8x16_popcnt => unreachable,
             .i16x8_q15mulr_sat_s => unreachable,
-            .i8x16_all_true => unreachable,
-            .i16x8_all_true => unreachable,
-            .i32x4_all_true => unreachable,
-            .i64x2_all_true => unreachable,
-            .i8x16_bitmask => unreachable,
-            .i16x8_bitmask => unreachable,
-            .i32x4_bitmask => unreachable,
-            .i64x2_bitmask => unreachable,
+            .i8x16_all_true => try vTestOp(type_stack),
+            .i16x8_all_true => try vTestOp(type_stack),
+            .i32x4_all_true => try vTestOp(type_stack),
+            .i64x2_all_true => try vTestOp(type_stack),
+            .i8x16_bitmask => try vBitmask(type_stack),
+            .i16x8_bitmask => try vBitmask(type_stack),
+            .i32x4_bitmask => try vBitmask(type_stack),
+            .i64x2_bitmask => try vBitmask(type_stack),
             .i8x16_narrow_i16x8_s => unreachable,
             .i16x8_narrow_i32x4_s => unreachable,
             .i8x16_narrow_i16x8_u => unreachable,
@@ -926,6 +926,7 @@ inline fn vvTernOp(type_stack: *TypeStack) Error!void {
 }
 
 const vvTestOp = vTestOp;
+const vBitmask = vTestOp;
 
 inline fn viShiftOp(type_stack: *TypeStack) Error!void {
     try type_stack.popWithCheckingValueType(.v128);

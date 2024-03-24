@@ -658,7 +658,7 @@ pub const Instance = struct {
             .v128_or => unreachable,
             .v128_xor => unreachable,
             .v128_bitselect => unreachable,
-            .v128_any_true => unreachable,
+            .v128_any_true => try self.vAnyTrue(),
             .v128_load8_lane => unreachable,
             .v128_load16_lane => unreachable,
             .v128_load32_lane => unreachable,
@@ -681,10 +681,10 @@ pub const Instance = struct {
             .i64x2_neg => unreachable,
             .i8x16_popcnt => unreachable,
             .i16x8_q15mulr_sat_s => unreachable,
-            .i8x16_all_true => unreachable,
-            .i16x8_all_true => unreachable,
-            .i32x4_all_true => unreachable,
-            .i64x2_all_true => unreachable,
+            .i8x16_all_true => try self.vAllTrue(@Vector(16, i8)),
+            .i16x8_all_true => try self.vAllTrue(@Vector(8, i16)),
+            .i32x4_all_true => try self.vAllTrue(@Vector(4, i32)),
+            .i64x2_all_true => try self.vAllTrue(@Vector(2, i64)),
             .i8x16_bitmask => unreachable,
             .i16x8_bitmask => unreachable,
             .i32x4_bitmask => unreachable,
@@ -1458,8 +1458,30 @@ pub const Instance = struct {
         const rhs = self.stack.pop().value.asVec(T);
         const lhs = self.stack.pop().value.asVec(T);
         const result = try f(T, lhs, rhs);
-
         try self.stack.pushValueAs(T, result);
+    }
+
+    inline fn vTestOp(self: *Self, comptime T: type, comptime f: fn (type, T) Error!T) Error!void {
+        const value = self.stack.pop().value.asVec(T);
+        const result = f(T, value);
+        try self.stack.pushValueAs(i32, result);
+    }
+
+    inline fn vAllTrue(self: *Self, comptime T: type) Error!void {
+        const vec_len = @typeInfo(T).Vector.len;
+        const zero_vec: T = .{0} ** vec_len;
+
+        const value = self.stack.pop().value.asVec(T);
+        const comp_result = zero_vec != value;
+        const reduce_result = @reduce(.And, comp_result);
+        const result: i32 = if (reduce_result) 1 else 0;
+        try self.stack.pushValueAs(i32, result);
+    }
+
+    inline fn vAnyTrue(self: *Self) Error!void {
+        const value = self.stack.pop().value.as(u128);
+        const result: i32 = if (value == 0) 0 else 1;
+        try self.stack.pushValueAs(i32, result);
     }
 
     /// `expand_F` in wasm spec
