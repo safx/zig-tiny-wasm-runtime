@@ -723,8 +723,8 @@ pub const Instance = struct {
             .i64x2_shr_u => unreachable,
             .i8x16_add => unreachable,
             .i16x8_add => unreachable,
-            .i32x4_add => unreachable,
-            .i64x2_add => unreachable,
+            .i32x4_add => try self.vBinOp(@Vector(4, i32), opIntAdd),
+            .i64x2_add => try self.vBinOp(@Vector(2, i64), opIntAdd),
             .i8x16_add_sat_s => unreachable,
             .i16x8_add_sat_s => unreachable,
             .i8x16_add_sat_u => unreachable,
@@ -1452,6 +1452,14 @@ pub const Instance = struct {
         const value = self.stack.pop().value.as(T1);
         const result: T2 = f(T2, T1, value);
         try self.stack.pushValueAs(T2, result);
+    }
+
+    inline fn vBinOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) Error!void {
+        const rhs = self.stack.pop().value.asVec(T);
+        const lhs = self.stack.pop().value.asVec(T);
+        const result = try f(T, lhs, rhs);
+
+        try self.stack.pushValueAs(T, result);
     }
 
     /// `expand_F` in wasm spec

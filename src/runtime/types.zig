@@ -232,8 +232,19 @@ pub const Value = union(core.ValueType) {
             f64 => .{ .f64 = @bitCast(v) },
             i128 => .{ .v128 = v },
             u128 => .{ .v128 = @bitCast(v) },
-            else => @panic("unknown type: " ++ @typeName(@TypeOf(v))),
+            else => fromVec(v),
         };
+    }
+
+    pub fn fromVec(val: anytype) Self {
+        const BaseType = @typeInfo(@TypeOf(val)).Vector.child;
+        const v: V128 = switch (BaseType) {
+            i32 => .{ .i32 = val },
+            i64 => .{ .i64 = val },
+            else => @panic("unknown type: " ++ @typeName(@TypeOf(val))),
+        };
+
+        return .{ .v128 = v.i128 };
     }
 
     pub fn fromRefValue(val: RefValue) Self {
@@ -274,6 +285,16 @@ pub const Value = union(core.ValueType) {
         };
     }
 
+    pub fn asVec(self: Self, comptime T: type) T {
+        const BaseType = @typeInfo(T).Vector.child;
+        const v = V128{ .i128 = self.v128 };
+        return switch (BaseType) {
+            i32 => v.i32,
+            i64 => v.i64,
+            else => @panic("unknown type: " ++ @typeName(T)),
+        };
+    }
+
     pub inline fn asU32(self: Self) u32 {
         return @bitCast(self.i32);
     }
@@ -289,6 +310,19 @@ pub const Value = union(core.ValueType) {
             .extern_ref => |val| if (val) |v| try writer.print("{}_extref", .{v}) else try writer.print("null_extref", .{}),
         }
     }
+};
+
+const V128 = extern union {
+    u128: u128,
+    i128: i128,
+    u64: [2]u64,
+    i64: [2]i64,
+    u32: [4]u32,
+    i32: [4]i32,
+    u16: [8]u16,
+    i16: [8]i16,
+    u8: [16]u8,
+    i8: [16]i8,
 };
 
 pub const RefValue = union(enum) {
