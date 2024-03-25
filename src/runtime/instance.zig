@@ -652,12 +652,12 @@ pub const Instance = struct {
             .f64x2_le => unreachable,
             .f32x4_ge => unreachable,
             .f64x2_ge => unreachable,
-            .v128_not => unreachable,
-            .v128_and => unreachable,
+            .v128_not => try self.unOp(u128, opNot),
+            .v128_and => try self.binOp(u128, opIntAnd),
             .v128_andnot => unreachable,
-            .v128_or => unreachable,
-            .v128_xor => unreachable,
-            .v128_bitselect => unreachable,
+            .v128_or => try self.binOp(u128, opIntOr),
+            .v128_xor => try self.binOp(u128, opIntXor),
+            .v128_bitselect => try self.vBitSelect(),
             .v128_any_true => try self.vAnyTrue(),
             .v128_load8_lane => unreachable,
             .v128_load16_lane => unreachable,
@@ -1454,6 +1454,12 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T2, result);
     }
 
+    inline fn vUnOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) error{CallStackExhausted}!void {
+        const value = self.stack.pop().value.asVec(T);
+        const result = f(T, value);
+        try self.stack.pushValueAs(T, result);
+    }
+
     inline fn vBinOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) Error!void {
         const rhs = self.stack.pop().value.asVec(T);
         const lhs = self.stack.pop().value.asVec(T);
@@ -1482,6 +1488,14 @@ pub const Instance = struct {
         const value = self.stack.pop().value.as(u128);
         const result: i32 = if (value == 0) 0 else 1;
         try self.stack.pushValueAs(i32, result);
+    }
+
+    inline fn vBitSelect(self: *Self) Error!void {
+        const v3 = self.stack.pop().value.as(u128);
+        const v2 = self.stack.pop().value.as(u128);
+        const v1 = self.stack.pop().value.as(u128);
+        const result = (v1 & v3) | (v2 & ~v3);
+        try self.stack.pushValueAs(u128, result);
     }
 
     inline fn vBitmask(self: *Self, comptime T: type) Error!void {
@@ -1576,6 +1590,10 @@ const FlowControl = union(enum) {
         }
     }
 };
+
+fn opNot(comptime T: type, value: T) T {
+    return ~value;
+}
 
 fn opIntClz(comptime T: type, value: T) T {
     return @clz(value);
