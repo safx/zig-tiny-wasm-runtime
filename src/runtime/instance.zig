@@ -685,10 +685,10 @@ pub const Instance = struct {
             .i16x8_all_true => try self.vAllTrue(@Vector(8, i16)),
             .i32x4_all_true => try self.vAllTrue(@Vector(4, i32)),
             .i64x2_all_true => try self.vAllTrue(@Vector(2, i64)),
-            .i8x16_bitmask => unreachable,
-            .i16x8_bitmask => unreachable,
-            .i32x4_bitmask => unreachable,
-            .i64x2_bitmask => unreachable,
+            .i8x16_bitmask => try self.vBitmask(@Vector(16, i8)),
+            .i16x8_bitmask => try self.vBitmask(@Vector(8, i16)),
+            .i32x4_bitmask => try self.vBitmask(@Vector(4, i32)),
+            .i64x2_bitmask => try self.vBitmask(@Vector(2, i64)),
             .i8x16_narrow_i16x8_s => unreachable,
             .i16x8_narrow_i32x4_s => unreachable,
             .i8x16_narrow_i16x8_u => unreachable,
@@ -1481,6 +1481,20 @@ pub const Instance = struct {
     inline fn vAnyTrue(self: *Self) Error!void {
         const value = self.stack.pop().value.as(u128);
         const result: i32 = if (value == 0) 0 else 1;
+        try self.stack.pushValueAs(i32, result);
+    }
+
+    inline fn vBitmask(self: *Self, comptime T: type) Error!void {
+        const vec_len = @typeInfo(T).Vector.len;
+        const zero_vec: T = .{0} ** vec_len;
+
+        const value = self.stack.pop().value.asVec(T);
+        const comp_result = value >= zero_vec;
+
+        var result: i32 = 0;
+        inline for (0..vec_len) |i| {
+            result |= if (comp_result[i]) 0 else (1 << i);
+        }
         try self.stack.pushValueAs(i32, result);
     }
 
