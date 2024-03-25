@@ -240,9 +240,13 @@ pub const Value = union(core.ValueType) {
         const BaseType = @typeInfo(@TypeOf(val)).Vector.child;
         const v: V128 = switch (BaseType) {
             i8 => .{ .i8 = val },
+            u8 => .{ .u8 = val },
             i16 => .{ .i16 = val },
+            u16 => .{ .u16 = val },
             i32 => .{ .i32 = val },
+            u32 => .{ .u32 = val },
             i64 => .{ .i64 = val },
+            u64 => .{ .u64 = val },
             else => @panic("unknown type: " ++ @typeName(@TypeOf(val))),
         };
 
@@ -294,9 +298,13 @@ pub const Value = union(core.ValueType) {
         const v = V128{ .i128 = self.v128 };
         return switch (BaseType) {
             i8 => v.i8,
+            u8 => v.u8,
             i16 => v.i16,
+            u16 => v.u16,
             i32 => v.i32,
+            u32 => v.u32,
             i64 => v.i64,
+            u64 => v.u64,
             else => @panic("unknown type: " ++ @typeName(T)),
         };
     }
