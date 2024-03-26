@@ -799,10 +799,10 @@ pub const Instance = struct {
             .f64x2_min => unreachable,
             .f32x4_max => unreachable,
             .f64x2_max => unreachable,
-            .f32x4_pmin => unreachable,
-            .f64x2_pmin => unreachable,
-            .f32x4_pmax => unreachable,
-            .f64x2_pmax => unreachable,
+            .f32x4_pmin => try self.vBinOp(@Vector(4, f32), opFpMin),
+            .f64x2_pmin => try self.vBinOp(@Vector(2, f64), opFpMin),
+            .f32x4_pmax => try self.vBinOp(@Vector(4, f32), opFpMax),
+            .f64x2_pmax => try self.vBinOp(@Vector(2, f64), opFpMax),
             .i32x4_trunc_sat_f32x4_s => unreachable,
             .i32x4_trunc_sat_f32x4_u => unreachable,
             .f32x4_convert_i32x4_s => unreachable,
@@ -1793,6 +1793,38 @@ fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
     const num: UnsignedType = @bitCast(lhs);
     const res = std.math.rotr(UnsignedType, num, rhs);
     return @bitCast(res);
+}
+
+fn opFpMin(comptime T: type, lhs: T, rhs: T) Error!T {
+    const vec_len = @typeInfo(T).Vector.len;
+    var result: T = .{0} ** vec_len;
+    inline for (0..vec_len) |i| {
+        const l = lhs[i];
+        const r = rhs[i];
+        result[i] = blk: {
+            if (std.math.isNan(l)) break :blk l;
+            if (std.math.isNan(r)) break :blk l;
+            if (l == 0 and r == 0) break :blk l;
+            break :blk @min(l, r);
+        };
+    }
+    return result;
+}
+
+fn opFpMax(comptime T: type, lhs: T, rhs: T) Error!T {
+    const vec_len = @typeInfo(T).Vector.len;
+    var result: T = .{0} ** vec_len;
+    inline for (0..vec_len) |i| {
+        const l = lhs[i];
+        const r = rhs[i];
+        result[i] = blk: {
+            if (std.math.isNan(l)) break :blk l;
+            if (std.math.isNan(r)) break :blk l;
+            if (l == 0 and r == 0) break :blk l;
+            break :blk @max(l, r);
+        };
+    }
+    return result;
 }
 
 fn opFloatAbs(comptime T: type, value: T) T {
