@@ -640,7 +640,7 @@ pub const Instance = struct {
             .i8x16_ge_u => unreachable,
             .i16x8_ge_u => unreachable,
             .i32x4_ge_u => unreachable,
-            .f32x4_eq => unreachable,
+            .f32x4_eq => try self.vRelOpEx(@Vector(4, f32), opVecFloatEq),
             .f64x2_eq => unreachable,
             .f32x4_ne => unreachable,
             .f64x2_ne => unreachable,
@@ -799,10 +799,10 @@ pub const Instance = struct {
             .f64x2_min => unreachable,
             .f32x4_max => unreachable,
             .f64x2_max => unreachable,
-            .f32x4_pmin => try self.vBinOp(@Vector(4, f32), opFpMin),
-            .f64x2_pmin => try self.vBinOp(@Vector(2, f64), opFpMin),
-            .f32x4_pmax => try self.vBinOp(@Vector(4, f32), opFpMax),
-            .f64x2_pmax => try self.vBinOp(@Vector(2, f64), opFpMax),
+            .f32x4_pmin => try self.vBinOpEx(@Vector(4, f32), opFpMin),
+            .f64x2_pmin => try self.vBinOpEx(@Vector(2, f64), opFpMin),
+            .f32x4_pmax => try self.vBinOpEx(@Vector(4, f32), opFpMax),
+            .f64x2_pmax => try self.vBinOpEx(@Vector(2, f64), opFpMax),
             .i32x4_trunc_sat_f32x4_s => unreachable,
             .i32x4_trunc_sat_f32x4_u => unreachable,
             .f32x4_convert_i32x4_s => unreachable,
@@ -1467,6 +1467,31 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
+    const ChildTypeOf = types.ChildTypeOf;
+    inline fn vBinOpEx(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) Error!ChildTypeOf(T)) Error!void {
+        const rhs = self.stack.pop().value.asVec(T);
+        const lhs = self.stack.pop().value.asVec(T);
+
+        const vec_len = @typeInfo(T).Vector.len;
+        var result: T = .{0} ** vec_len;
+        inline for (0..vec_len) |i| {
+            result[i] = try f(ChildTypeOf(T), lhs[i], rhs[i]);
+        }
+        try self.stack.pushValueAs(T, result);
+    }
+
+    inline fn vRelOpEx(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) bool) Error!void {
+        const rhs = self.stack.pop().value.asVec(T);
+        const lhs = self.stack.pop().value.asVec(T);
+
+        const vec_len = @typeInfo(T).Vector.len;
+        var result: T = .{0} ** vec_len;
+        inline for (0..vec_len) |i| {
+            result[i] = if (f(ChildTypeOf(T), lhs[i], rhs[i])) 1 else 0;
+        }
+        try self.stack.pushValueAs(T, result);
+    }
+
     inline fn vTestOp(self: *Self, comptime T: type, comptime f: fn (type, T) Error!T) Error!void {
         const value = self.stack.pop().value.asVec(T);
         const result = f(T, value);
@@ -1796,35 +1821,17 @@ fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opFpMin(comptime T: type, lhs: T, rhs: T) Error!T {
-    const vec_len = @typeInfo(T).Vector.len;
-    var result: T = .{0} ** vec_len;
-    inline for (0..vec_len) |i| {
-        const l = lhs[i];
-        const r = rhs[i];
-        result[i] = blk: {
-            if (std.math.isNan(l)) break :blk l;
-            if (std.math.isNan(r)) break :blk l;
-            if (l == 0 and r == 0) break :blk l;
-            break :blk @min(l, r);
-        };
-    }
-    return result;
+    if (std.math.isNan(lhs)) return lhs;
+    if (std.math.isNan(rhs)) return lhs;
+    if (lhs == 0 and rhs == 0) return lhs;
+    return @min(lhs, rhs);
 }
 
 fn opFpMax(comptime T: type, lhs: T, rhs: T) Error!T {
-    const vec_len = @typeInfo(T).Vector.len;
-    var result: T = .{0} ** vec_len;
-    inline for (0..vec_len) |i| {
-        const l = lhs[i];
-        const r = rhs[i];
-        result[i] = blk: {
-            if (std.math.isNan(l)) break :blk l;
-            if (std.math.isNan(r)) break :blk l;
-            if (l == 0 and r == 0) break :blk l;
-            break :blk @max(l, r);
-        };
-    }
-    return result;
+    if (std.math.isNan(lhs)) return lhs;
+    if (std.math.isNan(rhs)) return lhs;
+    if (lhs == 0 and rhs == 0) return lhs;
+    return @max(lhs, rhs);
 }
 
 fn opFloatAbs(comptime T: type, value: T) T {
@@ -1859,7 +1866,7 @@ fn opFloatNearest(comptime T: type, value: T) T {
     return val + @as(T, if (val >= 0) 1.0 else -1.0);
 }
 
-fn opFloatEq(comptime T: type, lhs: T, rhs: T) bool {
+fn opFloatEq(comptime T: type, lhs: T, rhs: T) i32 {
     if (std.math.isNan(lhs) or std.math.isNan(rhs))
         return false;
     if (lhs == 0 and rhs == 0)
