@@ -247,6 +247,8 @@ pub const Value = union(core.ValueType) {
             u32 => .{ .u32 = val },
             i64 => .{ .i64 = val },
             u64 => .{ .u64 = val },
+            f32 => .{ .f32 = val },
+            f64 => .{ .f64 = val },
             else => @panic("unknown type: " ++ @typeName(@TypeOf(val))),
         };
 
@@ -305,6 +307,8 @@ pub const Value = union(core.ValueType) {
             u32 => v.u32,
             i64 => v.i64,
             u64 => v.u64,
+            f32 => v.f32,
+            f64 => v.f64,
             else => @panic("unknown type: " ++ @typeName(T)),
         };
     }
@@ -337,6 +341,8 @@ const V128 = extern union {
     i16: [8]i16,
     u8: [16]u8,
     i8: [16]i8,
+    f64: [2]f64,
+    f32: [4]f32,
 };
 
 pub const RefValue = union(enum) {
