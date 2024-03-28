@@ -575,7 +575,7 @@ pub const Instance = struct {
             .i64_trunc_sat_f64_u => try self.cvtOp(u64, f64, opTruncSat),
 
             // SIMD instructions
-            .v128_load => unreachable,
+            .v128_load => |mem_arg| try self.opLoad(i128, i128, mem_arg),
             .v128_load8x8_s => unreachable,
             .v128_load8x8_u => unreachable,
             .v128_load16x4_s => unreachable,
