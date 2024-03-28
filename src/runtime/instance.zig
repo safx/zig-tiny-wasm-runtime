@@ -1179,10 +1179,10 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-relop-mathit-relop
-    inline fn relOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) i32) error{CallStackExhausted}!void {
+    inline fn relOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) bool) error{CallStackExhausted}!void {
         const rhs: T = self.stack.pop().value.as(T);
         const lhs: T = self.stack.pop().value.as(T);
-        const result = f(T, lhs, rhs);
+        const result: i32 = if (f(T, lhs, rhs)) 1 else 0;
         try self.stack.pushValueAs(i32, result);
     }
 
@@ -1372,28 +1372,28 @@ fn opIntEqz(comptime T: type, value: T) i32 {
     return if (value == 0) 1 else 0;
 }
 
-fn opIntEq(comptime T: type, lhs: T, rhs: T) i32 {
-    return if (lhs == rhs) 1 else 0;
+fn opIntEq(comptime T: type, lhs: T, rhs: T) bool {
+    return lhs == rhs;
 }
 
-fn opIntNe(comptime T: type, lhs: T, rhs: T) i32 {
-    return if (lhs != rhs) 1 else 0;
+fn opIntNe(comptime T: type, lhs: T, rhs: T) bool {
+    return lhs != rhs;
 }
 
-fn opIntLt(comptime T: type, lhs: T, rhs: T) i32 {
-    return if (lhs < rhs) 1 else 0;
+fn opIntLt(comptime T: type, lhs: T, rhs: T) bool {
+    return lhs < rhs;
 }
 
-fn opIntGt(comptime T: type, lhs: T, rhs: T) i32 {
-    return if (lhs > rhs) 1 else 0;
+fn opIntGt(comptime T: type, lhs: T, rhs: T) bool {
+    return lhs > rhs;
 }
 
-fn opIntLe(comptime T: type, lhs: T, rhs: T) i32 {
-    return if (lhs <= rhs) 1 else 0;
+fn opIntLe(comptime T: type, lhs: T, rhs: T) bool {
+    return lhs <= rhs;
 }
 
-fn opIntGe(comptime T: type, lhs: T, rhs: T) i32 {
-    return if (lhs >= rhs) 1 else 0;
+fn opIntGe(comptime T: type, lhs: T, rhs: T) bool {
+    return lhs >= rhs;
 }
 
 fn opIntAdd(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -1499,38 +1499,37 @@ fn opFloatNearest(comptime T: type, value: T) T {
     return val + @as(T, if (val >= 0) 1.0 else -1.0);
 }
 
-fn opFloatEq(comptime T: type, lhs: T, rhs: T) i32 {
+fn opFloatEq(comptime T: type, lhs: T, rhs: T) bool {
     if (std.math.isNan(lhs) or std.math.isNan(rhs))
-        return 0;
+        return false;
     if (lhs == 0 and rhs == 0)
-        return 1;
+        return true;
 
-    return if (lhs == rhs) 1 else 0;
+    return lhs == rhs;
 }
 
-fn opFloatNe(comptime T: type, lhs: T, rhs: T) i32 {
-    if (std.math.isNan(lhs) or std.math.isNan(rhs))
-        return 1;
-    if (lhs == 0 and rhs == 0)
-        return 0;
-
-    return if (lhs == rhs) 0 else 1;
+fn opFloatNe(comptime T: type, lhs: T, rhs: T) bool {
+    return !opFloatEq(T, lhs, rhs);
 }
 
-fn opFloatLt(comptime T: type, lhs: T, rhs: T) i32 {
-    return if (lhs < rhs) 1 else 0;
+fn opFloatLt(comptime T: type, lhs: T, rhs: T) bool {
+    return lhs < rhs;
 }
 
-fn opFloatGt(comptime T: type, lhs: T, rhs: T) i32 {
-    return if (lhs > rhs) 1 else 0;
+fn opFloatGt(comptime T: type, lhs: T, rhs: T) bool {
+    return lhs > rhs;
 }
 
-fn opFloatLe(comptime T: type, lhs: T, rhs: T) i32 {
-    return if (lhs <= rhs) 1 else 0;
+fn opFloatLe(comptime T: type, lhs: T, rhs: T) bool {
+    return lhs <= rhs;
 }
 
-fn opFloatGe(comptime T: type, lhs: T, rhs: T) i32 {
-    return if (lhs >= rhs) 1 else 0;
+fn opFloatGe(comptime T: type, lhs: T, rhs: T) bool {
+    return lhs >= rhs;
+}
+
+fn opVecFloatEq(comptime T: type, lhs: T, rhs: T) bool {
+    return lhs == rhs;
 }
 
 fn opFloatAdd(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -1574,20 +1573,20 @@ fn canonNan(comptime T: type) T {
 
 test opFloatEq {
     const expectEqual = std.testing.expectEqual;
-    try expectEqual(@as(i32, 0), opFloatEq(f32, std.math.nan_f32, 1));
-    try expectEqual(@as(i32, 0), opFloatEq(f32, 100, std.math.nan_f32));
-    try expectEqual(@as(i32, 1), opFloatEq(f32, -0.0, -0.0));
-    try expectEqual(@as(i32, 1), opFloatEq(f32, 1.0, 1.0));
-    try expectEqual(@as(i32, 0), opFloatEq(f32, 1.0, 0.0));
+    try expectEqual(false, opFloatEq(f32, std.math.nan_f32, 1));
+    try expectEqual(false, opFloatEq(f32, 100, std.math.nan_f32));
+    try expectEqual(true, opFloatEq(f32, -0.0, -0.0));
+    try expectEqual(true, opFloatEq(f32, 1.0, 1.0));
+    try expectEqual(false, opFloatEq(f32, 1.0, 0.0));
 }
 
 test opFloatNe {
     const expectEqual = std.testing.expectEqual;
-    try expectEqual(@as(i32, 1), opFloatNe(f32, std.math.nan_f32, 1));
-    try expectEqual(@as(i32, 1), opFloatNe(f32, 100, std.math.nan_f32));
-    try expectEqual(@as(i32, 0), opFloatNe(f32, -0.0, -0.0));
-    try expectEqual(@as(i32, 0), opFloatNe(f32, 1.0, 1.0));
-    try expectEqual(@as(i32, 1), opFloatNe(f32, 1.0, 0.0));
+    try expectEqual(true, opFloatNe(f32, std.math.nan_f32, 1));
+    try expectEqual(true, opFloatNe(f32, 100, std.math.nan_f32));
+    try expectEqual(false, opFloatNe(f32, -0.0, -0.0));
+    try expectEqual(false, opFloatNe(f32, 1.0, 1.0));
+    try expectEqual(true, opFloatNe(f32, 1.0, 0.0));
 }
 
 test opExtend {
