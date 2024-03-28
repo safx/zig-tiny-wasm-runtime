@@ -1,3 +1,4 @@
+const std = @import("std");
 const utils = @import("./utils.zig");
 const Error = @import("./errors.zig").Error;
 
@@ -36,11 +37,8 @@ pub const BinaryReader = struct {
 
     pub fn readI128(reader: *BinaryReader) Error!i128 {
         const buf = try reader.readBytes(16);
-        var val: u128 = 0;
-        for (buf, 0..) |v, i| {
-            val |= @as(u128, v) << (@as(u7, @intCast(i)) * 8);
-        }
-        return @bitCast(val);
+        var val: i128 = std.mem.readInt(i128, @as(*[16]u8, @ptrCast(@constCast(&buf[0]))), .Little);
+        return val;
     }
 
     pub fn readU32(self: *Self) error{UnexpectedEndOfBuffer}!u32 {
@@ -141,7 +139,6 @@ inline fn checkIntegerTooLarge(comptime NumType: type, byte: u8) (error{IntegerR
 }
 
 test BinaryReader {
-    const std = @import("std");
     const expectEqual = std.testing.expectEqual;
 
     {
