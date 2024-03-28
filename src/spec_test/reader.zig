@@ -89,7 +89,7 @@ fn argArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]const
 fn argFromJson(json: std.json.Value) !Value {
     const type_ = json.object.get("type").?.string;
     if (strcmp(type_, "v128"))
-        return try vectorFromJson(json);
+        return try vectorArgFromJson(json);
 
     const value = json.object.get("value").?.string;
     if (strcmp(type_, "i32")) {
@@ -120,6 +120,38 @@ fn argFromJson(json: std.json.Value) !Value {
     }
 }
 
+fn vectorArgFromJson(json: std.json.Value) !Value {
+    const lane_type = json.object.get("lane_type").?.string;
+    const arr = json.object.get("value").?.array;
+
+    var val = if (strcmp(lane_type, "i8"))
+        vectorArgFromJsonArray(u8, arr)
+    else if (strcmp(lane_type, "i16"))
+        vectorArgFromJsonArray(u16, arr)
+    else if (strcmp(lane_type, "i32"))
+        vectorArgFromJsonArray(u32, arr)
+    else if (strcmp(lane_type, "i64"))
+        vectorArgFromJsonArray(u64, arr)
+    else if (strcmp(lane_type, "f32"))
+        vectorArgFromJsonArray(u32, arr)
+    else if (strcmp(lane_type, "f64"))
+        vectorArgFromJsonArray(u64, arr)
+    else
+        unreachable;
+
+    return .{ .v128 = try val };
+}
+
+fn vectorArgFromJsonArray(comptime T: type, arr: std.json.Array) !i128 {
+    var val: u128 = 0;
+
+    for (arr.items, 0..) |v, i| {
+        const p = try std.fmt.parseInt(T, v.string, 10);
+        val |= @as(u128, p) << (@as(u7, @intCast(i)) * @bitSizeOf(T));
+    }
+    return @bitCast(val);
+}
+
 fn resultArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]const Result {
     var array = std.ArrayList(Result).init(allocator);
     for (json.array.items) |arg_json| {
@@ -132,70 +164,83 @@ fn resultArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]co
 fn resultFromJson(json: std.json.Value) !Result {
     const type_ = json.object.get("type").?.string;
     if (strcmp(type_, "v128"))
-        return .{ .@"const" = try vectorFromJson(json) };
+        return try vectorFromJson(json);
 
     const value = json.object.get("value").?.string;
     if (strcmp(type_, "i32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
-        return .{ .@"const" = .{ .i32 = @bitCast(num) } };
+        return .{ .i32 = @bitCast(num) };
     } else if (strcmp(type_, "i64")) {
         const num = try std.fmt.parseInt(u64, value, 10);
-        return .{ .@"const" = .{ .i64 = @bitCast(num) } };
+        return .{ .i64 = @bitCast(num) };
     } else if (strcmp(type_, "f32")) {
-        if (std.mem.eql(u8, "nan:canonical", value))
-            return .f32_nan_canonical;
-        if (std.mem.eql(u8, "nan:arithmetic", value))
-            return .f32_nan_arithmetic;
-        const num = try std.fmt.parseInt(u32, value, 10);
-        return .{ .@"const" = .{ .f32 = num } };
+        return .{ .f32 = try floatFromJson(u32, value) };
     } else if (strcmp(type_, "f64")) {
-        if (std.mem.eql(u8, "nan:canonical", value))
-            return .f64_nan_canonical;
-        if (std.mem.eql(u8, "nan:arithmetic", value))
-            return .f64_nan_arithmetic;
-        const num = try std.fmt.parseInt(u64, value, 10);
-        return .{ .@"const" = .{ .f64 = num } };
+        return .{ .f64 = try floatFromJson(u64, value) };
     } else if (strcmp(type_, "externref")) {
         const num: ?types.ExternAddr = if (strcmp(value, "null")) null else try std.fmt.parseInt(types.ExternAddr, value, 10);
-        return .{ .@"const" = .{ .extern_ref = num } };
+        return .{ .extern_ref = num };
     } else if (strcmp(type_, "funcref")) {
         const num: ?types.FuncAddr = if (strcmp(value, "null")) null else try std.fmt.parseInt(types.FuncAddr, value, 10);
-        return .{ .@"const" = .{ .func_ref = num } };
+        return .{ .func_ref = num };
     } else {
         std.debug.print("? Unknown result {s}\n", .{type_});
         unreachable;
     }
 }
 
-fn vectorFromJson(json: std.json.Value) !Value {
+fn vectorFromJson(json: std.json.Value) !Result {
     const lane_type = json.object.get("lane_type").?.string;
     const arr = json.object.get("value").?.array;
 
-    var val = if (strcmp(lane_type, "i8"))
-        vectorFromJsonNumArray(u8, arr)
-    else if (strcmp(lane_type, "i16"))
-        vectorFromJsonNumArray(u16, arr)
-    else if (strcmp(lane_type, "i32"))
-        vectorFromJsonNumArray(u32, arr)
-    else if (strcmp(lane_type, "i64"))
-        vectorFromJsonNumArray(u64, arr)
-    else if (strcmp(lane_type, "f32"))
-        vectorFromJsonNumArray(u32, arr)
-    else if (strcmp(lane_type, "f64"))
-        vectorFromJsonNumArray(u64, arr)
-    else
-        unreachable;
+    std.debug.print("{s} {any}\n\n", .{ lane_type, arr });
 
-    return .{ .v128 = try val };
+    if (strcmp(lane_type, "i8"))
+        return .{ .v128 = try vectorArgFromJsonArray(u8, arr) };
+    if (strcmp(lane_type, "i16"))
+        return .{ .v128 = try vectorArgFromJsonArray(u16, arr) };
+    if (strcmp(lane_type, "i32"))
+        return .{ .v128 = try vectorArgFromJsonArray(u32, arr) };
+    if (strcmp(lane_type, "i64"))
+        return .{ .v128 = try vectorArgFromJsonArray(u64, arr) };
+    if (strcmp(lane_type, "f32"))
+        return try vectorFloatFromJsonArray(u32, arr);
+    if (strcmp(lane_type, "f64"))
+        return try vectorFloatFromJsonArray(u64, arr);
+
+    unreachable;
 }
 
-fn vectorFromJsonNumArray(comptime T: type, arr: std.json.Array) !i128 {
-    var val: u128 = 0;
+fn vectorFloatFromJsonArray(comptime T: type, arr: std.json.Array) !Result {
+    const len = 16 / @sizeOf(T);
+    var val: [len]types.FloatType(T) = .{} ** len;
+    std.debug.assert(arr.items.len == len);
+
     for (arr.items, 0..) |v, i| {
-        const p = try std.fmt.parseInt(T, v.string, 10);
-        val |= @as(u128, p) << (@as(u7, @intCast(i)) * @bitSizeOf(T));
+        val[i] = try floatFromJson(T, v.string);
     }
-    return @bitCast(val);
+
+    var include_nan = false;
+    for (val) |v| {
+        include_nan = include_nan or v == .nan_arithmetic or v == .nan_canonical;
+    }
+    if (!include_nan) {
+        return .{ .v128 = try vectorArgFromJsonArray(T, arr) };
+    }
+
+    return switch (T) {
+        u32 => .{ .vec_f32 = val },
+        u64 => .{ .vec_f64 = val },
+        else => unreachable,
+    };
+}
+
+fn floatFromJson(comptime T: type, value: []const u8) !types.FloatType(T) {
+    if (std.mem.eql(u8, "nan:canonical", value))
+        return .nan_canonical;
+    if (std.mem.eql(u8, "nan:arithmetic", value))
+        return .nan_arithmetic;
+    return .{ .value = try std.fmt.parseInt(T, value, 10) };
 }
 
 fn actionFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Action {

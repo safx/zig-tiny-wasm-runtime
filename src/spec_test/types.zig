@@ -47,7 +47,7 @@ pub const Action = union(enum) {
     }
 };
 
-pub const Result = union(enum) {
+pub const ResultOld = union(enum) {
     @"const": runtime.Value,
     //
     f32_nan_canonical,
@@ -62,6 +62,31 @@ pub const Result = union(enum) {
         }
     }
 };
+
+pub const Result = union(enum) {
+    const Self = @This();
+    i32: i32,
+    i64: i64,
+    f32: FloatType(u32),
+    f64: FloatType(u64),
+
+    func_ref: ?runtime.FuncAddr,
+    extern_ref: ?runtime.ExternAddr,
+
+    v128: i128, // normal vector
+
+    // vector including nan
+    vec_f32: [4]FloatType(u32),
+    vec_f64: [2]FloatType(u64),
+};
+
+pub fn FloatType(comptime T: type) type {
+    return union(enum) {
+        value: T,
+        nan_canonical,
+        nan_arithmetic,
+    };
+}
 
 pub const ActionCommandArg = struct {
     line: u32,

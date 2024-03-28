@@ -155,13 +155,27 @@ fn getFunctionByName(module: *types.ModuleInst, func_name: []const u8) error{Exp
 }
 
 fn checkReturnValue(expected: types.Result, result: types.Value) bool {
-    switch (expected) {
-        .@"const" => |exp| return valueEquals(exp, result),
-        .f32_nan_arithmetic => return isArithmeticNanF32(result.f32),
-        .f32_nan_canonical => return isCanonicalNanF32(result.f32),
-        .f64_nan_arithmetic => return isArithmeticNanF64(result.f64),
-        .f64_nan_canonical => return isCanonicalNanF64(result.f64),
-    }
+    return switch (expected) {
+        .i32 => |val| val == result.i32,
+        .i64 => |val| val == result.i64,
+        .f32 => |val| switch (val) {
+            .value => |v| v == result.f32,
+            .nan_canonical => isCanonicalNanF32(result.f32),
+            .nan_arithmetic => isArithmeticNanF32(result.f32),
+        },
+        .f64 => |val| switch (val) {
+            .value => |v| v == result.f64,
+            .nan_canonical => isCanonicalNanF64(result.f64),
+            .nan_arithmetic => isArithmeticNanF64(result.f64),
+        },
+
+        .func_ref => |val| val == result.func_ref,
+        .extern_ref => |val| val == result.extern_ref,
+
+        .v128 => |val| val == result.v128,
+        .vec_f32 => unreachable,
+        .vec_f64 => unreachable,
+    };
 }
 
 fn valueEquals(expected: types.Value, result: types.Value) bool {
