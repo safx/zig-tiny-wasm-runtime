@@ -20,16 +20,7 @@ pub fn refTypeFromNum(byte: u8) ?types.RefType {
     };
 }
 
-pub fn safeNumCast(comptime T: type, num_buffer: []const u8) T {
-    const addr = @intFromPtr(&num_buffer[0]);
-    if (addr % @alignOf(T) == 0) {
-        const num_p: *const T = @ptrFromInt(addr);
-        return num_p.*;
-    } else {
-        // copy to buffer for avoiding `panic: incorrect alignment`
-        var buffer: [@sizeOf(T)]u8 align(@alignOf(T)) = undefined;
-        std.mem.copyForwards(u8, &buffer, num_buffer);
-        const num_p: *const T = @alignCast(@ptrCast(&buffer));
-        return num_p.*;
-    }
+pub fn safeNumCast(comptime T: type, buffer: []const u8) T {
+    const p: *const [@sizeOf(T)]u8 = @ptrCast(&buffer[0]);
+    return @bitCast(p.*);
 }
