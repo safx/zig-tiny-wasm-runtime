@@ -640,18 +640,18 @@ pub const Instance = struct {
             .i8x16_ge_u => unreachable,
             .i16x8_ge_u => unreachable,
             .i32x4_ge_u => unreachable,
-            .f32x4_eq => try self.vRelOpEx(@Vector(4, f32), opVecFloatEq),
-            .f64x2_eq => unreachable,
-            .f32x4_ne => unreachable,
-            .f64x2_ne => unreachable,
-            .f32x4_lt => unreachable,
-            .f64x2_lt => unreachable,
-            .f32x4_gt => unreachable,
-            .f64x2_gt => unreachable,
-            .f32x4_le => unreachable,
-            .f64x2_le => unreachable,
-            .f32x4_ge => unreachable,
-            .f64x2_ge => unreachable,
+            .f32x4_eq => try self.vRelOpEx(@Vector(4, f32), opFloatEq),
+            .f64x2_eq => try self.vRelOpEx(@Vector(2, f64), opFloatEq),
+            .f32x4_ne => try self.vRelOpEx(@Vector(4, f32), opFloatNe),
+            .f64x2_ne => try self.vRelOpEx(@Vector(2, f64), opFloatNe),
+            .f32x4_lt => try self.vRelOpEx(@Vector(4, f32), opFloatLt),
+            .f64x2_lt => try self.vRelOpEx(@Vector(2, f64), opFloatLt),
+            .f32x4_gt => try self.vRelOpEx(@Vector(4, f32), opFloatGt),
+            .f64x2_gt => try self.vRelOpEx(@Vector(2, f64), opFloatGt),
+            .f32x4_le => try self.vRelOpEx(@Vector(4, f32), opFloatLe),
+            .f64x2_le => try self.vRelOpEx(@Vector(2, f64), opFloatLe),
+            .f32x4_ge => try self.vRelOpEx(@Vector(4, f32), opFloatGe),
+            .f64x2_ge => try self.vRelOpEx(@Vector(2, f64), opFloatGe),
             .v128_not => try self.unOp(u128, opNot),
             .v128_and => try self.binOp(u128, opIntAnd),
             .v128_andnot => unreachable,
@@ -1485,11 +1485,14 @@ pub const Instance = struct {
         const lhs = self.stack.pop().value.asVec(T);
 
         const vec_len = @typeInfo(T).Vector.len;
-        var result: T = .{0} ** vec_len;
+        const I = IntOfBitSizeOf(ChildTypeOf(T));
+        const R = @Vector(vec_len, I);
+        var result: R = .{0} ** vec_len;
         inline for (0..vec_len) |i| {
-            result[i] = if (f(ChildTypeOf(T), lhs[i], rhs[i])) 1 else 0;
+            result[i] = if (f(ChildTypeOf(T), lhs[i], rhs[i])) ~@as(I, 0) else 0;
         }
-        try self.stack.pushValueAs(T, result);
+
+        try self.stack.pushValueAs(R, result);
     }
 
     inline fn vTestOp(self: *Self, comptime T: type, comptime f: fn (type, T) Error!T) Error!void {
@@ -1835,7 +1838,7 @@ fn opFpMax(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opFloatAbs(comptime T: type, value: T) T {
-    return @fabs(value);
+    return std.math.fabs(value);
 }
 
 fn opFloatNeg(comptime T: type, value: T) T {
@@ -1866,7 +1869,7 @@ fn opFloatNearest(comptime T: type, value: T) T {
     return val + @as(T, if (val >= 0) 1.0 else -1.0);
 }
 
-fn opFloatEq(comptime T: type, lhs: T, rhs: T) i32 {
+fn opFloatEq(comptime T: type, lhs: T, rhs: T) bool {
     if (std.math.isNan(lhs) or std.math.isNan(rhs))
         return false;
     if (lhs == 0 and rhs == 0)
@@ -1893,10 +1896,6 @@ fn opFloatLe(comptime T: type, lhs: T, rhs: T) bool {
 
 fn opFloatGe(comptime T: type, lhs: T, rhs: T) bool {
     return lhs >= rhs;
-}
-
-fn opVecFloatEq(comptime T: type, lhs: T, rhs: T) bool {
-    return lhs == rhs;
 }
 
 fn opFloatAdd(comptime T: type, lhs: T, rhs: T) Error!T {
@@ -1936,6 +1935,16 @@ fn canonNan(comptime T: type) T {
     std.debug.assert(T == f64 or T == f32);
     const v = if (T == f64) @as(u64, 0x7ff8_0000_0000_0000) else @as(u32, 0x7fc0_0000);
     return @bitCast(v);
+}
+
+fn IntOfBitSizeOf(comptime T: type) type {
+    return switch (@bitSizeOf(T)) {
+        8 => u8,
+        16 => u16,
+        32 => u32,
+        64 => u64,
+        else => unreachable,
+    };
 }
 
 test opFloatEq {
