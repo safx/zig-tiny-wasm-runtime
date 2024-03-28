@@ -971,20 +971,26 @@ pub const Instance = struct {
         const mem = &self.store.mems.items[a];
 
         // change to integer type of same size to operate bit shift
-        const BitType = if (@bitSizeOf(T) == 64) u64 else if (@bitSizeOf(T) == 32) u32 else unreachable;
-        const c: BitType = @bitCast(self.stack.pop().value.as(T));
+        const IntType = if (@bitSizeOf(T) == 64) u64 else if (@bitSizeOf(T) == 32) u32 else unreachable;
+        const ci: IntType = @bitCast(self.stack.pop().value.as(T));
+        const DestType = switch (bit_size) {
+            8 => u8,
+            16 => u16,
+            32 => u32,
+            64 => u64,
+            else => unreachable,
+        };
+        const c: DestType = @truncate(ci);
+
         const i: u32 = self.stack.pop().value.asU32();
-
         const ea: u32 = i + mem_arg.offset;
-        const byte_size = bit_size / 8;
 
+        const byte_size = bit_size / 8;
         const ea_plus_byte_size = @addWithOverflow(ea, byte_size);
         if (ea_plus_byte_size[1] == 1 or ea_plus_byte_size[0] > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        inline for (0..byte_size) |idx| {
-            mem.data[ea + idx] = @intCast((c >> idx * 8) & 0xff);
-        }
+        std.mem.writeInt(DestType, @as(*[byte_size]u8, @ptrCast(&mem.data[ea])), c, .Little);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-size
