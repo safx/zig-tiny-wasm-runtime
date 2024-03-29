@@ -781,28 +781,28 @@ pub const Instance = struct {
             .i16x8_extmul_high_i8x16_u => unreachable,
             .i32x4_extmul_high_i16x8_u => unreachable,
             .i64x2_extmul_high_i32x4_u => unreachable,
-            .f32x4_abs => unreachable,
-            .f64x2_abs => unreachable,
-            .f32x4_neg => unreachable,
-            .f64x2_neg => unreachable,
-            .f32x4_sqrt => unreachable,
-            .f64x2_sqrt => unreachable,
-            .f32x4_add => unreachable,
-            .f64x2_add => unreachable,
-            .f32x4_sub => unreachable,
-            .f64x2_sub => unreachable,
-            .f32x4_mul => unreachable,
-            .f64x2_mul => unreachable,
-            .f32x4_div => unreachable,
-            .f64x2_div => unreachable,
-            .f32x4_min => unreachable,
-            .f64x2_min => unreachable,
-            .f32x4_max => unreachable,
-            .f64x2_max => unreachable,
-            .f32x4_pmin => try self.vBinOpEx(@Vector(4, f32), opFpMin),
-            .f64x2_pmin => try self.vBinOpEx(@Vector(2, f64), opFpMin),
-            .f32x4_pmax => try self.vBinOpEx(@Vector(4, f32), opFpMax),
-            .f64x2_pmax => try self.vBinOpEx(@Vector(2, f64), opFpMax),
+            .f32x4_abs => try self.vUnOp(@Vector(4, f32), opFloatAbs),
+            .f64x2_abs => try self.vUnOp(@Vector(2, f64), opFloatAbs),
+            .f32x4_neg => try self.vUnOp(@Vector(4, f32), opFloatNeg),
+            .f64x2_neg => try self.vUnOp(@Vector(2, f64), opFloatNeg),
+            .f32x4_sqrt => try self.vUnOp(@Vector(4, f32), opFloatSqrt),
+            .f64x2_sqrt => try self.vUnOp(@Vector(2, f64), opFloatSqrt),
+            .f32x4_add => try self.vBinOp(@Vector(4, f32), opFloatAdd),
+            .f64x2_add => try self.vBinOp(@Vector(2, f64), opFloatAdd),
+            .f32x4_sub => try self.vBinOp(@Vector(4, f32), opFloatSub),
+            .f64x2_sub => try self.vBinOp(@Vector(2, f64), opFloatSub),
+            .f32x4_mul => try self.vBinOp(@Vector(4, f32), opFloatMul),
+            .f64x2_mul => try self.vBinOp(@Vector(2, f64), opFloatMul),
+            .f32x4_div => try self.vBinOp(@Vector(4, f32), opFloatDiv),
+            .f64x2_div => try self.vBinOp(@Vector(2, f64), opFloatDiv),
+            .f32x4_min => try self.vBinOpEx(@Vector(4, f32), opFloatMin),
+            .f64x2_min => try self.vBinOpEx(@Vector(2, f64), opFloatMin),
+            .f32x4_max => try self.vBinOpEx(@Vector(4, f32), opFloatMax),
+            .f64x2_max => try self.vBinOpEx(@Vector(2, f64), opFloatMax),
+            .f32x4_pmin => try self.vBinOpEx(@Vector(4, f32), opVecFloatMin),
+            .f64x2_pmin => try self.vBinOpEx(@Vector(2, f64), opVecFloatMin),
+            .f32x4_pmax => try self.vBinOpEx(@Vector(4, f32), opVecFloatMax),
+            .f64x2_pmax => try self.vBinOpEx(@Vector(2, f64), opVecFloatMax),
             .i32x4_trunc_sat_f32x4_s => unreachable,
             .i32x4_trunc_sat_f32x4_u => unreachable,
             .f32x4_convert_i32x4_s => unreachable,
@@ -1823,14 +1823,14 @@ fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
     return @bitCast(res);
 }
 
-fn opFpMin(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opVecFloatMin(comptime T: type, lhs: T, rhs: T) Error!T {
     if (std.math.isNan(lhs)) return lhs;
     if (std.math.isNan(rhs)) return lhs;
     if (lhs == 0 and rhs == 0) return lhs;
     return @min(lhs, rhs);
 }
 
-fn opFpMax(comptime T: type, lhs: T, rhs: T) Error!T {
+fn opVecFloatMax(comptime T: type, lhs: T, rhs: T) Error!T {
     if (std.math.isNan(lhs)) return lhs;
     if (std.math.isNan(rhs)) return lhs;
     if (lhs == 0 and rhs == 0) return lhs;

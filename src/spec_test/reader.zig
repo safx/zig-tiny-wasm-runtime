@@ -193,8 +193,6 @@ fn vectorFromJson(json: std.json.Value) !Result {
     const lane_type = json.object.get("lane_type").?.string;
     const arr = json.object.get("value").?.array;
 
-    std.debug.print("{s} {any}\n\n", .{ lane_type, arr });
-
     if (strcmp(lane_type, "i8"))
         return .{ .v128 = try vectorArgFromJsonArray(u8, arr) };
     if (strcmp(lane_type, "i16"))
