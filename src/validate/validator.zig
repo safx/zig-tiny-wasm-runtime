@@ -629,8 +629,8 @@ pub const ModuleValidator = struct {
             .v128_store64_lane => unreachable,
             .v128_load32_zero => unreachable,
             .v128_load64_zero => unreachable,
-            .f32x4_demote_f64x2_zero => unreachable,
-            .f64x2_promote_low_f32x4 => unreachable,
+            .f32x4_demote_f64x2_zero => try vCvtOp(type_stack),
+            .f64x2_promote_low_f32x4 => try vCvtOp(type_stack),
             .i8x16_abs => unreachable,
             .i16x8_abs => unreachable,
             .i32x4_abs => unreachable,
@@ -649,10 +649,10 @@ pub const ModuleValidator = struct {
             .i16x8_bitmask => try vBitmask(type_stack),
             .i32x4_bitmask => try vBitmask(type_stack),
             .i64x2_bitmask => try vBitmask(type_stack),
-            .i8x16_narrow_i16x8_s => unreachable,
-            .i16x8_narrow_i32x4_s => unreachable,
-            .i8x16_narrow_i16x8_u => unreachable,
-            .i16x8_narrow_i32x4_u => unreachable,
+            .i8x16_narrow_i16x8_s => try vNarrow(type_stack),
+            .i16x8_narrow_i32x4_s => try vNarrow(type_stack),
+            .i8x16_narrow_i16x8_u => try vNarrow(type_stack),
+            .i16x8_narrow_i32x4_u => try vNarrow(type_stack),
             .f32x4_ceil => unreachable,
             .i16x8_extend_low_i8x16_s => unreachable,
             .i32x4_extend_low_i16x8_s => unreachable,
@@ -763,14 +763,14 @@ pub const ModuleValidator = struct {
             .f64x2_pmin => try vBinOp(type_stack),
             .f32x4_pmax => try vBinOp(type_stack),
             .f64x2_pmax => try vBinOp(type_stack),
-            .i32x4_trunc_sat_f32x4_s => unreachable,
-            .i32x4_trunc_sat_f32x4_u => unreachable,
-            .f32x4_convert_i32x4_s => unreachable,
-            .f32x4_convert_i32x4_u => unreachable,
-            .i32x4_trunc_sat_f64x2_s_zero => unreachable,
-            .i32x4_trunc_sat_f64x2_u_zero => unreachable,
-            .f64x2_convert_low_i32x4_s => unreachable,
-            .f64x2_convert_low_i32x4_u => unreachable,
+            .i32x4_trunc_sat_f32x4_s => try vCvtOp(type_stack),
+            .i32x4_trunc_sat_f32x4_u => try vCvtOp(type_stack),
+            .f32x4_convert_i32x4_s => try vCvtOp(type_stack),
+            .f32x4_convert_i32x4_u => try vCvtOp(type_stack),
+            .i32x4_trunc_sat_f64x2_s_zero => try vCvtOp(type_stack),
+            .i32x4_trunc_sat_f64x2_u_zero => try vCvtOp(type_stack),
+            .f64x2_convert_low_i32x4_s => try vCvtOp(type_stack),
+            .f64x2_convert_low_i32x4_u => try vCvtOp(type_stack),
 
             // Relaxed SIMD instructions
             .i8x16_relaxed_swizzle => unreachable,
@@ -912,7 +912,7 @@ inline fn vRelOp(type_stack: *TypeStack) Error!void {
 
 inline fn vCvtOp(type_stack: *TypeStack) Error!void {
     try type_stack.popWithCheckingValueType(.v128);
-    try type_stack.pushValueType(.i32);
+    try type_stack.pushValueType(.v128);
 }
 
 const vvUnOp = vUnOp;
@@ -927,6 +927,7 @@ inline fn vvTernOp(type_stack: *TypeStack) Error!void {
 
 const vvTestOp = vTestOp;
 const vBitmask = vTestOp;
+const vNarrow = vBinOp;
 
 inline fn viShiftOp(type_stack: *TypeStack) Error!void {
     try type_stack.popWithCheckingValueType(.v128);

@@ -669,8 +669,8 @@ pub const Instance = struct {
             .v128_store64_lane => unreachable,
             .v128_load32_zero => unreachable,
             .v128_load64_zero => unreachable,
-            .f32x4_demote_f64x2_zero => unreachable,
-            .f64x2_promote_low_f32x4 => unreachable,
+            .f32x4_demote_f64x2_zero => try self.vCvtOpEx(@Vector(4, f32), @Vector(2, f64), opDemote),
+            .f64x2_promote_low_f32x4 => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, f32), opPromote),
             .i8x16_abs => unreachable,
             .i16x8_abs => unreachable,
             .i32x4_abs => unreachable,
@@ -805,12 +805,12 @@ pub const Instance = struct {
             .f64x2_pmax => try self.vBinOpEx(@Vector(2, f64), opVecFloatMax),
             .i32x4_trunc_sat_f32x4_s => unreachable,
             .i32x4_trunc_sat_f32x4_u => unreachable,
-            .f32x4_convert_i32x4_s => unreachable,
-            .f32x4_convert_i32x4_u => unreachable,
+            .f32x4_convert_i32x4_s => try self.vCvtOpEx(@Vector(4, f32), @Vector(4, i32), opConvert),
+            .f32x4_convert_i32x4_u => try self.vCvtOpEx(@Vector(4, f32), @Vector(4, u32), opConvert),
             .i32x4_trunc_sat_f64x2_s_zero => unreachable,
             .i32x4_trunc_sat_f64x2_u_zero => unreachable,
-            .f64x2_convert_low_i32x4_s => unreachable,
-            .f64x2_convert_low_i32x4_u => unreachable,
+            .f64x2_convert_low_i32x4_s => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, i32), opConvert),
+            .f64x2_convert_low_i32x4_u => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, u32), opConvert),
 
             // Relaxed SIMD instructions
             .i8x16_relaxed_swizzle => unreachable,
@@ -1501,6 +1501,34 @@ pub const Instance = struct {
         const value = self.stack.pop().value.asVec(T);
         const result = f(T, value);
         try self.stack.pushValueAs(i32, result);
+    }
+
+    inline fn vCvtOpEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) Error!ChildTypeOf(R)) Error!void {
+        const value = self.stack.pop().value.asVec(T);
+
+        const t_len = @typeInfo(T).Vector.len;
+        const r_len = @typeInfo(R).Vector.len;
+        var result: R = .{0} ** r_len;
+        inline for (0..t_len) |i| {
+            result[i] = f(ChildTypeOf(R), ChildTypeOf(T), value[i]);
+        }
+
+        try self.stack.pushValueAs(R, result);
+    }
+
+    inline fn vCvtOpHalfEx(self: *Self, comptime offset: u8, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) Error!ChildTypeOf(R)) Error!void {
+        const value = self.stack.pop().value.asVec(T);
+
+        const r_len = @typeInfo(R).Vector.len;
+        const t_len = @typeInfo(T).Vector.len;
+        std.debug.assert(r_len == t_len / 2);
+
+        var result: R = .{0} ** r_len;
+        inline for (offset..(offset + r_len)) |i| {
+            result[i] = f(ChildTypeOf(R), ChildTypeOf(T), value[i]);
+        }
+
+        try self.stack.pushValueAs(R, result);
     }
 
     inline fn vAllTrue(self: *Self, comptime T: type) Error!void {
