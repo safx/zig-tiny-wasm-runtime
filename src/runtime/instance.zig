@@ -689,10 +689,10 @@ pub const Instance = struct {
             .i16x8_bitmask => try self.vBitmask(@Vector(8, i16)),
             .i32x4_bitmask => try self.vBitmask(@Vector(4, i32)),
             .i64x2_bitmask => try self.vBitmask(@Vector(2, i64)),
-            .i8x16_narrow_i16x8_s => unreachable,
-            .i16x8_narrow_i32x4_s => unreachable,
-            .i8x16_narrow_i16x8_u => unreachable,
-            .i16x8_narrow_i32x4_u => unreachable,
+            .i8x16_narrow_i16x8_s => try self.vNarrow(@Vector(16, i8), @Vector(8, i16)),
+            .i16x8_narrow_i32x4_s => try self.vNarrow(@Vector(8, i16), @Vector(4, i32)),
+            .i8x16_narrow_i16x8_u => try self.vNarrow(@Vector(16, u8), @Vector(8, i16)),
+            .i16x8_narrow_i32x4_u => try self.vNarrow(@Vector(8, u16), @Vector(4, i32)),
             .f32x4_ceil => unreachable,
             .i16x8_extend_low_i8x16_s => unreachable,
             .i32x4_extend_low_i16x8_s => unreachable,
@@ -1521,7 +1521,7 @@ pub const Instance = struct {
 
         const r_len = @typeInfo(R).Vector.len;
         const t_len = @typeInfo(T).Vector.len;
-        std.debug.assert(r_len == t_len / 2);
+        std.debug.assert(r_len * 2 == t_len);
 
         var result: R = .{0} ** r_len;
         inline for (offset..(offset + r_len)) |i| {
@@ -1568,6 +1568,26 @@ pub const Instance = struct {
             result |= if (comp_result[i]) 0 else (1 << i);
         }
         try self.stack.pushValueAs(i32, result);
+    }
+
+    inline fn vNarrow(self: *Self, comptime R: type, comptime T: type) Error!void {
+        const r_len = @typeInfo(R).Vector.len;
+        const t_len = @typeInfo(T).Vector.len;
+        std.debug.assert(r_len == t_len * 2);
+
+        const c2 = self.stack.pop().value.asVec(T);
+        const c1 = self.stack.pop().value.asVec(T);
+
+        var result: R = .{0} ** r_len;
+        inline for (0..t_len) |i| {
+            result[i] = intSat(ChildTypeOf(R), ChildTypeOf(T), c1[i]);
+        }
+        inline for (0..t_len) |i| {
+            result[t_len + i] = intSat(ChildTypeOf(R), ChildTypeOf(T), c2[i]);
+        }
+
+        std.debug.print("{} {} {}", .{ c1, c2, result });
+        try self.stack.pushValueAs(R, result);
     }
 
     /// `expand_F` in wasm spec
@@ -1663,6 +1683,17 @@ fn opIntCtz(comptime T: type, value: T) T {
 
 fn opIntPopcnt(comptime T: type, value: T) T {
     return @popCount(value);
+}
+
+fn intSat(comptime R: type, comptime T: type, value: T) R {
+    const min = std.math.minInt(R);
+    const max = std.math.maxInt(R);
+
+    if (value > max)
+        return max;
+    if (value < min)
+        return min;
+    return @intCast(value);
 }
 
 fn opTrunc(comptime R: type, comptime T: type, value: T) Error!R {
