@@ -47,22 +47,6 @@ pub const Action = union(enum) {
     }
 };
 
-pub const ResultOld = union(enum) {
-    @"const": runtime.Value,
-    //
-    f32_nan_canonical,
-    f32_nan_arithmetic,
-    f64_nan_canonical,
-    f64_nan_arithmetic,
-
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        switch (self) {
-            .@"const" => |val| try writer.print("{any}", .{val}),
-            inline else => try writer.print("{s}", .{@tagName(self)}),
-        }
-    }
-};
-
 pub const Result = union(enum) {
     const Self = @This();
     i32: i32,
@@ -78,6 +62,12 @@ pub const Result = union(enum) {
     // vector including nan
     vec_f32: [4]FloatType(u32),
     vec_f64: [2]FloatType(u64),
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        switch (self) {
+            inline else => |val| try writer.print("{any}_{s}", .{ val, @tagName(self) }),
+        }
+    }
 };
 
 pub fn FloatType(comptime T: type) type {
