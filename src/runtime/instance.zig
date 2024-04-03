@@ -536,8 +536,8 @@ pub const Instance = struct {
             .i32_trunc_f32_u => try self.instrTryOp(u32, f32, opTrunc),
             .i32_trunc_f64_s => try self.instrTryOp(i32, f64, opTrunc),
             .i32_trunc_f64_u => try self.instrTryOp(u32, f64, opTrunc),
-            .i64_extend_i32_s => try self.instrExtOp(i64, i32, i32, opExtend),
-            .i64_extend_i32_u => try self.instrExtOp(u64, u32, u32, opExtend),
+            .i64_extend_i32_s => try self.cvtOp(i64, i32, opExtend(i64, i32, i32)),
+            .i64_extend_i32_u => try self.cvtOp(u64, u32, opExtend(u64, u32, u32)),
             .i64_trunc_f32_s => try self.instrTryOp(i64, f32, opTrunc),
             .i64_trunc_f32_u => try self.instrTryOp(u64, f32, opTrunc),
             .i64_trunc_f64_s => try self.instrTryOp(i64, f64, opTrunc),
@@ -558,11 +558,11 @@ pub const Instance = struct {
             .f64_reinterpret_i64 => try self.instrOp(f64, i64, opReinterpret),
 
             // numeric instructions (5)
-            .i32_extend8_s => try self.instrExtOp(i32, i32, i8, opExtend),
-            .i32_extend16_s => try self.instrExtOp(i32, i32, i16, opExtend),
-            .i64_extend8_s => try self.instrExtOp(i64, i64, i8, opExtend),
-            .i64_extend16_s => try self.instrExtOp(i64, i64, i16, opExtend),
-            .i64_extend32_s => try self.instrExtOp(i64, i64, i32, opExtend),
+            .i32_extend8_s => try self.cvtOp(i32, i32, opExtend(i32, i32, i8)),
+            .i32_extend16_s => try self.cvtOp(i32, i32, opExtend(i32, i32, i16)),
+            .i64_extend8_s => try self.cvtOp(i64, i64, opExtend(i64, i64, i8)),
+            .i64_extend16_s => try self.cvtOp(i64, i64, opExtend(i64, i64, i16)),
+            .i64_extend32_s => try self.cvtOp(i64, i64, opExtend(i64, i64, i32)),
 
             // saturating truncation instructions
             .i32_trunc_sat_f32_s => try self.cvtOp(i32, f32, opTruncSat),
@@ -1150,12 +1150,6 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
-    inline fn instrExtOp(self: *Self, comptime R: type, comptime T: type, comptime S: type, comptime f: fn (type, type, type, T) R) error{CallStackExhausted}!void {
-        const value: T = self.stack.pop().value.as(T);
-        const result: R = f(R, T, S, value);
-        try self.stack.pushValueAs(R, result);
-    }
-
     inline fn instrTryOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) Error!void {
         const value: T = self.stack.pop().value.as(T);
         const result: R = try f(R, T, value);
@@ -1370,8 +1364,13 @@ fn opDemote(comptime R: type, comptime T: type, value: T) R {
     return @floatCast(value);
 }
 
-fn opExtend(comptime R: type, comptime T: type, comptime S: type, value: T) R {
-    return @as(S, @truncate(value));
+fn opExtend(comptime R: type, comptime T: type, comptime S: type) fn (type, type, T) Error!R {
+    return struct {
+        S: S,
+        fn f(comptime Rx: type, comptime Tx: type, value: Tx) Error!Rx {
+            return @as(S, @truncate(value));
+        }
+    }.f;
 }
 
 fn opIntEqz(comptime T: type, value: T) i32 {
@@ -1597,7 +1596,8 @@ test opFloatNe {
 
 test opExtend {
     const expectEqual = std.testing.expectEqual;
-    try expectEqual(@as(i64, -2147483648), opExtend(i64, i64, i32, 2147483648));
+    const op = opExtend(i64, i64, i32);
+    try expectEqual(@as(i64, -2147483648), try op(i64, i64, 2147483648));
 }
 
 test opFloatNearest {
