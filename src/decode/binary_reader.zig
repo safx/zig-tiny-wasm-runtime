@@ -124,11 +124,11 @@ inline fn checkIntegerTooLarge(comptime NumType: type, byte: u8) (error{IntegerR
         else => unreachable,
     };
 
-    if (too_large)
-        return Error.IntegerTooLarge;
-
     if (byte & 0x80 > 0)
         return Error.IntegerRepresentationTooLong;
+
+    if (too_large)
+        return Error.IntegerTooLarge;
 }
 
 test BinaryReader {
