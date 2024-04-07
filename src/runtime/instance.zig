@@ -462,41 +462,41 @@ pub const Instance = struct {
             .i32_clz => try self.unOp(i32, opIntClz),
             .i32_ctz => try self.unOp(i32, opIntCtz),
             .i32_popcnt => try self.unOp(i32, opIntPopcnt),
-            .i32_add => try self.binOp(i32, opIntAdd),
-            .i32_sub => try self.binOp(i32, opIntSub),
-            .i32_mul => try self.binOp(i32, opIntMul),
-            .i32_div_s => try self.binOp(i32, opIntDivS),
-            .i32_div_u => try self.binOp(u32, opIntDivU),
-            .i32_rem_s => try self.binOp(i32, opIntRem),
-            .i32_rem_u => try self.binOp(u32, opIntRem),
-            .i32_and => try self.binOp(i32, opIntAnd),
-            .i32_or => try self.binOp(i32, opIntOr),
-            .i32_xor => try self.binOp(i32, opIntXor),
-            .i32_shl => try self.binOp(i32, opIntShl),
-            .i32_shr_s => try self.binOp(i32, opIntShrS),
-            .i32_shr_u => try self.binOp(u32, opIntShrU),
-            .i32_rotl => try self.binOp(i32, opIntRotl),
-            .i32_rotr => try self.binOp(i32, opIntRotr),
+            .i32_add => try self.binTryOp(i32, opIntAdd),
+            .i32_sub => try self.binTryOp(i32, opIntSub),
+            .i32_mul => try self.binTryOp(i32, opIntMul),
+            .i32_div_s => try self.binTryOp(i32, opIntDivS),
+            .i32_div_u => try self.binTryOp(u32, opIntDivU),
+            .i32_rem_s => try self.binTryOp(i32, opIntRem),
+            .i32_rem_u => try self.binTryOp(u32, opIntRem),
+            .i32_and => try self.binTryOp(i32, opIntAnd),
+            .i32_or => try self.binTryOp(i32, opIntOr),
+            .i32_xor => try self.binTryOp(i32, opIntXor),
+            .i32_shl => try self.binTryOp(i32, opIntShl),
+            .i32_shr_s => try self.binTryOp(i32, opIntShrS),
+            .i32_shr_u => try self.binTryOp(u32, opIntShrU),
+            .i32_rotl => try self.binTryOp(i32, opIntRotl),
+            .i32_rotr => try self.binTryOp(i32, opIntRotr),
 
             // numeric instructions (3) i64
             .i64_clz => try self.unOp(i64, opIntClz),
             .i64_ctz => try self.unOp(i64, opIntCtz),
             .i64_popcnt => try self.unOp(i64, opIntPopcnt),
-            .i64_add => try self.binOp(i64, opIntAdd),
-            .i64_sub => try self.binOp(i64, opIntSub),
-            .i64_mul => try self.binOp(i64, opIntMul),
-            .i64_div_s => try self.binOp(i64, opIntDivS),
-            .i64_div_u => try self.binOp(u64, opIntDivU),
-            .i64_rem_s => try self.binOp(i64, opIntRem),
-            .i64_rem_u => try self.binOp(u64, opIntRem),
-            .i64_and => try self.binOp(i64, opIntAnd),
-            .i64_or => try self.binOp(i64, opIntOr),
-            .i64_xor => try self.binOp(i64, opIntXor),
-            .i64_shl => try self.binOp(i64, opIntShl),
-            .i64_shr_s => try self.binOp(i64, opIntShrS),
-            .i64_shr_u => try self.binOp(u64, opIntShrU),
-            .i64_rotl => try self.binOp(i64, opIntRotl),
-            .i64_rotr => try self.binOp(i64, opIntRotr),
+            .i64_add => try self.binTryOp(i64, opIntAdd),
+            .i64_sub => try self.binTryOp(i64, opIntSub),
+            .i64_mul => try self.binTryOp(i64, opIntMul),
+            .i64_div_s => try self.binTryOp(i64, opIntDivS),
+            .i64_div_u => try self.binTryOp(u64, opIntDivU),
+            .i64_rem_s => try self.binTryOp(i64, opIntRem),
+            .i64_rem_u => try self.binTryOp(u64, opIntRem),
+            .i64_and => try self.binTryOp(i64, opIntAnd),
+            .i64_or => try self.binTryOp(i64, opIntOr),
+            .i64_xor => try self.binTryOp(i64, opIntXor),
+            .i64_shl => try self.binTryOp(i64, opIntShl),
+            .i64_shr_s => try self.binTryOp(i64, opIntShrS),
+            .i64_shr_u => try self.binTryOp(u64, opIntShrU),
+            .i64_rotl => try self.binTryOp(i64, opIntRotl),
+            .i64_rotr => try self.binTryOp(i64, opIntRotr),
 
             // numeric instructions (3) f32
             .f32_abs => try self.unOp(f32, opFloatAbs),
@@ -506,13 +506,13 @@ pub const Instance = struct {
             .f32_trunc => try self.unOp(f32, opFloatTrunc),
             .f32_nearest => try self.unOp(f32, opFloatNearest),
             .f32_sqrt => try self.unOp(f32, opFloatSqrt),
-            .f32_add => try self.binOp(f32, opFloatAdd),
-            .f32_sub => try self.binOp(f32, opFloatSub),
-            .f32_mul => try self.binOp(f32, opFloatMul),
-            .f32_div => try self.binOp(f32, opFloatDiv),
-            .f32_min => try self.binOp(f32, opFloatMin),
-            .f32_max => try self.binOp(f32, opFloatMax),
-            .f32_copy_sign => try self.binOp(f32, opFloatCopySign),
+            .f32_add => try self.binTryOp(f32, opFloatAdd),
+            .f32_sub => try self.binTryOp(f32, opFloatSub),
+            .f32_mul => try self.binTryOp(f32, opFloatMul),
+            .f32_div => try self.binTryOp(f32, opFloatDiv),
+            .f32_min => try self.binTryOp(f32, opFloatMin),
+            .f32_max => try self.binTryOp(f32, opFloatMax),
+            .f32_copy_sign => try self.binTryOp(f32, opFloatCopySign),
 
             // numeric instructions (3) f64
             .f64_abs => try self.unOp(f64, opFloatAbs),
@@ -522,13 +522,13 @@ pub const Instance = struct {
             .f64_trunc => try self.unOp(f64, opFloatTrunc),
             .f64_nearest => try self.unOp(f64, opFloatNearest),
             .f64_sqrt => try self.unOp(f64, opFloatSqrt),
-            .f64_add => try self.binOp(f64, opFloatAdd),
-            .f64_sub => try self.binOp(f64, opFloatSub),
-            .f64_mul => try self.binOp(f64, opFloatMul),
-            .f64_div => try self.binOp(f64, opFloatDiv),
-            .f64_min => try self.binOp(f64, opFloatMin),
-            .f64_max => try self.binOp(f64, opFloatMax),
-            .f64_copy_sign => try self.binOp(f64, opFloatCopySign),
+            .f64_add => try self.binTryOp(f64, opFloatAdd),
+            .f64_sub => try self.binTryOp(f64, opFloatSub),
+            .f64_mul => try self.binTryOp(f64, opFloatMul),
+            .f64_div => try self.binTryOp(f64, opFloatDiv),
+            .f64_min => try self.binTryOp(f64, opFloatMin),
+            .f64_max => try self.binTryOp(f64, opFloatMax),
+            .f64_copy_sign => try self.binTryOp(f64, opFloatCopySign),
 
             // numeric instructions (4)
             .i32_wrap_i64 => try self.instrOp(u32, u64, opWrap),
@@ -1164,7 +1164,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-binop-mathit-binop
-    inline fn binOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) Error!void {
+    inline fn binTryOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) Error!void {
         const rhs: T = self.stack.pop().value.as(T);
         const lhs: T = self.stack.pop().value.as(T);
         const result = try f(T, lhs, rhs);
@@ -1187,9 +1187,9 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-xref-syntax-instructions-syntax-cvtop-mathit-cvtop-mathsf-t-1-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
-    inline fn cvtOp(self: *Self, comptime T2: type, comptime T1: type, comptime f: fn (type, type, T1) Error!T2) Error!void {
+    inline fn cvtOp(self: *Self, comptime T2: type, comptime T1: type, comptime f: fn (type, type, T1) T2) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.as(T1);
-        const result: T2 = try f(T2, T1, value);
+        const result: T2 = f(T2, T1, value);
         try self.stack.pushValueAs(T2, result);
     }
 
@@ -1321,7 +1321,7 @@ fn canConvert(comptime R: type, comptime T: type, value: T) bool {
     }
 }
 
-fn opTruncSat(comptime R: type, comptime T: type, value: T) Error!R {
+fn opTruncSat(comptime R: type, comptime T: type, value: T) R {
     if (R != i32 and R != u32 and R != i64 and R != u64 and T != f32 and T != f64)
         @compileError("Invalid Number Type");
 
@@ -1364,10 +1364,10 @@ fn opDemote(comptime R: type, comptime T: type, value: T) R {
     return @floatCast(value);
 }
 
-fn opExtend(comptime R: type, comptime T: type, comptime S: type) fn (type, type, T) Error!R {
+fn opExtend(comptime R: type, comptime T: type, comptime S: type) fn (type, type, T) R {
     return struct {
         S: S,
-        fn f(comptime Rx: type, comptime Tx: type, value: Tx) Error!Rx {
+        fn f(comptime Rx: type, comptime Tx: type, value: Tx) Rx {
             return @as(S, @truncate(value));
         }
     }.f;
