@@ -653,10 +653,10 @@ pub const Instance = struct {
             .f32x4_ge => try self.vRelOpEx(@Vector(4, f32), opFloatGe),
             .f64x2_ge => try self.vRelOpEx(@Vector(2, f64), opFloatGe),
             .v128_not => try self.unOp(u128, opNot),
-            .v128_and => try self.binOp(u128, opIntAnd),
+            .v128_and => try self.binTryOp(u128, opIntAnd),
             .v128_andnot => unreachable,
-            .v128_or => try self.binOp(u128, opIntOr),
-            .v128_xor => try self.binOp(u128, opIntXor),
+            .v128_or => try self.binTryOp(u128, opIntOr),
+            .v128_xor => try self.binTryOp(u128, opIntXor),
             .v128_bitselect => try self.vBitSelect(),
             .v128_any_true => try self.vAnyTrue(),
             .v128_load8_lane => unreachable,
@@ -694,17 +694,17 @@ pub const Instance = struct {
             .i8x16_narrow_i16x8_u => try self.vNarrow(@Vector(16, u8), @Vector(8, i16)),
             .i16x8_narrow_i32x4_u => try self.vNarrow(@Vector(8, u16), @Vector(4, i32)),
             .f32x4_ceil => unreachable,
-            .i16x8_extend_low_i8x16_s => unreachable,
-            .i32x4_extend_low_i16x8_s => unreachable,
-            .i64x2_extend_low_i32x4_s => unreachable,
+            .i16x8_extend_low_i8x16_s => try self.vCvtOpHalfEx(0, @Vector(8, i16), @Vector(16, i8), opExtend(i16, i8, i8)),
+            .i32x4_extend_low_i16x8_s => try self.vCvtOpHalfEx(0, @Vector(4, i32), @Vector(8, i16), opExtend(i32, i16, i16)),
+            .i64x2_extend_low_i32x4_s => try self.vCvtOpHalfEx(0, @Vector(2, i64), @Vector(4, i32), opExtend(i64, i32, i32)),
             .f32x4_floor => unreachable,
             .i16x8_extend_high_i8x16_s => unreachable,
             .i32x4_extend_high_i16x8_s => unreachable,
             .i64x2_extend_high_i32x4_s => unreachable,
             .f32x4_trunc => unreachable,
-            .i16x8_extend_low_i8x16_u => unreachable,
-            .i32x4_extend_low_i16x8_u => unreachable,
-            .i64x2_extend_low_i32x4_u => unreachable,
+            .i16x8_extend_low_i8x16_u => try self.vCvtOpHalfEx(0, @Vector(8, u16), @Vector(16, u8), opExtend(u16, u8, u8)),
+            .i32x4_extend_low_i16x8_u => try self.vCvtOpHalfEx(0, @Vector(4, u32), @Vector(8, u16), opExtend(u32, u16, u16)),
+            .i64x2_extend_low_i32x4_u => try self.vCvtOpHalfEx(0, @Vector(2, u64), @Vector(4, u32), opExtend(u64, u32, u32)),
             .f32x4_nearest => unreachable,
             .i16x8_extend_high_i8x16_u => unreachable,
             .i32x4_extend_high_i16x8_u => unreachable,
@@ -1480,7 +1480,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
-    inline fn vRelOpEx(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) bool) Error!void {
+    inline fn vRelOpEx(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) bool) error{CallStackExhausted}!void {
         @setEvalBranchQuota(2000);
 
         const rhs = self.stack.pop().value.asVec(T);
@@ -1497,13 +1497,13 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
-    inline fn vTestOp(self: *Self, comptime T: type, comptime f: fn (type, T) Error!T) Error!void {
+    inline fn vTestOp(self: *Self, comptime T: type, comptime f: fn (type, T) Error!T) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
         const result = f(T, value);
         try self.stack.pushValueAs(i32, result);
     }
 
-    inline fn vCvtOpEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) Error!ChildTypeOf(R)) Error!void {
+    inline fn vCvtOpEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) ChildTypeOf(R)) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
 
         const t_len = @typeInfo(T).Vector.len;
@@ -1516,7 +1516,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
-    inline fn vCvtOpHalfEx(self: *Self, comptime offset: u8, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) Error!ChildTypeOf(R)) Error!void {
+    inline fn vCvtOpHalfEx(self: *Self, comptime offset: u8, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) ChildTypeOf(R)) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
 
         const r_len = @typeInfo(R).Vector.len;
