@@ -1454,12 +1454,14 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T2, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-vunop-mathit-vunop
     inline fn vUnOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
         const result = f(T, value);
         try self.stack.pushValueAs(T, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-vbinop-mathit-vbinop
     inline fn vBinOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) Error!void {
         const rhs = self.stack.pop().value.asVec(T);
         const lhs = self.stack.pop().value.asVec(T);
@@ -1480,6 +1482,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vrelop-mathit-vrelop
     inline fn vRelOpEx(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) bool) error{CallStackExhausted}!void {
         @setEvalBranchQuota(2000);
 
@@ -1497,12 +1500,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
-    inline fn vTestOp(self: *Self, comptime T: type, comptime f: fn (type, T) Error!T) error{CallStackExhausted}!void {
-        const value = self.stack.pop().value.asVec(T);
-        const result = f(T, value);
-        try self.stack.pushValueAs(i32, result);
-    }
-
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vcvtop-mathit-vcvtop-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
     inline fn vCvtOpEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) ChildTypeOf(R)) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
 
@@ -1516,6 +1514,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vcvtop-mathit-vcvtop-mathsf-xref-syntax-instructions-syntax-half-mathit-half-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
     inline fn vCvtOpHalfEx(self: *Self, comptime offset: u8, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) ChildTypeOf(R)) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
 
@@ -1531,6 +1530,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-all-true
     inline fn vAllTrue(self: *Self, comptime T: type) Error!void {
         const vec_len = @typeInfo(T).Vector.len;
         const zero_vec: T = .{0} ** vec_len;
@@ -1542,12 +1542,14 @@ pub const Instance = struct {
         try self.stack.pushValueAs(i32, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-any-true
     inline fn vAnyTrue(self: *Self) Error!void {
         const value = self.stack.pop().value.as(u128);
         const result: i32 = if (value == 0) 0 else 1;
         try self.stack.pushValueAs(i32, result);
     }
 
+    // v128.bitselect is a only member of v128.vvternop
     inline fn vBitSelect(self: *Self) Error!void {
         const v3 = self.stack.pop().value.as(u128);
         const v2 = self.stack.pop().value.as(u128);
@@ -1556,6 +1558,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(u128, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-bitmask
     inline fn vBitmask(self: *Self, comptime T: type) Error!void {
         const vec_len = @typeInfo(T).Vector.len;
         const zero_vec: T = .{0} ** vec_len;
@@ -1570,6 +1573,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(i32, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-narrow-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
     inline fn vNarrow(self: *Self, comptime R: type, comptime T: type) Error!void {
         const r_len = @typeInfo(R).Vector.len;
         const t_len = @typeInfo(T).Vector.len;
@@ -1845,7 +1849,8 @@ fn opIntAndNot(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opIntRem(comptime T: type, lhs: T, rhs: T) Error!T {
-    return lhs & ~rhs;
+    if (rhs == 0) return Error.IntegerDivideByZero;
+    return @rem(lhs, rhs);
 }
 
 fn opIntAnd(comptime T: type, lhs: T, rhs: T) Error!T {
