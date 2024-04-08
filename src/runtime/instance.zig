@@ -654,7 +654,7 @@ pub const Instance = struct {
             .f64x2_ge => try self.vRelOpEx(@Vector(2, f64), opFloatGe),
             .v128_not => try self.unOp(u128, opNot),
             .v128_and => try self.binTryOp(u128, opIntAnd),
-            .v128_andnot => unreachable,
+            .v128_andnot => try self.binTryOp(u128, opIntAndNot),
             .v128_or => try self.binTryOp(u128, opIntOr),
             .v128_xor => try self.binTryOp(u128, opIntXor),
             .v128_bitselect => try self.vBitSelect(),
@@ -1840,9 +1840,12 @@ fn opIntDivU(comptime T: type, lhs: T, rhs: T) Error!T {
     return @bitCast(res);
 }
 
+fn opIntAndNot(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs & ~rhs;
+}
+
 fn opIntRem(comptime T: type, lhs: T, rhs: T) Error!T {
-    if (rhs == 0) return Error.IntegerDivideByZero;
-    return @rem(lhs, rhs);
+    return lhs & ~rhs;
 }
 
 fn opIntAnd(comptime T: type, lhs: T, rhs: T) Error!T {
