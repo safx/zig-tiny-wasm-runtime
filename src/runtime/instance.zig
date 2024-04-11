@@ -596,20 +596,20 @@ pub const Instance = struct {
             .i64x2_splat => unreachable,
             .f32x4_splat => unreachable,
             .f64x2_splat => unreachable,
-            .i8x16_extract_lane_s => unreachable,
-            .i8x16_extract_lane_u => unreachable,
-            .i8x16_replace_lane => unreachable,
-            .i16x8_extract_lane_s => unreachable,
-            .i16x8_extract_lane_u => unreachable,
-            .i16x8_replace_lane => unreachable,
-            .i32x4_extract_lane => unreachable,
-            .i32x4_replace_lane => unreachable,
-            .i64x2_extract_lane => unreachable,
-            .i64x2_replace_lane => unreachable,
-            .f32x4_extract_lane => unreachable,
-            .f32x4_replace_lane => unreachable,
-            .f64x2_extract_lane => unreachable,
-            .f64x2_replace_lane => unreachable,
+            .i8x16_extract_lane_s => |lane_idx| try self.extractLane(i32, @Vector(16, i8), lane_idx),
+            .i8x16_extract_lane_u => |lane_idx| try self.extractLane(u32, @Vector(16, u8), lane_idx),
+            .i8x16_replace_lane => |lane_idx| try self.replaceLane(u32, @Vector(16, u8), lane_idx),
+            .i16x8_extract_lane_s => |lane_idx| try self.extractLane(i32, @Vector(8, i16), lane_idx),
+            .i16x8_extract_lane_u => |lane_idx| try self.extractLane(u32, @Vector(8, u16), lane_idx),
+            .i16x8_replace_lane => |lane_idx| try self.replaceLane(u32, @Vector(8, u16), lane_idx),
+            .i32x4_extract_lane => |lane_idx| try self.extractLane(i32, @Vector(4, i32), lane_idx),
+            .i32x4_replace_lane => |lane_idx| try self.replaceLane(u32, @Vector(4, u32), lane_idx),
+            .i64x2_extract_lane => |lane_idx| try self.extractLane(i64, @Vector(2, i64), lane_idx),
+            .i64x2_replace_lane => |lane_idx| try self.replaceLane(u64, @Vector(2, u64), lane_idx),
+            .f32x4_extract_lane => |lane_idx| try self.extractLane(f32, @Vector(4, f32), lane_idx),
+            .f32x4_replace_lane => |lane_idx| try self.replaceLane(f32, @Vector(4, f32), lane_idx),
+            .f64x2_extract_lane => |lane_idx| try self.extractLane(f64, @Vector(2, f64), lane_idx),
+            .f64x2_replace_lane => |lane_idx| try self.replaceLane(f64, @Vector(2, f64), lane_idx),
             .i8x16_eq => try self.vRelOpEx(@Vector(16, i8), opIntEq),
             .i16x8_eq => try self.vRelOpEx(@Vector(8, i16), opIntEq),
             .i32x4_eq => try self.vRelOpEx(@Vector(4, i32), opIntEq),
@@ -1590,8 +1590,28 @@ pub const Instance = struct {
             result[t_len + i] = intSat(ChildTypeOf(R), ChildTypeOf(T), c2[i]);
         }
 
-        std.debug.print("{} {} {}", .{ c1, c2, result });
         try self.stack.pushValueAs(R, result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-1-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-extract-lane-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-x
+    inline fn extractLane(self: *Self, comptime R: type, comptime T: type, lane_idx: u8) Error!void {
+        const t_len = @typeInfo(T).Vector.len;
+        std.debug.assert(lane_idx < t_len);
+        const c1 = self.stack.pop().value.asVec(T);
+        const c2 = c1[lane_idx];
+        try self.stack.pushValueAs(R, c2);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-replace-lane-x
+    inline fn replaceLane(self: *Self, comptime R: type, comptime T: type, lane_idx: u8) Error!void {
+        const t_len = @typeInfo(T).Vector.len;
+        std.debug.assert(lane_idx < t_len);
+        const c2 = self.stack.pop().value.as(R);
+        const val: ChildTypeOf(T) = if (R == f32 or R == f64) c2 else @intCast(c2 & std.math.maxInt(ChildTypeOf(T)));
+
+        var c1 = self.stack.pop().value.asVec(T);
+        c1[lane_idx] = val;
+        try self.stack.pushValueAs(T, c1);
     }
 
     /// `expand_F` in wasm spec

@@ -19,4 +19,5 @@ pub const Error = error{
     InvalidResultArity,
     DuplicateExportName,
     ImmutableGlobal,
+    InvalidLaneIndex,
 };

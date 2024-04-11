@@ -26,6 +26,8 @@ pub const Error = error{
     MalformedLimitId,
     MalformedMutId,
     MalformedBlockType,
+    MalformedLaneIndex,
+    InvalidLaneLength,
     TypeMismatch,
     OtherError,
 };

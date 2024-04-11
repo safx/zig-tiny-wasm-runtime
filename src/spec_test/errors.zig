@@ -59,6 +59,8 @@ pub fn decodeErrorFromString(str: []const u8) DecodeError {
     if (strcmp(str, "unknown type")) return E.OtherError; // FIXME
     if (strcmp(str, "zero byte expected")) return E.ZeroByteExpected;
     if (strcmp(str, "wrong number of lane literals")) return E.OtherError; // FIXME
+    if (strcmp(str, "malformed lane index")) return E.MalformedLaneIndex;
+    if (strcmp(str, "invalid lane length")) return E.InvalidLaneLength;
 
     std.debug.print("? Unknown validation error \"{s}\"\n", .{str});
     unreachable;
@@ -88,6 +90,7 @@ pub fn validationErrorFromString(str: []const u8) ValidationError {
     if (strcmp(str, "unknown memory") or strcmp(str, "unknown memory 0") or strcmp(str, "unknown memory 1")) return E.UnknownMemory;
     if (strcmp(str, "unknown table") or strcmp(str, "unknown table 0")) return E.UnknownTable;
     if (strcmp(str, "unknown type")) return E.UnknownType;
+    if (strcmp(str, "invalid lane index")) return E.InvalidLaneIndex;
 
     std.debug.print("? Unknown validation error \"{s}\"\n", .{str});
     unreachable;

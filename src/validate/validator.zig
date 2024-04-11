@@ -548,28 +548,28 @@ pub const ModuleValidator = struct {
             .v128_load64_splat => |mem_arg| try opV128LoadNSplit(i64, mem_arg, type_stack, c),
             .v128_store => |mem_arg| try opStore(i128, 128, mem_arg, type_stack, c),
             .v128_const => try type_stack.pushValueType(.v128),
-            .i8x16_shuffle => unreachable,
-            .i8x16_swizzle => unreachable,
+            .i8x16_shuffle => try vBinOp(type_stack),
+            .i8x16_swizzle => try vBinOp(type_stack),
             .i8x16_splat => unreachable,
             .i16x8_splat => unreachable,
             .i32x4_splat => unreachable,
             .i64x2_splat => unreachable,
             .f32x4_splat => unreachable,
             .f64x2_splat => unreachable,
-            .i8x16_extract_lane_s => unreachable,
-            .i8x16_extract_lane_u => unreachable,
-            .i8x16_replace_lane => unreachable,
-            .i16x8_extract_lane_s => unreachable,
-            .i16x8_extract_lane_u => unreachable,
-            .i16x8_replace_lane => unreachable,
-            .i32x4_extract_lane => unreachable,
-            .i32x4_replace_lane => unreachable,
-            .i64x2_extract_lane => unreachable,
-            .i64x2_replace_lane => unreachable,
-            .f32x4_extract_lane => unreachable,
-            .f32x4_replace_lane => unreachable,
-            .f64x2_extract_lane => unreachable,
-            .f64x2_replace_lane => unreachable,
+            .i8x16_extract_lane_s => try extractLane(i32, type_stack),
+            .i8x16_extract_lane_u => try extractLane(i32, type_stack),
+            .i8x16_replace_lane => try replaceLane(i32, type_stack),
+            .i16x8_extract_lane_s => try extractLane(i32, type_stack),
+            .i16x8_extract_lane_u => try extractLane(i32, type_stack),
+            .i16x8_replace_lane => try replaceLane(i32, type_stack),
+            .i32x4_extract_lane => try extractLane(i32, type_stack),
+            .i32x4_replace_lane => try replaceLane(i32, type_stack),
+            .i64x2_extract_lane => try extractLane(i64, type_stack),
+            .i64x2_replace_lane => try replaceLane(i64, type_stack),
+            .f32x4_extract_lane => try extractLane(f32, type_stack),
+            .f32x4_replace_lane => try replaceLane(f32, type_stack),
+            .f64x2_extract_lane => try extractLane(f64, type_stack),
+            .f64x2_replace_lane => try replaceLane(f64, type_stack),
             .i8x16_eq => try vRelOp(type_stack),
             .i16x8_eq => try vRelOp(type_stack),
             .i32x4_eq => try vRelOp(type_stack),
@@ -911,6 +911,17 @@ inline fn vRelOp(type_stack: *TypeStack) Error!void {
 }
 
 inline fn vCvtOp(type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.pushValueType(.v128);
+}
+
+inline fn extractLane(comptime T: type, type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.pushValueType(valueTypeOf(T));
+}
+
+inline fn replaceLane(comptime T: type, type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(valueTypeOf(T));
     try type_stack.popWithCheckingValueType(.v128);
     try type_stack.pushValueType(.v128);
 }
