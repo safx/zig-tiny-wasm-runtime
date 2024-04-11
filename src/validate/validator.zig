@@ -548,7 +548,7 @@ pub const ModuleValidator = struct {
             .v128_load64_splat => |mem_arg| try opV128LoadNSplit(i64, mem_arg, type_stack, c),
             .v128_store => |mem_arg| try opStore(i128, 128, mem_arg, type_stack, c),
             .v128_const => try type_stack.pushValueType(.v128),
-            .i8x16_shuffle => try vBinOp(type_stack),
+            .i8x16_shuffle => |lane_idxs| try shuffle(lane_idxs, type_stack),
             .i8x16_swizzle => try vBinOp(type_stack),
             .i8x16_splat => unreachable,
             .i16x8_splat => unreachable,
@@ -556,20 +556,20 @@ pub const ModuleValidator = struct {
             .i64x2_splat => unreachable,
             .f32x4_splat => unreachable,
             .f64x2_splat => unreachable,
-            .i8x16_extract_lane_s => try extractLane(i32, type_stack),
-            .i8x16_extract_lane_u => try extractLane(i32, type_stack),
-            .i8x16_replace_lane => try replaceLane(i32, type_stack),
-            .i16x8_extract_lane_s => try extractLane(i32, type_stack),
-            .i16x8_extract_lane_u => try extractLane(i32, type_stack),
-            .i16x8_replace_lane => try replaceLane(i32, type_stack),
-            .i32x4_extract_lane => try extractLane(i32, type_stack),
-            .i32x4_replace_lane => try replaceLane(i32, type_stack),
-            .i64x2_extract_lane => try extractLane(i64, type_stack),
-            .i64x2_replace_lane => try replaceLane(i64, type_stack),
-            .f32x4_extract_lane => try extractLane(f32, type_stack),
-            .f32x4_replace_lane => try replaceLane(f32, type_stack),
-            .f64x2_extract_lane => try extractLane(f64, type_stack),
-            .f64x2_replace_lane => try replaceLane(f64, type_stack),
+            .i8x16_extract_lane_s => |lane_idx| try extractLane(16, i32, lane_idx, type_stack),
+            .i8x16_extract_lane_u => |lane_idx| try extractLane(16, i32, lane_idx, type_stack),
+            .i8x16_replace_lane => |lane_idx| try replaceLane(16, i32, lane_idx, type_stack),
+            .i16x8_extract_lane_s => |lane_idx| try extractLane(8, i32, lane_idx, type_stack),
+            .i16x8_extract_lane_u => |lane_idx| try extractLane(8, i32, lane_idx, type_stack),
+            .i16x8_replace_lane => |lane_idx| try replaceLane(8, i32, lane_idx, type_stack),
+            .i32x4_extract_lane => |lane_idx| try extractLane(4, i32, lane_idx, type_stack),
+            .i32x4_replace_lane => |lane_idx| try replaceLane(4, i32, lane_idx, type_stack),
+            .i64x2_extract_lane => |lane_idx| try extractLane(2, i64, lane_idx, type_stack),
+            .i64x2_replace_lane => |lane_idx| try replaceLane(2, i64, lane_idx, type_stack),
+            .f32x4_extract_lane => |lane_idx| try extractLane(4, f32, lane_idx, type_stack),
+            .f32x4_replace_lane => |lane_idx| try replaceLane(4, f32, lane_idx, type_stack),
+            .f64x2_extract_lane => |lane_idx| try extractLane(2, f64, lane_idx, type_stack),
+            .f64x2_replace_lane => |lane_idx| try replaceLane(2, f64, lane_idx, type_stack),
             .i8x16_eq => try vRelOp(type_stack),
             .i16x8_eq => try vRelOp(type_stack),
             .i32x4_eq => try vRelOp(type_stack),
@@ -915,15 +915,30 @@ inline fn vCvtOp(type_stack: *TypeStack) Error!void {
     try type_stack.pushValueType(.v128);
 }
 
-inline fn extractLane(comptime T: type, type_stack: *TypeStack) Error!void {
+inline fn extractLane(comptime lane_size: u8, comptime T: type, lane_idx: u8, type_stack: *TypeStack) Error!void {
+    if (lane_idx >= lane_size)
+        return Error.InvalidLaneIndex;
+
     try type_stack.popWithCheckingValueType(.v128);
     try type_stack.pushValueType(valueTypeOf(T));
 }
 
-inline fn replaceLane(comptime T: type, type_stack: *TypeStack) Error!void {
+inline fn replaceLane(comptime lane_size: u8, comptime T: type, lane_idx: u8, type_stack: *TypeStack) Error!void {
+    if (lane_idx >= lane_size)
+        return Error.InvalidLaneIndex;
+
     try type_stack.popWithCheckingValueType(valueTypeOf(T));
     try type_stack.popWithCheckingValueType(.v128);
     try type_stack.pushValueType(.v128);
+}
+
+inline fn shuffle(lane_idxs: [16]u8, type_stack: *TypeStack) Error!void {
+    for (lane_idxs) |idx| {
+        if (idx >= 32)
+            return Error.InvalidLaneIndex;
+    }
+
+    try vBinOp(type_stack);
 }
 
 const vvUnOp = vUnOp;

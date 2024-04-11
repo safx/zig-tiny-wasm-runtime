@@ -588,8 +588,8 @@ pub const Instance = struct {
             .v128_load64_splat => unreachable,
             .v128_store => unreachable,
             .v128_const => |val| try self.stack.pushValueAs(i128, val),
-            .i8x16_shuffle => unreachable,
-            .i8x16_swizzle => unreachable,
+            .i8x16_shuffle => |lane_idxs| try self.shuffle(lane_idxs),
+            .i8x16_swizzle => try self.swizzle(),
             .i8x16_splat => unreachable,
             .i16x8_splat => unreachable,
             .i32x4_splat => unreachable,
@@ -1556,6 +1556,33 @@ pub const Instance = struct {
         const v1 = self.stack.pop().value.as(u128);
         const result = (v1 & v3) | (v2 & ~v3);
         try self.stack.pushValueAs(u128, result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#mathsf-i8x16-xref-syntax-instructions-syntax-instr-vec-mathsf-swizzle
+    inline fn swizzle(self: *Self) Error!void {
+        const c2 = self.stack.pop().value.asVec(@Vector(16, u8));
+        const c1 = self.stack.pop().value.asVec(@Vector(16, u8));
+
+        var result: @Vector(16, u8) = .{0} ** 16;
+        inline for (0..16) |i| {
+            const idx = c2[i];
+            result[i] = if (idx < 16) c1[idx] else 0;
+        }
+        try self.stack.pushValueAs(@Vector(16, u8), result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#mathsf-i8x16-xref-syntax-instructions-syntax-instr-vec-mathsf-shuffle-x-ast
+    inline fn shuffle(self: *Self, lane_idxs: [16]u8) Error!void {
+        const c2 = self.stack.pop().value.asVec(@Vector(16, u8));
+        const c1 = self.stack.pop().value.asVec(@Vector(16, u8));
+
+        var result: @Vector(16, u8) = .{0} ** 16;
+        inline for (0..16) |i| {
+            const idx = lane_idxs[i];
+            assert(idx < 32);
+            result[i] = if (idx < 16) c1[idx] else c2[idx - 16];
+        }
+        try self.stack.pushValueAs(@Vector(16, u8), result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-bitmask
