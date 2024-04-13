@@ -709,18 +709,18 @@ pub const Instance = struct {
             .i16x8_extend_high_i8x16_u => unreachable,
             .i32x4_extend_high_i16x8_u => unreachable,
             .i64x2_extend_high_i32x4_u => unreachable,
-            .i8x16_shl => unreachable,
-            .i16x8_shl => unreachable,
-            .i32x4_shl => unreachable,
-            .i64x2_shl => unreachable,
-            .i8x16_shr_s => unreachable,
-            .i16x8_shr_s => unreachable,
-            .i32x4_shr_s => unreachable,
-            .i64x2_shr_s => unreachable,
-            .i8x16_shr_u => unreachable,
-            .i16x8_shr_u => unreachable,
-            .i32x4_shr_u => unreachable,
-            .i64x2_shr_u => unreachable,
+            .i8x16_shl => try self.vShiftOp(@Vector(16, i8), opIntShl),
+            .i16x8_shl => try self.vShiftOp(@Vector(8, i16), opIntShl),
+            .i32x4_shl => try self.vShiftOp(@Vector(4, i32), opIntShl),
+            .i64x2_shl => try self.vShiftOp(@Vector(2, i64), opIntShl),
+            .i8x16_shr_s => try self.vShiftOp(@Vector(16, i8), opIntShrS),
+            .i16x8_shr_s => try self.vShiftOp(@Vector(8, i16), opIntShrS),
+            .i32x4_shr_s => try self.vShiftOp(@Vector(4, i32), opIntShrS),
+            .i64x2_shr_s => try self.vShiftOp(@Vector(2, i64), opIntShrS),
+            .i8x16_shr_u => try self.vShiftOp(@Vector(16, u8), opIntShrU),
+            .i16x8_shr_u => try self.vShiftOp(@Vector(8, u16), opIntShrU),
+            .i32x4_shr_u => try self.vShiftOp(@Vector(4, u32), opIntShrU),
+            .i64x2_shr_u => try self.vShiftOp(@Vector(2, u64), opIntShrU),
             .i8x16_add => try self.vBinOp(@Vector(16, i8), opIntAdd),
             .i16x8_add => try self.vBinOp(@Vector(8, i16), opIntAdd),
             .i32x4_add => try self.vBinOp(@Vector(4, i32), opIntAdd),
@@ -1528,6 +1528,22 @@ pub const Instance = struct {
         }
 
         try self.stack.pushValueAs(R, result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vishiftop-mathit-vishiftop
+    inline fn vShiftOp(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) Error!T) Error!void {
+        const C = ChildTypeOf(T);
+        const rhs = self.stack.pop().value.as(u32);
+        const v: C = @intCast(@mod(rhs, @bitSizeOf(C)));
+
+        const lhs = self.stack.pop().value.asVec(T);
+        const t_len = @typeInfo(T).Vector.len;
+        var result: T = .{0} ** t_len;
+        inline for (0..t_len) |i| {
+            result[i] = try f(C, lhs[i], v);
+        }
+
+        try self.stack.pushValueAs(T, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-all-true

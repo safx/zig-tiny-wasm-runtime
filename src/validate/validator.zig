@@ -669,18 +669,18 @@ pub const ModuleValidator = struct {
             .i16x8_extend_high_i8x16_u => unreachable,
             .i32x4_extend_high_i16x8_u => unreachable,
             .i64x2_extend_high_i32x4_u => unreachable,
-            .i8x16_shl => unreachable,
-            .i16x8_shl => unreachable,
-            .i32x4_shl => unreachable,
-            .i64x2_shl => unreachable,
-            .i8x16_shr_s => unreachable,
-            .i16x8_shr_s => unreachable,
-            .i32x4_shr_s => unreachable,
-            .i64x2_shr_s => unreachable,
-            .i8x16_shr_u => unreachable,
-            .i16x8_shr_u => unreachable,
-            .i32x4_shr_u => unreachable,
-            .i64x2_shr_u => unreachable,
+            .i8x16_shl => try vShiftOp(type_stack),
+            .i16x8_shl => try vShiftOp(type_stack),
+            .i32x4_shl => try vShiftOp(type_stack),
+            .i64x2_shl => try vShiftOp(type_stack),
+            .i8x16_shr_s => try vShiftOp(type_stack),
+            .i16x8_shr_s => try vShiftOp(type_stack),
+            .i32x4_shr_s => try vShiftOp(type_stack),
+            .i64x2_shr_s => try vShiftOp(type_stack),
+            .i8x16_shr_u => try vShiftOp(type_stack),
+            .i16x8_shr_u => try vShiftOp(type_stack),
+            .i32x4_shr_u => try vShiftOp(type_stack),
+            .i64x2_shr_u => try vShiftOp(type_stack),
             .i8x16_add => try vBinOp(type_stack),
             .i16x8_add => try vBinOp(type_stack),
             .i32x4_add => try vBinOp(type_stack),
@@ -898,6 +898,12 @@ inline fn vUnOp(type_stack: *TypeStack) Error!void {
 
 inline fn vBinOp(type_stack: *TypeStack) Error!void {
     try binOp(i128, type_stack);
+}
+
+inline fn vShiftOp(type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(.i32);
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.pushValueType(.v128);
 }
 
 inline fn vTestOp(type_stack: *TypeStack) Error!void {
