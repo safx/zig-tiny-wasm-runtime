@@ -725,18 +725,18 @@ pub const Instance = struct {
             .i16x8_add => try self.vBinOp(@Vector(8, i16), opIntAdd),
             .i32x4_add => try self.vBinOp(@Vector(4, i32), opIntAdd),
             .i64x2_add => try self.vBinOp(@Vector(2, i64), opIntAdd),
-            .i8x16_add_sat_s => unreachable,
-            .i16x8_add_sat_s => unreachable,
-            .i8x16_add_sat_u => unreachable,
-            .i16x8_add_sat_u => unreachable,
+            .i8x16_add_sat_s => try self.vBinOp(@Vector(16, i8), opIntAddSat),
+            .i16x8_add_sat_s => try self.vBinOp(@Vector(8, i16), opIntAddSat),
+            .i8x16_add_sat_u => try self.vBinOp(@Vector(16, u8), opIntAddSat),
+            .i16x8_add_sat_u => try self.vBinOp(@Vector(8, u16), opIntAddSat),
             .i8x16_sub => try self.vBinOp(@Vector(16, i8), opIntSub),
             .i16x8_sub => try self.vBinOp(@Vector(8, i16), opIntSub),
             .i32x4_sub => try self.vBinOp(@Vector(4, i32), opIntSub),
             .i64x2_sub => try self.vBinOp(@Vector(2, i64), opIntSub),
-            .i8x16_sub_sat_s => unreachable,
-            .i16x8_sub_sat_s => unreachable,
-            .i8x16_sub_sat_u => unreachable,
-            .i16x8_sub_sat_u => unreachable,
+            .i8x16_sub_sat_s => try self.vBinOp(@Vector(16, i8), opIntSubSat),
+            .i16x8_sub_sat_s => try self.vBinOp(@Vector(8, i16), opIntSubSat),
+            .i8x16_sub_sat_u => try self.vBinOp(@Vector(16, u8), opIntSubSat),
+            .i16x8_sub_sat_u => try self.vBinOp(@Vector(8, u16), opIntSubSat),
             .f64x2_ceil => unreachable,
             .f64x2_nearest => unreachable,
             .f64x2_floor => unreachable,
@@ -1868,8 +1868,16 @@ fn opIntAdd(comptime T: type, lhs: T, rhs: T) Error!T {
     return lhs +% rhs;
 }
 
+fn opIntAddSat(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs +| rhs;
+}
+
 fn opIntSub(comptime T: type, lhs: T, rhs: T) Error!T {
     return lhs -% rhs;
+}
+
+fn opIntSubSat(comptime T: type, lhs: T, rhs: T) Error!T {
+    return lhs -| rhs;
 }
 
 fn opIntMul(comptime T: type, lhs: T, rhs: T) Error!T {
