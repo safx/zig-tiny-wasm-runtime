@@ -675,10 +675,10 @@ pub const Instance = struct {
             .i16x8_abs => unreachable,
             .i32x4_abs => unreachable,
             .i64x2_abs => unreachable,
-            .i8x16_neg => unreachable,
-            .i16x8_neg => unreachable,
-            .i32x4_neg => unreachable,
-            .i64x2_neg => unreachable,
+            .i8x16_neg => try self.vUnOp(@Vector(16, u8), opIntNeg),
+            .i16x8_neg => try self.vUnOp(@Vector(8, i16), opIntNeg),
+            .i32x4_neg => try self.vUnOp(@Vector(4, i32), opIntNeg),
+            .i64x2_neg => try self.vUnOp(@Vector(2, i64), opIntNeg),
             .i8x16_popcnt => unreachable,
             .i16x8_q15mulr_sat_s => unreachable,
             .i8x16_all_true => try self.vAllTrue(@Vector(16, i8)),
@@ -1738,6 +1738,12 @@ const FlowControl = union(enum) {
 
 fn opNot(comptime T: type, value: T) T {
     return ~value;
+}
+
+fn opIntNeg(comptime T: type, value: T) T {
+    const t_len = @typeInfo(T).Vector.len;
+    const zero: @Vector(t_len, types.ChildTypeOf(T)) = .{0} ** t_len;
+    return zero -% value;
 }
 
 fn opIntClz(comptime T: type, value: T) T {
