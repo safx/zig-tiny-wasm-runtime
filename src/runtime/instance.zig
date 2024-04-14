@@ -586,16 +586,16 @@ pub const Instance = struct {
             .v128_load16_splat => unreachable,
             .v128_load32_splat => unreachable,
             .v128_load64_splat => unreachable,
-            .v128_store => unreachable,
+            .v128_store => |mem_arg| try self.opStore(i128, 128, mem_arg),
             .v128_const => |val| try self.stack.pushValueAs(i128, val),
             .i8x16_shuffle => |lane_idxs| try self.shuffle(lane_idxs),
             .i8x16_swizzle => try self.swizzle(),
-            .i8x16_splat => unreachable,
-            .i16x8_splat => unreachable,
-            .i32x4_splat => unreachable,
-            .i64x2_splat => unreachable,
-            .f32x4_splat => unreachable,
-            .f64x2_splat => unreachable,
+            .i8x16_splat => try self.opVSprat(u32, @Vector(16, u8)),
+            .i16x8_splat => try self.opVSprat(u32, @Vector(8, u16)),
+            .i32x4_splat => try self.opVSprat(u32, @Vector(4, u32)),
+            .i64x2_splat => try self.opVSprat(u64, @Vector(2, u64)),
+            .f32x4_splat => try self.opVSprat(f32, @Vector(4, f32)),
+            .f64x2_splat => try self.opVSprat(f64, @Vector(2, f64)),
             .i8x16_extract_lane_s => |lane_idx| try self.extractLane(i32, @Vector(16, i8), lane_idx),
             .i8x16_extract_lane_u => |lane_idx| try self.extractLane(u32, @Vector(16, u8), lane_idx),
             .i8x16_replace_lane => |lane_idx| try self.replaceLane(u32, @Vector(16, u8), lane_idx),
@@ -1232,15 +1232,9 @@ pub const Instance = struct {
         const mem = &self.store.mems.items[a];
 
         // change to integer type of same size to operate bit shift
-        const IntType = if (@bitSizeOf(T) == 64) u64 else if (@bitSizeOf(T) == 32) u32 else unreachable;
+        const IntType = IntOfBitSizeOf(@bitSizeOf(T));
         const ci: IntType = @bitCast(self.stack.pop().value.as(T));
-        const DestType = switch (bit_size) {
-            8 => u8,
-            16 => u16,
-            32 => u32,
-            64 => u64,
-            else => unreachable,
-        };
+        const DestType = IntOfBitSizeOf(bit_size);
         const c: DestType = @truncate(ci);
 
         const i: u32 = self.stack.pop().value.asU32();
@@ -1490,7 +1484,7 @@ pub const Instance = struct {
         const lhs = self.stack.pop().value.asVec(T);
 
         const vec_len = @typeInfo(T).Vector.len;
-        const I = IntOfBitSizeOf(ChildTypeOf(T));
+        const I = IntOfBitSizeOf(@bitSizeOf(ChildTypeOf(T)));
         const R = @Vector(vec_len, I);
         var result: R = .{0} ** vec_len;
         inline for (0..vec_len) |i| {
@@ -1636,6 +1630,15 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
+    inline fn opVSprat(self: *Self, comptime S: type, comptime T: type) Error!void {
+        const t_len = @typeInfo(T).Vector.len;
+        const c1 = self.stack.pop().value.as(S);
+        const C = ChildTypeOf(T);
+        const val: ChildTypeOf(T) = if (S == f32 or S == f64) c1 else @intCast(c1 & std.math.maxInt(C));
+        var result: T = .{val} ** t_len;
+        try self.stack.pushValueAs(T, result);
+    }
+
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-1-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-extract-lane-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-x
     inline fn extractLane(self: *Self, comptime R: type, comptime T: type, lane_idx: u8) Error!void {
         const t_len = @typeInfo(T).Vector.len;
@@ -1650,7 +1653,8 @@ pub const Instance = struct {
         const t_len = @typeInfo(T).Vector.len;
         std.debug.assert(lane_idx < t_len);
         const c2 = self.stack.pop().value.as(R);
-        const val: ChildTypeOf(T) = if (R == f32 or R == f64) c2 else @intCast(c2 & std.math.maxInt(ChildTypeOf(T)));
+        const C = ChildTypeOf(T);
+        const val: C = if (R == f32 or R == f64) c2 else @intCast(c2 & std.math.maxInt(C));
 
         var c1 = self.stack.pop().value.asVec(T);
         c1[lane_idx] = val;
@@ -2083,12 +2087,13 @@ fn canonNan(comptime T: type) T {
     return @bitCast(v);
 }
 
-fn IntOfBitSizeOf(comptime T: type) type {
-    return switch (@bitSizeOf(T)) {
+fn IntOfBitSizeOf(comptime size: u16) type {
+    return switch (size) {
         8 => u8,
         16 => u16,
         32 => u32,
         64 => u64,
+        128 => u128,
         else => unreachable,
     };
 }

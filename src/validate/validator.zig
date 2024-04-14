@@ -542,20 +542,20 @@ pub const ModuleValidator = struct {
             .v128_load16x4_u => |mem_arg| try opV128LoadNxM(u16, 4, mem_arg, type_stack, c),
             .v128_load32x2_s => |mem_arg| try opV128LoadNxM(i32, 2, mem_arg, type_stack, c),
             .v128_load32x2_u => |mem_arg| try opV128LoadNxM(u32, 2, mem_arg, type_stack, c),
-            .v128_load8_splat => |mem_arg| try opV128LoadNSplit(i8, mem_arg, type_stack, c),
-            .v128_load16_splat => |mem_arg| try opV128LoadNSplit(i16, mem_arg, type_stack, c),
-            .v128_load32_splat => |mem_arg| try opV128LoadNSplit(i32, mem_arg, type_stack, c),
-            .v128_load64_splat => |mem_arg| try opV128LoadNSplit(i64, mem_arg, type_stack, c),
+            .v128_load8_splat => |mem_arg| try opV128LoadSprat(i8, mem_arg, type_stack, c),
+            .v128_load16_splat => |mem_arg| try opV128LoadSprat(i16, mem_arg, type_stack, c),
+            .v128_load32_splat => |mem_arg| try opV128LoadSprat(i32, mem_arg, type_stack, c),
+            .v128_load64_splat => |mem_arg| try opV128LoadSprat(i64, mem_arg, type_stack, c),
             .v128_store => |mem_arg| try opStore(i128, 128, mem_arg, type_stack, c),
             .v128_const => try type_stack.pushValueType(.v128),
             .i8x16_shuffle => |lane_idxs| try shuffle(lane_idxs, type_stack),
             .i8x16_swizzle => try vBinOp(type_stack),
-            .i8x16_splat => unreachable,
-            .i16x8_splat => unreachable,
-            .i32x4_splat => unreachable,
-            .i64x2_splat => unreachable,
-            .f32x4_splat => unreachable,
-            .f64x2_splat => unreachable,
+            .i8x16_splat => try opVSprat(i32, type_stack),
+            .i16x8_splat => try opVSprat(i32, type_stack),
+            .i32x4_splat => try opVSprat(i32, type_stack),
+            .i64x2_splat => try opVSprat(i64, type_stack),
+            .f32x4_splat => try opVSprat(f32, type_stack),
+            .f64x2_splat => try opVSprat(f64, type_stack),
             .i8x16_extract_lane_s => |lane_idx| try extractLane(16, i32, lane_idx, type_stack),
             .i8x16_extract_lane_u => |lane_idx| try extractLane(16, i32, lane_idx, type_stack),
             .i8x16_replace_lane => |lane_idx| try replaceLane(16, i32, lane_idx, type_stack),
@@ -826,7 +826,7 @@ inline fn opV128LoadNxM(comptime N: type, comptime M: u8, mem_arg: types.Instruc
     try type_stack.pushValueType(t);
 }
 
-inline fn opV128LoadNSplit(comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+inline fn opV128LoadSprat(comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8)
         return Error.NegativeNumberAlignment;
     try c.checkMem(0);
@@ -834,6 +834,12 @@ inline fn opV128LoadNSplit(comptime N: type, mem_arg: types.Instruction.MemArg, 
     try type_stack.popWithCheckingValueType(.i32);
     const t = valueTypeOf(N);
     try type_stack.pushValueType(t);
+}
+
+inline fn opVSprat(comptime T: type, type_stack: *TypeStack) Error!void {
+    const t = valueTypeOf(T);
+    try type_stack.popWithCheckingValueType(t);
+    try type_stack.pushValueType(.v128);
 }
 
 inline fn opStore(comptime T: type, comptime bit_size: u32, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
