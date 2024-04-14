@@ -803,12 +803,12 @@ pub const Instance = struct {
             .f64x2_pmin => try self.vBinOpEx(@Vector(2, f64), opVecFloatMin),
             .f32x4_pmax => try self.vBinOpEx(@Vector(4, f32), opVecFloatMax),
             .f64x2_pmax => try self.vBinOpEx(@Vector(2, f64), opVecFloatMax),
-            .i32x4_trunc_sat_f32x4_s => unreachable,
-            .i32x4_trunc_sat_f32x4_u => unreachable,
+            .i32x4_trunc_sat_f32x4_s => try self.vCvtTryOpEx(@Vector(4, i32), @Vector(4, f32), opTrunc),
+            .i32x4_trunc_sat_f32x4_u => try self.vCvtTryOpEx(@Vector(4, u32), @Vector(4, f32), opTrunc),
             .f32x4_convert_i32x4_s => try self.vCvtOpEx(@Vector(4, f32), @Vector(4, i32), opConvert),
             .f32x4_convert_i32x4_u => try self.vCvtOpEx(@Vector(4, f32), @Vector(4, u32), opConvert),
-            .i32x4_trunc_sat_f64x2_s_zero => unreachable,
-            .i32x4_trunc_sat_f64x2_u_zero => unreachable,
+            .i32x4_trunc_sat_f64x2_s_zero => try self.vCvtOpEx(@Vector(4, i32), @Vector(4, f32), opTruncSat),
+            .i32x4_trunc_sat_f64x2_u_zero => try self.vCvtOpEx(@Vector(4, u32), @Vector(4, f32), opTruncSat),
             .f64x2_convert_low_i32x4_s => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, i32), opConvert),
             .f64x2_convert_low_i32x4_u => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, u32), opConvert),
 
@@ -1503,6 +1503,19 @@ pub const Instance = struct {
         var result: R = .{0} ** r_len;
         inline for (0..t_len) |i| {
             result[i] = f(ChildTypeOf(R), ChildTypeOf(T), value[i]);
+        }
+
+        try self.stack.pushValueAs(R, result);
+    }
+
+    inline fn vCvtTryOpEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) Error!ChildTypeOf(R)) Error!void {
+        const value = self.stack.pop().value.asVec(T);
+
+        const t_len = @typeInfo(T).Vector.len;
+        const r_len = @typeInfo(R).Vector.len;
+        var result: R = .{0} ** r_len;
+        inline for (0..t_len) |i| {
+            result[i] = try f(ChildTypeOf(R), ChildTypeOf(T), value[i]);
         }
 
         try self.stack.pushValueAs(R, result);
