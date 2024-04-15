@@ -590,12 +590,12 @@ pub const Instance = struct {
             .v128_const => |val| try self.stack.pushValueAs(i128, val),
             .i8x16_shuffle => |lane_idxs| try self.shuffle(lane_idxs),
             .i8x16_swizzle => try self.swizzle(),
-            .i8x16_splat => try self.opVSprat(u32, @Vector(16, u8)),
-            .i16x8_splat => try self.opVSprat(u32, @Vector(8, u16)),
-            .i32x4_splat => try self.opVSprat(u32, @Vector(4, u32)),
-            .i64x2_splat => try self.opVSprat(u64, @Vector(2, u64)),
-            .f32x4_splat => try self.opVSprat(f32, @Vector(4, f32)),
-            .f64x2_splat => try self.opVSprat(f64, @Vector(2, f64)),
+            .i8x16_splat => try self.opVSplat(u32, @Vector(16, u8)),
+            .i16x8_splat => try self.opVSplat(u32, @Vector(8, u16)),
+            .i32x4_splat => try self.opVSplat(u32, @Vector(4, u32)),
+            .i64x2_splat => try self.opVSplat(u64, @Vector(2, u64)),
+            .f32x4_splat => try self.opVSplat(f32, @Vector(4, f32)),
+            .f64x2_splat => try self.opVSplat(f64, @Vector(2, f64)),
             .i8x16_extract_lane_s => |lane_idx| try self.extractLane(i32, @Vector(16, i8), lane_idx),
             .i8x16_extract_lane_u => |lane_idx| try self.extractLane(u32, @Vector(16, u8), lane_idx),
             .i8x16_replace_lane => |lane_idx| try self.replaceLane(u32, @Vector(16, u8), lane_idx),
@@ -1656,7 +1656,8 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
-    inline fn opVSprat(self: *Self, comptime S: type, comptime T: type) Error!void {
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-splat
+    inline fn opVSplat(self: *Self, comptime S: type, comptime T: type) Error!void {
         const t_len = @typeInfo(T).Vector.len;
         const c1 = self.stack.pop().value.as(S);
         const C = ChildTypeOf(T);

@@ -7,12 +7,12 @@ ls *.json | while read i; do
     a=`grep -c assert_  $i`
     echo $i $p $a
 done | awk '{
-  printf("%-31s %5d %5d  (%3.1lf%%)\n", substr($1, 0, length($1)-5), $2, $3, 100 * ($3 == 0 ? 1 : $2) / ($3 == 0 ? 1 : $3));
+  printf("%-32s %5d %5d  (%3.1lf%%)\n", substr($1, 0, length($1)-5), $2, $3, 100 * ($3 == 0 ? 1 : $2) / ($3 == 0 ? 1 : $3));
   p+=$2;
   t+=$3
 }
 END{
   print "------------------------------------------------";
-  printf("%-31s %5d %5d  (%3.1lf%%)\n", "", p, t, p * 100 / t)
+  printf("%-32s %5d %5d  (%3.1lf%%)\n", "", p, t, p * 100 / t)
 }'
 
