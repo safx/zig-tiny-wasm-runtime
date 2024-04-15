@@ -698,17 +698,17 @@ pub const Instance = struct {
             .i32x4_extend_low_i16x8_s => try self.vCvtOpHalfEx(0, @Vector(4, i32), @Vector(8, i16), opExtend(i32, i16, i16)),
             .i64x2_extend_low_i32x4_s => try self.vCvtOpHalfEx(0, @Vector(2, i64), @Vector(4, i32), opExtend(i64, i32, i32)),
             .f32x4_floor => unreachable,
-            .i16x8_extend_high_i8x16_s => unreachable,
-            .i32x4_extend_high_i16x8_s => unreachable,
-            .i64x2_extend_high_i32x4_s => unreachable,
+            .i16x8_extend_high_i8x16_s => try self.vCvtOpHalfEx(8, @Vector(8, i16), @Vector(16, i8), opExtend(i16, i8, i8)),
+            .i32x4_extend_high_i16x8_s => try self.vCvtOpHalfEx(4, @Vector(4, i32), @Vector(8, i16), opExtend(i32, i16, i16)),
+            .i64x2_extend_high_i32x4_s => try self.vCvtOpHalfEx(2, @Vector(2, i64), @Vector(4, i32), opExtend(i64, i32, i32)),
             .f32x4_trunc => unreachable,
             .i16x8_extend_low_i8x16_u => try self.vCvtOpHalfEx(0, @Vector(8, u16), @Vector(16, u8), opExtend(u16, u8, u8)),
             .i32x4_extend_low_i16x8_u => try self.vCvtOpHalfEx(0, @Vector(4, u32), @Vector(8, u16), opExtend(u32, u16, u16)),
             .i64x2_extend_low_i32x4_u => try self.vCvtOpHalfEx(0, @Vector(2, u64), @Vector(4, u32), opExtend(u64, u32, u32)),
             .f32x4_nearest => unreachable,
-            .i16x8_extend_high_i8x16_u => unreachable,
-            .i32x4_extend_high_i16x8_u => unreachable,
-            .i64x2_extend_high_i32x4_u => unreachable,
+            .i16x8_extend_high_i8x16_u => try self.vCvtOpHalfEx(8, @Vector(8, u16), @Vector(16, u8), opExtend(u16, u8, u8)),
+            .i32x4_extend_high_i16x8_u => try self.vCvtOpHalfEx(4, @Vector(4, u32), @Vector(8, u16), opExtend(u32, u16, u16)),
+            .i64x2_extend_high_i32x4_u => try self.vCvtOpHalfEx(2, @Vector(2, u64), @Vector(4, u32), opExtend(u64, u32, u32)),
             .i8x16_shl => try self.vShiftOp(@Vector(16, i8), opIntShl),
             .i16x8_shl => try self.vShiftOp(@Vector(8, i16), opIntShl),
             .i32x4_shl => try self.vShiftOp(@Vector(4, i32), opIntShl),
@@ -1543,8 +1543,8 @@ pub const Instance = struct {
         std.debug.assert(r_len * 2 == t_len);
 
         var result: R = .{0} ** r_len;
-        inline for (offset..(offset + r_len)) |i| {
-            result[i] = f(ChildTypeOf(R), ChildTypeOf(T), value[i]);
+        inline for (0..r_len) |i| {
+            result[i] = f(ChildTypeOf(R), ChildTypeOf(T), value[offset + i]);
         }
 
         try self.stack.pushValueAs(R, result);
