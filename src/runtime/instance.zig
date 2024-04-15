@@ -671,10 +671,10 @@ pub const Instance = struct {
             .v128_load64_zero => unreachable,
             .f32x4_demote_f64x2_zero => try self.vCvtOpEx(@Vector(4, f32), @Vector(2, f64), opDemote),
             .f64x2_promote_low_f32x4 => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, f32), opPromote),
-            .i8x16_abs => unreachable,
-            .i16x8_abs => unreachable,
-            .i32x4_abs => unreachable,
-            .i64x2_abs => unreachable,
+            .i8x16_abs => try self.vUnOpEx(@Vector(16, i8), opIntAbs),
+            .i16x8_abs => try self.vUnOpEx(@Vector(8, i16), opIntAbs),
+            .i32x4_abs => try self.vUnOpEx(@Vector(4, i32), opIntAbs),
+            .i64x2_abs => try self.vUnOpEx(@Vector(2, i64), opIntAbs),
             .i8x16_neg => try self.vUnOp(@Vector(16, u8), opIntNeg),
             .i16x8_neg => try self.vUnOp(@Vector(8, i16), opIntNeg),
             .i32x4_neg => try self.vUnOp(@Vector(4, i32), opIntNeg),
@@ -743,27 +743,27 @@ pub const Instance = struct {
             .i16x8_mul => try self.vBinOp(@Vector(8, i16), opIntMul),
             .i32x4_mul => try self.vBinOp(@Vector(4, i32), opIntMul),
             .i64x2_mul => try self.vBinOp(@Vector(2, i64), opIntMul),
-            .i8x16_min_s => unreachable,
-            .i16x8_min_s => unreachable,
-            .i32x4_min_s => unreachable,
+            .i8x16_min_s => try self.vBinOp(@Vector(16, i8), opVecMin),
+            .i16x8_min_s => try self.vBinOp(@Vector(8, i16), opVecMin),
+            .i32x4_min_s => try self.vBinOp(@Vector(4, i32), opVecMin),
             .i64x2_eq => unreachable,
-            .i8x16_min_u => unreachable,
-            .i16x8_min_u => unreachable,
-            .i32x4_min_u => unreachable,
+            .i8x16_min_u => try self.vBinOp(@Vector(16, u8), opVecMin),
+            .i16x8_min_u => try self.vBinOp(@Vector(8, u16), opVecMin),
+            .i32x4_min_u => try self.vBinOp(@Vector(4, u32), opVecMin),
             .i64x2_ne => unreachable,
-            .i8x16_max_s => unreachable,
-            .i16x8_max_s => unreachable,
-            .i32x4_max_s => unreachable,
+            .i8x16_max_s => try self.vBinOp(@Vector(16, i8), opVecMax),
+            .i16x8_max_s => try self.vBinOp(@Vector(8, i16), opVecMax),
+            .i32x4_max_s => try self.vBinOp(@Vector(4, i32), opVecMax),
             .i64x2_lt_s => unreachable,
-            .i8x16_max_u => unreachable,
-            .i16x8_max_u => unreachable,
-            .i32x4_max_u => unreachable,
+            .i8x16_max_u => try self.vBinOp(@Vector(16, u8), opVecMax),
+            .i16x8_max_u => try self.vBinOp(@Vector(8, u16), opVecMax),
+            .i32x4_max_u => try self.vBinOp(@Vector(4, u32), opVecMax),
             .i64x2_gt_s => unreachable,
             .f64x2_trunc => unreachable,
             .i32x4_dot_i16x8_s => unreachable,
             .i64x2_le_s => unreachable,
-            .i8x16_avgr_u => unreachable,
-            .i16x8_avgr_u => unreachable,
+            .i8x16_avgr_u => try self.vBinOpEx(@Vector(16, u8), opIntAvgr),
+            .i16x8_avgr_u => try self.vBinOpEx(@Vector(8, u16), opIntAvgr),
             .i64x2_ge_s => unreachable,
             .i16x8_extadd_pairwise_i8x16_s => unreachable,
             .i16x8_extmul_low_i8x16_s => unreachable,
@@ -1455,6 +1455,17 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
+    inline fn vUnOpEx(self: *Self, comptime T: type, comptime f: fn (type, T) T) error{CallStackExhausted}!void {
+        const value = self.stack.pop().value.asVec(T);
+
+        const vec_len = @typeInfo(T).Vector.len;
+        var result: T = .{0} ** vec_len;
+        inline for (0..vec_len) |i| {
+            result[i] = f(ChildTypeOf(T), value[i]);
+        }
+        try self.stack.pushValueAs(T, result);
+    }
+
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-vbinop-mathit-vbinop
     inline fn vBinOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) Error!void {
         const rhs = self.stack.pop().value.asVec(T);
@@ -1523,6 +1534,8 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vcvtop-mathit-vcvtop-mathsf-xref-syntax-instructions-syntax-half-mathit-half-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
     inline fn vCvtOpHalfEx(self: *Self, comptime offset: u8, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) ChildTypeOf(R)) error{CallStackExhausted}!void {
+        @setEvalBranchQuota(3000);
+
         const value = self.stack.pop().value.asVec(T);
 
         const r_len = @typeInfo(R).Vector.len;
@@ -1763,6 +1776,14 @@ fn opIntNeg(comptime T: type, value: T) T {
     return zero -% value;
 }
 
+fn opIntAbs(comptime T: type, value: T) T {
+    if (value >= 0)
+        return value;
+    if (value == std.math.minInt(T))
+        return value;
+    return -value;
+}
+
 fn opIntClz(comptime T: type, value: T) T {
     return @clz(value);
 }
@@ -1984,6 +2005,25 @@ fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
     const num: UnsignedType = @bitCast(lhs);
     const res = std.math.rotr(UnsignedType, num, rhs);
     return @bitCast(res);
+}
+
+fn opIntAvgr(comptime T: type, lhs: T, rhs: T) Error!T {
+    std.debug.print("{} {} \n", .{ lhs, rhs });
+
+    const r1 = @addWithOverflow(lhs, rhs);
+    const r2 = @addWithOverflow(r1[0], 1);
+    const r3 = @divTrunc(r2[0], 2);
+    const half: T = std.math.maxInt(T) / 2 + 1;
+    const r4 = r3 + (if (r1[1] | r2[1] == 0) 0 else half);
+    return r4;
+}
+
+fn opVecMin(comptime T: type, lhs: T, rhs: T) Error!T {
+    return @min(lhs, rhs);
+}
+
+fn opVecMax(comptime T: type, lhs: T, rhs: T) Error!T {
+    return @max(lhs, rhs);
 }
 
 fn opVecFloatMin(comptime T: type, lhs: T, rhs: T) Error!T {
