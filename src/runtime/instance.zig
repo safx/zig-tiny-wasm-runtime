@@ -679,8 +679,8 @@ pub const Instance = struct {
             .i16x8_neg => try self.vUnOp(@Vector(8, i16), opIntNeg),
             .i32x4_neg => try self.vUnOp(@Vector(4, i32), opIntNeg),
             .i64x2_neg => try self.vUnOp(@Vector(2, i64), opIntNeg),
-            .i8x16_popcnt => unreachable,
-            .i16x8_q15mulr_sat_s => unreachable,
+            .i8x16_popcnt => try self.vUnOpEx(@Vector(16, i8), opIntPopcnt),
+            .i16x8_q15mulr_sat_s => try self.vUnOpEx(@Vector(8, i16), opIntPopcnt),
             .i8x16_all_true => try self.vAllTrue(@Vector(16, i8)),
             .i16x8_all_true => try self.vAllTrue(@Vector(8, i16)),
             .i32x4_all_true => try self.vAllTrue(@Vector(4, i32)),
@@ -693,19 +693,19 @@ pub const Instance = struct {
             .i16x8_narrow_i32x4_s => try self.vNarrow(@Vector(8, i16), @Vector(4, i32)),
             .i8x16_narrow_i16x8_u => try self.vNarrow(@Vector(16, u8), @Vector(8, i16)),
             .i16x8_narrow_i32x4_u => try self.vNarrow(@Vector(8, u16), @Vector(4, i32)),
-            .f32x4_ceil => unreachable,
+            .f32x4_ceil => try self.vUnOpEx(@Vector(4, f32), opFloatCeil),
             .i16x8_extend_low_i8x16_s => try self.vCvtOpHalfEx(0, @Vector(8, i16), @Vector(16, i8), opExtend(i16, i8, i8)),
             .i32x4_extend_low_i16x8_s => try self.vCvtOpHalfEx(0, @Vector(4, i32), @Vector(8, i16), opExtend(i32, i16, i16)),
             .i64x2_extend_low_i32x4_s => try self.vCvtOpHalfEx(0, @Vector(2, i64), @Vector(4, i32), opExtend(i64, i32, i32)),
-            .f32x4_floor => unreachable,
+            .f32x4_floor => try self.vUnOpEx(@Vector(4, f32), opFloatFloor),
             .i16x8_extend_high_i8x16_s => try self.vCvtOpHalfEx(8, @Vector(8, i16), @Vector(16, i8), opExtend(i16, i8, i8)),
             .i32x4_extend_high_i16x8_s => try self.vCvtOpHalfEx(4, @Vector(4, i32), @Vector(8, i16), opExtend(i32, i16, i16)),
             .i64x2_extend_high_i32x4_s => try self.vCvtOpHalfEx(2, @Vector(2, i64), @Vector(4, i32), opExtend(i64, i32, i32)),
-            .f32x4_trunc => unreachable,
+            .f32x4_trunc => try self.vUnOpEx(@Vector(4, f32), opFloatTrunc),
             .i16x8_extend_low_i8x16_u => try self.vCvtOpHalfEx(0, @Vector(8, u16), @Vector(16, u8), opExtend(u16, u8, u8)),
             .i32x4_extend_low_i16x8_u => try self.vCvtOpHalfEx(0, @Vector(4, u32), @Vector(8, u16), opExtend(u32, u16, u16)),
             .i64x2_extend_low_i32x4_u => try self.vCvtOpHalfEx(0, @Vector(2, u64), @Vector(4, u32), opExtend(u64, u32, u32)),
-            .f32x4_nearest => unreachable,
+            .f32x4_nearest => try self.vUnOpEx(@Vector(4, f32), opFloatNearest),
             .i16x8_extend_high_i8x16_u => try self.vCvtOpHalfEx(8, @Vector(8, u16), @Vector(16, u8), opExtend(u16, u8, u8)),
             .i32x4_extend_high_i16x8_u => try self.vCvtOpHalfEx(4, @Vector(4, u32), @Vector(8, u16), opExtend(u32, u16, u16)),
             .i64x2_extend_high_i32x4_u => try self.vCvtOpHalfEx(2, @Vector(2, u64), @Vector(4, u32), opExtend(u64, u32, u32)),
@@ -737,9 +737,9 @@ pub const Instance = struct {
             .i16x8_sub_sat_s => try self.vBinOp(@Vector(8, i16), opIntSubSat),
             .i8x16_sub_sat_u => try self.vBinOp(@Vector(16, u8), opIntSubSat),
             .i16x8_sub_sat_u => try self.vBinOp(@Vector(8, u16), opIntSubSat),
-            .f64x2_ceil => unreachable,
-            .f64x2_nearest => unreachable,
-            .f64x2_floor => unreachable,
+            .f64x2_ceil => try self.vUnOpEx(@Vector(2, f64), opFloatCeil),
+            .f64x2_nearest => try self.vUnOpEx(@Vector(2, f64), opFloatNearest),
+            .f64x2_floor => try self.vUnOpEx(@Vector(2, f64), opFloatFloor),
             .i16x8_mul => try self.vBinOp(@Vector(8, i16), opIntMul),
             .i32x4_mul => try self.vBinOp(@Vector(4, i32), opIntMul),
             .i64x2_mul => try self.vBinOp(@Vector(2, i64), opIntMul),
@@ -759,7 +759,7 @@ pub const Instance = struct {
             .i16x8_max_u => try self.vBinOp(@Vector(8, u16), opVecMax),
             .i32x4_max_u => try self.vBinOp(@Vector(4, u32), opVecMax),
             .i64x2_gt_s => unreachable,
-            .f64x2_trunc => unreachable,
+            .f64x2_trunc => try self.vUnOpEx(@Vector(2, f64), opFloatTrunc),
             .i32x4_dot_i16x8_s => unreachable,
             .i64x2_le_s => unreachable,
             .i8x16_avgr_u => try self.vBinOpEx(@Vector(16, u8), opIntAvgr),
@@ -807,8 +807,8 @@ pub const Instance = struct {
             .i32x4_trunc_sat_f32x4_u => try self.vCvtTryOpEx(@Vector(4, u32), @Vector(4, f32), opTrunc),
             .f32x4_convert_i32x4_s => try self.vCvtOpEx(@Vector(4, f32), @Vector(4, i32), opConvert),
             .f32x4_convert_i32x4_u => try self.vCvtOpEx(@Vector(4, f32), @Vector(4, u32), opConvert),
-            .i32x4_trunc_sat_f64x2_s_zero => try self.vCvtOpEx(@Vector(4, i32), @Vector(4, f32), opTruncSat),
-            .i32x4_trunc_sat_f64x2_u_zero => try self.vCvtOpEx(@Vector(4, u32), @Vector(4, f32), opTruncSat),
+            .i32x4_trunc_sat_f64x2_s_zero => try self.vCvtOpZeroEx(@Vector(4, i32), @Vector(2, f64), opTruncSat),
+            .i32x4_trunc_sat_f64x2_u_zero => try self.vCvtOpZeroEx(@Vector(4, u32), @Vector(2, f64), opTruncSat),
             .f64x2_convert_low_i32x4_s => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, i32), opConvert),
             .f64x2_convert_low_i32x4_u => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, u32), opConvert),
 
@@ -1550,6 +1550,20 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
+    inline fn vCvtOpZeroEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) ChildTypeOf(R)) Error!void {
+        const r_len = @typeInfo(R).Vector.len;
+        const t_len = @typeInfo(T).Vector.len;
+        std.debug.assert(r_len == t_len * 2);
+
+        const c = self.stack.pop().value.asVec(T);
+
+        var result: R = .{0} ** r_len;
+        inline for (0..t_len) |i| {
+            result[i] = f(ChildTypeOf(R), ChildTypeOf(T), c[i]);
+        }
+        try self.stack.pushValueAs(R, result);
+    }
+
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vishiftop-mathit-vishiftop
     inline fn vShiftOp(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) Error!T) Error!void {
         const C = ChildTypeOf(T);
@@ -2009,8 +2023,6 @@ fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opIntAvgr(comptime T: type, lhs: T, rhs: T) Error!T {
-    std.debug.print("{} {} \n", .{ lhs, rhs });
-
     const r1 = @addWithOverflow(lhs, rhs);
     const r2 = @addWithOverflow(r1[0], 1);
     const r3 = @divTrunc(r2[0], 2);
