@@ -1540,7 +1540,7 @@ pub const Instance = struct {
 
         const r_len = @typeInfo(R).Vector.len;
         const t_len = @typeInfo(T).Vector.len;
-        std.debug.assert(r_len * 2 == t_len);
+        comptimeAssert(r_len * 2 == t_len);
 
         var result: R = .{0} ** r_len;
         inline for (0..r_len) |i| {
@@ -1553,7 +1553,7 @@ pub const Instance = struct {
     inline fn vCvtOpZeroEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) ChildTypeOf(R)) Error!void {
         const r_len = @typeInfo(R).Vector.len;
         const t_len = @typeInfo(T).Vector.len;
-        std.debug.assert(r_len == t_len * 2);
+        comptimeAssert(r_len == t_len * 2);
 
         const c = self.stack.pop().value.asVec(T);
 
@@ -1654,7 +1654,7 @@ pub const Instance = struct {
     inline fn vNarrow(self: *Self, comptime R: type, comptime T: type) Error!void {
         const r_len = @typeInfo(R).Vector.len;
         const t_len = @typeInfo(T).Vector.len;
-        std.debug.assert(r_len == t_len * 2);
+        comptimeAssert(r_len == t_len * 2);
 
         const c2 = self.stack.pop().value.asVec(T);
         const c1 = self.stack.pop().value.asVec(T);
@@ -1683,7 +1683,7 @@ pub const Instance = struct {
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-1-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-extract-lane-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-x
     inline fn extractLane(self: *Self, comptime R: type, comptime T: type, lane_idx: u8) Error!void {
         const t_len = @typeInfo(T).Vector.len;
-        std.debug.assert(lane_idx < t_len);
+        assert(lane_idx < t_len);
         const c1 = self.stack.pop().value.asVec(T);
         const c2 = c1[lane_idx];
         try self.stack.pushValueAs(R, c2);
@@ -1692,7 +1692,7 @@ pub const Instance = struct {
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-replace-lane-x
     inline fn replaceLane(self: *Self, comptime R: type, comptime T: type, lane_idx: u8) Error!void {
         const t_len = @typeInfo(T).Vector.len;
-        std.debug.assert(lane_idx < t_len);
+        assert(lane_idx < t_len);
         const c2 = self.stack.pop().value.as(R);
         const C = ChildTypeOf(T);
         const val: C = if (R == f32 or R == f64) c2 else @intCast(c2 & std.math.maxInt(C));
@@ -2148,7 +2148,7 @@ fn opFloatCopySign(comptime T: type, lhs: T, rhs: T) Error!T {
 
 fn canonNan(comptime T: type) T {
     // std.math.nan() is not canonical NaN
-    std.debug.assert(T == f64 or T == f32);
+    comptimeAssert(T == f64 or T == f32);
     const v = if (T == f64) @as(u64, 0x7ff8_0000_0000_0000) else @as(u32, 0x7fc0_0000);
     return @bitCast(v);
 }
@@ -2162,6 +2162,11 @@ fn IntOfBitSizeOf(comptime size: u16) type {
         128 => u128,
         else => unreachable,
     };
+}
+
+fn comptimeAssert(comptime ok: bool) void {
+    if (!ok)
+        @compileError("Assertion failed at compile time");
 }
 
 test opFloatEq {
