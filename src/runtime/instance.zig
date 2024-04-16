@@ -2078,11 +2078,26 @@ fn opFloatTrunc(comptime T: type, value: T) T {
 }
 
 fn opFloatNearest(comptime T: type, value: T) T {
-    const val: T = @trunc(value);
-    if (value == val or @mod(val, 2.0) == 0.0)
-        return val;
+    if (std.math.isInf(value))
+        return value;
 
-    return val + @as(T, if (val >= 0) 1.0 else -1.0);
+    const val: T = @trunc(value);
+    if (value == val)
+        return value;
+
+    if (val == 0 and 0 < value and value <= 0.5)
+        return 0.0;
+
+    if (val == 0 and -0.5 <= value and value < -0.0)
+        return -0.0;
+
+    const q = value - val;
+    if (q == 0.5 and @mod(val, 2.0) != 0.0)
+        return val + 1;
+    if (q == -0.5 and @mod(val, 2.0) != 0.0)
+        return val - 1;
+
+    return val;
 }
 
 fn opFloatEq(comptime T: type, lhs: T, rhs: T) bool {
@@ -2199,8 +2214,12 @@ test opFloatNearest {
     try expect(std.math.isNan(opFloatNearest(f32, std.math.nan_f32)));
     try expect(std.math.isPositiveInf(opFloatNearest(f32, std.math.inf(f32))));
     try expect(std.math.isNegativeInf(opFloatNearest(f32, -std.math.inf(f32))));
+    try expectEqual(@as(f32, 0.0), opFloatNearest(f32, 0.0));
+    try expectEqual(@as(f32, -0.0), opFloatNearest(f32, -0.0));
     try expectEqual(@as(f32, 0.0), opFloatNearest(f32, 0.5));
     try expectEqual(@as(f32, -0.0), opFloatNearest(f32, -0.5));
     try expectEqual(@as(f32, -4.0), opFloatNearest(f32, -3.5));
+    try expectEqual(@as(f32, 4.0), opFloatNearest(f32, 4.5));
     try expectEqual(@as(f32, 8388609.0), opFloatNearest(f32, 8388609.0));
+    try expectEqual(@as(f64, 123456789.0), opFloatNearest(f64, 123456789.01234567));
 }
