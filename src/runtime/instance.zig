@@ -803,8 +803,8 @@ pub const Instance = struct {
             .f64x2_pmin => try self.vBinOpEx(@Vector(2, f64), opVecFloatMin),
             .f32x4_pmax => try self.vBinOpEx(@Vector(4, f32), opVecFloatMax),
             .f64x2_pmax => try self.vBinOpEx(@Vector(2, f64), opVecFloatMax),
-            .i32x4_trunc_sat_f32x4_s => try self.vCvtTryOpEx(@Vector(4, i32), @Vector(4, f32), opTrunc),
-            .i32x4_trunc_sat_f32x4_u => try self.vCvtTryOpEx(@Vector(4, u32), @Vector(4, f32), opTrunc),
+            .i32x4_trunc_sat_f32x4_s => try self.vCvtOpEx(@Vector(4, i32), @Vector(4, f32), opTruncSat),
+            .i32x4_trunc_sat_f32x4_u => try self.vCvtOpEx(@Vector(4, u32), @Vector(4, f32), opTruncSat),
             .f32x4_convert_i32x4_s => try self.vCvtOpEx(@Vector(4, f32), @Vector(4, i32), opConvert),
             .f32x4_convert_i32x4_u => try self.vCvtOpEx(@Vector(4, f32), @Vector(4, u32), opConvert),
             .i32x4_trunc_sat_f64x2_s_zero => try self.vCvtOpZeroEx(@Vector(4, i32), @Vector(2, f64), opTruncSat),
@@ -2190,7 +2190,7 @@ test opFloatNe {
 test opExtend {
     const expectEqual = std.testing.expectEqual;
     const op = opExtend(i64, i64, i32);
-    try expectEqual(@as(i64, -2147483648), try op(i64, i64, 2147483648));
+    try expectEqual(@as(i64, -2147483648), op(i64, i64, 2147483648));
 }
 
 test opFloatNearest {
