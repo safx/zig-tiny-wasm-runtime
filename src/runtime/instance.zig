@@ -582,10 +582,10 @@ pub const Instance = struct {
             .v128_load16x4_u => unreachable,
             .v128_load32x2_s => unreachable,
             .v128_load32x2_u => unreachable,
-            .v128_load8_splat => unreachable,
-            .v128_load16_splat => unreachable,
-            .v128_load32_splat => unreachable,
-            .v128_load64_splat => unreachable,
+            .v128_load8_splat => |mem_arg| try self.opV128LoadSplat(u8, mem_arg),
+            .v128_load16_splat => |mem_arg| try self.opV128LoadSplat(u16, mem_arg),
+            .v128_load32_splat => |mem_arg| try self.opV128LoadSplat(u32, mem_arg),
+            .v128_load64_splat => |mem_arg| try self.opV128LoadSplat(u64, mem_arg),
             .v128_store => |mem_arg| try self.opStore(i128, 128, mem_arg),
             .v128_const => |val| try self.stack.pushValueAs(i128, val),
             .i8x16_shuffle => |lane_idxs| try self.shuffle(lane_idxs),
@@ -766,21 +766,21 @@ pub const Instance = struct {
             .i16x8_avgr_u => try self.vBinOpEx(@Vector(8, u16), opIntAvgr),
             .i64x2_ge_s => unreachable,
             .i16x8_extadd_pairwise_i8x16_s => unreachable,
-            .i16x8_extmul_low_i8x16_s => unreachable,
-            .i32x4_extmul_low_i16x8_s => unreachable,
-            .i64x2_extmul_low_i32x4_s => unreachable,
+            .i16x8_extmul_low_i8x16_s => try self.vExtmulHalf(0, @Vector(8, i16), @Vector(16, i8)),
+            .i32x4_extmul_low_i16x8_s => try self.vExtmulHalf(0, @Vector(4, i32), @Vector(8, i16)),
+            .i64x2_extmul_low_i32x4_s => try self.vExtmulHalf(0, @Vector(2, i64), @Vector(4, i32)),
             .i16x8_extadd_pairwise_i8x16_u => unreachable,
-            .i16x8_extmul_high_i8x16_s => unreachable,
-            .i32x4_extmul_high_i16x8_s => unreachable,
-            .i64x2_extmul_high_i32x4_s => unreachable,
+            .i16x8_extmul_high_i8x16_s => try self.vExtmulHalf(4, @Vector(8, i16), @Vector(16, i8)),
+            .i32x4_extmul_high_i16x8_s => try self.vExtmulHalf(2, @Vector(4, i32), @Vector(8, i16)),
+            .i64x2_extmul_high_i32x4_s => try self.vExtmulHalf(1, @Vector(2, i64), @Vector(4, i32)),
             .i32x4_extadd_pairwise_i16x8_s => unreachable,
-            .i16x8_extmul_low_i8x16_u => unreachable,
-            .i32x4_extmul_low_i16x8_u => unreachable,
-            .i64x2_extmul_low_i32x4_u => unreachable,
+            .i16x8_extmul_low_i8x16_u => try self.vExtmulHalf(0, @Vector(8, u16), @Vector(16, u8)),
+            .i32x4_extmul_low_i16x8_u => try self.vExtmulHalf(0, @Vector(4, u32), @Vector(8, u16)),
+            .i64x2_extmul_low_i32x4_u => try self.vExtmulHalf(0, @Vector(2, u64), @Vector(4, u32)),
             .i32x4_extadd_pairwise_i16x8_u => unreachable,
-            .i16x8_extmul_high_i8x16_u => unreachable,
-            .i32x4_extmul_high_i16x8_u => unreachable,
-            .i64x2_extmul_high_i32x4_u => unreachable,
+            .i16x8_extmul_high_i8x16_u => try self.vExtmulHalf(4, @Vector(8, u16), @Vector(16, u8)),
+            .i32x4_extmul_high_i16x8_u => try self.vExtmulHalf(2, @Vector(4, u32), @Vector(8, u16)),
+            .i64x2_extmul_high_i32x4_u => try self.vExtmulHalf(1, @Vector(2, u64), @Vector(4, u32)),
             .f32x4_abs => try self.vUnOp(@Vector(4, f32), opFloatAbs),
             .f64x2_abs => try self.vUnOp(@Vector(2, f64), opFloatAbs),
             .f32x4_neg => try self.vUnOp(@Vector(4, f32), opFloatNeg),
@@ -1225,6 +1225,31 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, val);
     }
 
+    inline fn opV128LoadSplat(self: *Self, comptime N: type, mem_arg: Instruction.MemArg) Error!void {
+        const module = self.stack.topFrame().module;
+        const a = module.mem_addrs[0];
+        const mem = &self.store.mems.items[a];
+
+        const ea: u32 = self.stack.pop().value.asU32();
+        const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
+        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
+            return Error.OutOfBoundsMemoryAccess;
+
+        const ea_start = ea_start_with_overflow[0];
+        const size = @sizeOf(N);
+        const ea_end_with_overflow = @addWithOverflow(ea_start, size);
+        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
+            return Error.OutOfBoundsMemoryAccess;
+
+        const ea_end = ea_end_with_overflow[0];
+
+        const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
+        const len = 128 / @bitSizeOf(N);
+        const V = @Vector(len, N);
+        const result: V = .{val} ** len;
+        try self.stack.pushValueAs(V, result);
+    }
+
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-xref-syntax-instructions-syntax-memarg-mathit-memarg-and-t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-n-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opStore(self: *Self, comptime T: type, comptime bit_size: u32, mem_arg: Instruction.MemArg) error{OutOfBoundsMemoryAccess}!void {
         const module = self.stack.topFrame().module;
@@ -1561,6 +1586,25 @@ pub const Instance = struct {
         inline for (0..t_len) |i| {
             result[i] = f(ChildTypeOf(R), ChildTypeOf(T), c[i]);
         }
+        try self.stack.pushValueAs(R, result);
+    }
+
+    inline fn vExtmulHalf(self: *Self, comptime offset: u8, comptime R: type, comptime T: type) error{CallStackExhausted}!void {
+        const c2 = self.stack.pop().value.asVec(T);
+        const c1 = self.stack.pop().value.asVec(T);
+
+        const r_len = @typeInfo(R).Vector.len;
+        const t_len = @typeInfo(T).Vector.len;
+        comptimeAssert(r_len * 2 == t_len);
+
+        var result: R = .{0} ** r_len;
+        const C = ChildTypeOf(R);
+        inline for (0..r_len) |i| {
+            const k1: C = c1[offset + i];
+            const k2: C = c2[offset + i];
+            result[i] = k1 * k2;
+        }
+
         try self.stack.pushValueAs(R, result);
     }
 

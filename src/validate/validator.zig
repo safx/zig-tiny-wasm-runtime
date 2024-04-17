@@ -726,21 +726,21 @@ pub const ModuleValidator = struct {
             .i16x8_avgr_u => try vBinOp(type_stack),
             .i64x2_ge_s => unreachable,
             .i16x8_extadd_pairwise_i8x16_s => unreachable,
-            .i16x8_extmul_low_i8x16_s => unreachable,
-            .i32x4_extmul_low_i16x8_s => unreachable,
-            .i64x2_extmul_low_i32x4_s => unreachable,
+            .i16x8_extmul_low_i8x16_s => try vExtmul(type_stack),
+            .i32x4_extmul_low_i16x8_s => try vExtmul(type_stack),
+            .i64x2_extmul_low_i32x4_s => try vExtmul(type_stack),
             .i16x8_extadd_pairwise_i8x16_u => unreachable,
-            .i16x8_extmul_high_i8x16_s => unreachable,
-            .i32x4_extmul_high_i16x8_s => unreachable,
-            .i64x2_extmul_high_i32x4_s => unreachable,
+            .i16x8_extmul_high_i8x16_s => try vExtmul(type_stack),
+            .i32x4_extmul_high_i16x8_s => try vExtmul(type_stack),
+            .i64x2_extmul_high_i32x4_s => try vExtmul(type_stack),
             .i32x4_extadd_pairwise_i16x8_s => unreachable,
-            .i16x8_extmul_low_i8x16_u => unreachable,
-            .i32x4_extmul_low_i16x8_u => unreachable,
-            .i64x2_extmul_low_i32x4_u => unreachable,
+            .i16x8_extmul_low_i8x16_u => try vExtmul(type_stack),
+            .i32x4_extmul_low_i16x8_u => try vExtmul(type_stack),
+            .i64x2_extmul_low_i32x4_u => try vExtmul(type_stack),
             .i32x4_extadd_pairwise_i16x8_u => unreachable,
-            .i16x8_extmul_high_i8x16_u => unreachable,
-            .i32x4_extmul_high_i16x8_u => unreachable,
-            .i64x2_extmul_high_i32x4_u => unreachable,
+            .i16x8_extmul_high_i8x16_u => try vExtmul(type_stack),
+            .i32x4_extmul_high_i16x8_u => try vExtmul(type_stack),
+            .i64x2_extmul_high_i32x4_u => try vExtmul(type_stack),
             .f32x4_abs => try vUnOp(type_stack),
             .f64x2_abs => try vUnOp(type_stack),
             .f32x4_neg => try vUnOp(type_stack),
@@ -832,8 +832,7 @@ inline fn opV128LoadSprat(comptime N: type, mem_arg: types.Instruction.MemArg, t
     try c.checkMem(0);
 
     try type_stack.popWithCheckingValueType(.i32);
-    const t = valueTypeOf(N);
-    try type_stack.pushValueType(t);
+    try type_stack.pushValueType(.v128);
 }
 
 inline fn opVSprat(comptime T: type, type_stack: *TypeStack) Error!void {
@@ -966,6 +965,7 @@ inline fn vvTernOp(type_stack: *TypeStack) Error!void {
 const vvTestOp = vTestOp;
 const vBitmask = vTestOp;
 const vNarrow = vBinOp;
+const vExtmul = vBinOp;
 
 inline fn viShiftOp(type_stack: *TypeStack) Error!void {
     try type_stack.popWithCheckingValueType(.v128);
