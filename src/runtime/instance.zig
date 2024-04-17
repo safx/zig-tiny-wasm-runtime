@@ -1302,7 +1302,12 @@ pub const Instance = struct {
         const c: DestType = @truncate(ci);
 
         const i: u32 = self.stack.pop().value.asU32();
-        const ea: u32 = i + mem_arg.offset;
+
+        const ea_with_overflow = @addWithOverflow(i, mem_arg.offset);
+        if (ea_with_overflow[1] == 1 or ea_with_overflow[0] > mem.data.len)
+            return Error.OutOfBoundsMemoryAccess;
+
+        const ea: u32 = ea_with_overflow[0];
 
         const byte_size = bit_size / 8;
         const ea_plus_byte_size = @addWithOverflow(ea, byte_size);

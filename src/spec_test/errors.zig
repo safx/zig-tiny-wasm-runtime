@@ -61,8 +61,9 @@ pub fn decodeErrorFromString(str: []const u8) DecodeError {
     if (strcmp(str, "wrong number of lane literals")) return E.OtherError; // FIXME
     if (strcmp(str, "malformed lane index")) return E.MalformedLaneIndex;
     if (strcmp(str, "invalid lane length")) return E.InvalidLaneLength;
+    if (strcmp(str, "alignment must be a power of two")) return E.AlignmentMustBePowerOfTwo;
 
-    std.debug.print("? Unknown validation error \"{s}\"\n", .{str});
+    std.debug.print("? Unknown decode error \"{s}\"\n", .{str});
     unreachable;
 }
 

@@ -18,6 +18,7 @@ pub const Error = error{
     UnexpectedContentAfterLastSection,
     IntegerRepresentationTooLong,
     MalformedUtf8Encoding,
+    AlignmentMustBePowerOfTwo,
     //
     MalformedFunctypeMagicNumber,
     MalformedElemKind,
