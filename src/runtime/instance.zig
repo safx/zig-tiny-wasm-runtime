@@ -746,25 +746,25 @@ pub const Instance = struct {
             .i8x16_min_s => try self.vBinOp(@Vector(16, i8), opVecMin),
             .i16x8_min_s => try self.vBinOp(@Vector(8, i16), opVecMin),
             .i32x4_min_s => try self.vBinOp(@Vector(4, i32), opVecMin),
-            .i64x2_eq => unreachable,
+            .i64x2_eq => try self.vRelOpEx(@Vector(2, i64), opIntEq),
             .i8x16_min_u => try self.vBinOp(@Vector(16, u8), opVecMin),
             .i16x8_min_u => try self.vBinOp(@Vector(8, u16), opVecMin),
             .i32x4_min_u => try self.vBinOp(@Vector(4, u32), opVecMin),
-            .i64x2_ne => unreachable,
+            .i64x2_ne => try self.vRelOpEx(@Vector(2, i64), opIntNe),
             .i8x16_max_s => try self.vBinOp(@Vector(16, i8), opVecMax),
             .i16x8_max_s => try self.vBinOp(@Vector(8, i16), opVecMax),
             .i32x4_max_s => try self.vBinOp(@Vector(4, i32), opVecMax),
-            .i64x2_lt_s => unreachable,
+            .i64x2_lt_s => try self.vRelOpEx(@Vector(2, i64), opIntLt),
             .i8x16_max_u => try self.vBinOp(@Vector(16, u8), opVecMax),
             .i16x8_max_u => try self.vBinOp(@Vector(8, u16), opVecMax),
             .i32x4_max_u => try self.vBinOp(@Vector(4, u32), opVecMax),
-            .i64x2_gt_s => unreachable,
+            .i64x2_gt_s => try self.vRelOpEx(@Vector(2, i64), opIntGt),
             .f64x2_trunc => try self.vUnOpEx(@Vector(2, f64), opFloatTrunc),
             .i32x4_dot_i16x8_s => unreachable,
-            .i64x2_le_s => unreachable,
+            .i64x2_le_s => try self.vRelOpEx(@Vector(2, i64), opIntLe),
             .i8x16_avgr_u => try self.vBinOpEx(@Vector(16, u8), opIntAvgr),
             .i16x8_avgr_u => try self.vBinOpEx(@Vector(8, u16), opIntAvgr),
-            .i64x2_ge_s => unreachable,
+            .i64x2_ge_s => try self.vRelOpEx(@Vector(2, i64), opIntGe),
             .i16x8_extadd_pairwise_i8x16_s => unreachable,
             .i16x8_extmul_low_i8x16_s => try self.vExtmulHalf(0, @Vector(8, i16), @Vector(16, i8)),
             .i32x4_extmul_low_i16x8_s => try self.vExtmulHalf(0, @Vector(4, i32), @Vector(8, i16)),
@@ -2117,6 +2117,15 @@ fn opIntAvgr(comptime T: type, lhs: T, rhs: T) Error!T {
     const half: T = std.math.maxInt(T) / 2 + 1;
     const r4 = r3 + (if (r1[1] | r2[1] == 0) 0 else half);
     return r4;
+}
+
+fn opVecEq(comptime T: type, lhs: T, rhs: T) Error!T {
+    const len = @typeInfo(T).Vector.len;
+
+    const zero: T = .{0} ** len;
+    const one: T = .{1} ** len;
+
+    return @select(types.ChildTypeOf(T), lhs == rhs, one, zero);
 }
 
 fn opVecMin(comptime T: type, lhs: T, rhs: T) Error!T {
