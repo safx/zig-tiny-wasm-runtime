@@ -576,12 +576,12 @@ pub const Instance = struct {
 
             // SIMD instructions
             .v128_load => |mem_arg| try self.opLoad(i128, i128, mem_arg),
-            .v128_load8x8_s => unreachable,
-            .v128_load8x8_u => unreachable,
-            .v128_load16x4_s => unreachable,
-            .v128_load16x4_u => unreachable,
-            .v128_load32x2_s => unreachable,
-            .v128_load32x2_u => unreachable,
+            .v128_load8x8_s => |mem_arg| try self.opV128Load(@Vector(8, i16), mem_arg),
+            .v128_load8x8_u => |mem_arg| try self.opV128Load(@Vector(8, u16), mem_arg),
+            .v128_load16x4_s => |mem_arg| try self.opV128Load(@Vector(4, i32), mem_arg),
+            .v128_load16x4_u => |mem_arg| try self.opV128Load(@Vector(4, u32), mem_arg),
+            .v128_load32x2_s => |mem_arg| try self.opV128Load(@Vector(2, i64), mem_arg),
+            .v128_load32x2_u => |mem_arg| try self.opV128Load(@Vector(2, u64), mem_arg),
             .v128_load8_splat => |mem_arg| try self.opV128LoadSplat(u8, mem_arg),
             .v128_load16_splat => |mem_arg| try self.opV128LoadSplat(u16, mem_arg),
             .v128_load32_splat => |mem_arg| try self.opV128LoadSplat(u32, mem_arg),
@@ -1223,6 +1223,45 @@ pub const Instance = struct {
 
         const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
         try self.stack.pushValueAs(T, val);
+    }
+
+    inline fn opV128Load(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) Error!void {
+        const module = self.stack.topFrame().module;
+        const a = module.mem_addrs[0];
+        const mem = &self.store.mems.items[a];
+
+        const ea: u32 = self.stack.pop().value.asU32();
+        const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
+        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
+            return Error.OutOfBoundsMemoryAccess;
+
+        const ea_start = ea_start_with_overflow[0];
+        const C = ChildTypeOf(T);
+        const HalfOfC = switch (C) {
+            i16 => i8,
+            u16 => u8,
+            i32 => i16,
+            u32 => u16,
+            i64 => i32,
+            u64 => u32,
+            else => unreachable,
+        };
+        const len = @typeInfo(T).Vector.len;
+        const child_size = @sizeOf(HalfOfC);
+        const size = child_size * len;
+        const ea_end_with_overflow = @addWithOverflow(ea_start, size);
+        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
+            return Error.OutOfBoundsMemoryAccess;
+
+        var result: T = .{0} ** len;
+        inline for (0..len) |i| {
+            const start = ea_start + i * child_size;
+            const end = start + child_size;
+            const val = decode.safeNumCast(HalfOfC, mem.data[start..end]);
+            result[i] = val;
+        }
+
+        try self.stack.pushValueAs(T, result);
     }
 
     inline fn opV128LoadSplat(self: *Self, comptime N: type, mem_arg: Instruction.MemArg) Error!void {

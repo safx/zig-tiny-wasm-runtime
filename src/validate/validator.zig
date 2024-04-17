@@ -536,16 +536,16 @@ pub const ModuleValidator = struct {
 
             // SIMD instructions
             .v128_load => |mem_arg| try opLoad(i128, i128, mem_arg, type_stack, c),
-            .v128_load8x8_s => |mem_arg| try opV128LoadNxM(i8, 8, mem_arg, type_stack, c),
-            .v128_load8x8_u => |mem_arg| try opV128LoadNxM(u8, 8, mem_arg, type_stack, c),
-            .v128_load16x4_s => |mem_arg| try opV128LoadNxM(i16, 4, mem_arg, type_stack, c),
-            .v128_load16x4_u => |mem_arg| try opV128LoadNxM(u16, 4, mem_arg, type_stack, c),
-            .v128_load32x2_s => |mem_arg| try opV128LoadNxM(i32, 2, mem_arg, type_stack, c),
-            .v128_load32x2_u => |mem_arg| try opV128LoadNxM(u32, 2, mem_arg, type_stack, c),
-            .v128_load8_splat => |mem_arg| try opV128LoadSprat(i8, mem_arg, type_stack, c),
-            .v128_load16_splat => |mem_arg| try opV128LoadSprat(i16, mem_arg, type_stack, c),
-            .v128_load32_splat => |mem_arg| try opV128LoadSprat(i32, mem_arg, type_stack, c),
-            .v128_load64_splat => |mem_arg| try opV128LoadSprat(i64, mem_arg, type_stack, c),
+            .v128_load8x8_s => |mem_arg| try opV128Load(i8, 8, mem_arg, type_stack, c),
+            .v128_load8x8_u => |mem_arg| try opV128Load(u8, 8, mem_arg, type_stack, c),
+            .v128_load16x4_s => |mem_arg| try opV128Load(i16, 4, mem_arg, type_stack, c),
+            .v128_load16x4_u => |mem_arg| try opV128Load(u16, 4, mem_arg, type_stack, c),
+            .v128_load32x2_s => |mem_arg| try opV128Load(i32, 2, mem_arg, type_stack, c),
+            .v128_load32x2_u => |mem_arg| try opV128Load(u32, 2, mem_arg, type_stack, c),
+            .v128_load8_splat => |mem_arg| try opV128LoadSplat(i8, mem_arg, type_stack, c),
+            .v128_load16_splat => |mem_arg| try opV128LoadSplat(i16, mem_arg, type_stack, c),
+            .v128_load32_splat => |mem_arg| try opV128LoadSplat(i32, mem_arg, type_stack, c),
+            .v128_load64_splat => |mem_arg| try opV128LoadSplat(i64, mem_arg, type_stack, c),
             .v128_store => |mem_arg| try opStore(i128, 128, mem_arg, type_stack, c),
             .v128_const => try type_stack.pushValueType(.v128),
             .i8x16_shuffle => |lane_idxs| try shuffle(lane_idxs, type_stack),
@@ -816,17 +816,16 @@ inline fn opLoad(comptime T: type, comptime N: type, mem_arg: types.Instruction.
     try type_stack.pushValueType(t);
 }
 
-inline fn opV128LoadNxM(comptime N: type, comptime M: u8, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+inline fn opV128Load(comptime N: type, comptime M: u8, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8 * M)
         return Error.NegativeNumberAlignment;
     try c.checkMem(0);
 
     try type_stack.popWithCheckingValueType(.i32);
-    const t = valueTypeOf(N);
-    try type_stack.pushValueType(t);
+    try type_stack.pushValueType(.v128);
 }
 
-inline fn opV128LoadSprat(comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+inline fn opV128LoadSplat(comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8)
         return Error.NegativeNumberAlignment;
     try c.checkMem(0);
