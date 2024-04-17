@@ -1253,7 +1253,7 @@ pub const Instance = struct {
         if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        var result: T = .{0} ** len;
+        var result: T = undefined;
         inline for (0..len) |i| {
             const start = ea_start + i * child_size;
             const end = start + child_size;
@@ -1523,7 +1523,7 @@ pub const Instance = struct {
         const value = self.stack.pop().value.asVec(T);
 
         const vec_len = @typeInfo(T).Vector.len;
-        var result: T = .{0} ** vec_len;
+        var result: T = undefined;
         inline for (0..vec_len) |i| {
             result[i] = f(ChildTypeOf(T), value[i]);
         }
@@ -1544,7 +1544,7 @@ pub const Instance = struct {
         const lhs = self.stack.pop().value.asVec(T);
 
         const vec_len = @typeInfo(T).Vector.len;
-        var result: T = .{0} ** vec_len;
+        var result: T = undefined;
         inline for (0..vec_len) |i| {
             result[i] = try f(ChildTypeOf(T), lhs[i], rhs[i]);
         }
@@ -1561,7 +1561,7 @@ pub const Instance = struct {
         const vec_len = @typeInfo(T).Vector.len;
         const I = IntOfBitSizeOf(@bitSizeOf(ChildTypeOf(T)));
         const R = @Vector(vec_len, I);
-        var result: R = .{0} ** vec_len;
+        var result: R = undefined;
         inline for (0..vec_len) |i| {
             result[i] = if (f(ChildTypeOf(T), lhs[i], rhs[i])) ~@as(I, 0) else 0;
         }
@@ -1606,7 +1606,7 @@ pub const Instance = struct {
         const t_len = @typeInfo(T).Vector.len;
         comptimeAssert(r_len * 2 == t_len);
 
-        var result: R = .{0} ** r_len;
+        var result: R = undefined;
         inline for (0..r_len) |i| {
             result[i] = f(ChildTypeOf(R), ChildTypeOf(T), value[offset + i]);
         }
@@ -1636,8 +1636,8 @@ pub const Instance = struct {
         const t_len = @typeInfo(T).Vector.len;
         comptimeAssert(r_len * 2 == t_len);
 
-        var result: R = .{0} ** r_len;
         const C = ChildTypeOf(R);
+        var result: R = undefined;
         inline for (0..r_len) |i| {
             const k1: C = c1[offset + i];
             const k2: C = c2[offset + i];
@@ -1655,7 +1655,7 @@ pub const Instance = struct {
 
         const lhs = self.stack.pop().value.asVec(T);
         const t_len = @typeInfo(T).Vector.len;
-        var result: T = .{0} ** t_len;
+        var result: T = undefined;
         inline for (0..t_len) |i| {
             result[i] = try f(C, lhs[i], v);
         }
@@ -1696,7 +1696,7 @@ pub const Instance = struct {
         const c2 = self.stack.pop().value.asVec(@Vector(16, u8));
         const c1 = self.stack.pop().value.asVec(@Vector(16, u8));
 
-        var result: @Vector(16, u8) = .{0} ** 16;
+        var result: @Vector(16, u8) = undefined;
         inline for (0..16) |i| {
             const idx = c2[i];
             result[i] = if (idx < 16) c1[idx] else 0;
@@ -1709,7 +1709,7 @@ pub const Instance = struct {
         const c2 = self.stack.pop().value.asVec(@Vector(16, u8));
         const c1 = self.stack.pop().value.asVec(@Vector(16, u8));
 
-        var result: @Vector(16, u8) = .{0} ** 16;
+        var result: @Vector(16, u8) = undefined;
         inline for (0..16) |i| {
             const idx = lane_idxs[i];
             assert(idx < 32);
@@ -1742,7 +1742,7 @@ pub const Instance = struct {
         const c2 = self.stack.pop().value.asVec(T);
         const c1 = self.stack.pop().value.asVec(T);
 
-        var result: R = .{0} ** r_len;
+        var result: R = undefined;
         inline for (0..t_len) |i| {
             result[i] = intSat(ChildTypeOf(R), ChildTypeOf(T), c1[i]);
         }
