@@ -680,7 +680,7 @@ pub const Instance = struct {
             .i32x4_neg => try self.vUnOp(@Vector(4, i32), opIntNeg),
             .i64x2_neg => try self.vUnOp(@Vector(2, i64), opIntNeg),
             .i8x16_popcnt => try self.vUnOpEx(@Vector(16, i8), opIntPopcnt),
-            .i16x8_q15mulr_sat_s => try self.vBinOpEx(@Vector(8, i16), opIntQMulrSat),
+            .i16x8_q15mulr_sat_s => try self.vBinTryOpEx(@Vector(8, i16), opIntQMulrSat),
             .i8x16_all_true => try self.vAllTrue(@Vector(16, i8)),
             .i16x8_all_true => try self.vAllTrue(@Vector(8, i16)),
             .i32x4_all_true => try self.vAllTrue(@Vector(4, i32)),
@@ -721,49 +721,49 @@ pub const Instance = struct {
             .i16x8_shr_u => try self.vShiftOp(@Vector(8, u16), opIntShrU),
             .i32x4_shr_u => try self.vShiftOp(@Vector(4, u32), opIntShrU),
             .i64x2_shr_u => try self.vShiftOp(@Vector(2, u64), opIntShrU),
-            .i8x16_add => try self.vBinOp(@Vector(16, i8), opIntAdd),
-            .i16x8_add => try self.vBinOp(@Vector(8, i16), opIntAdd),
-            .i32x4_add => try self.vBinOp(@Vector(4, i32), opIntAdd),
-            .i64x2_add => try self.vBinOp(@Vector(2, i64), opIntAdd),
-            .i8x16_add_sat_s => try self.vBinOp(@Vector(16, i8), opIntAddSat),
-            .i16x8_add_sat_s => try self.vBinOp(@Vector(8, i16), opIntAddSat),
-            .i8x16_add_sat_u => try self.vBinOp(@Vector(16, u8), opIntAddSat),
-            .i16x8_add_sat_u => try self.vBinOp(@Vector(8, u16), opIntAddSat),
-            .i8x16_sub => try self.vBinOp(@Vector(16, i8), opIntSub),
-            .i16x8_sub => try self.vBinOp(@Vector(8, i16), opIntSub),
-            .i32x4_sub => try self.vBinOp(@Vector(4, i32), opIntSub),
-            .i64x2_sub => try self.vBinOp(@Vector(2, i64), opIntSub),
-            .i8x16_sub_sat_s => try self.vBinOp(@Vector(16, i8), opIntSubSat),
-            .i16x8_sub_sat_s => try self.vBinOp(@Vector(8, i16), opIntSubSat),
-            .i8x16_sub_sat_u => try self.vBinOp(@Vector(16, u8), opIntSubSat),
-            .i16x8_sub_sat_u => try self.vBinOp(@Vector(8, u16), opIntSubSat),
+            .i8x16_add => try self.vBinTryOp(@Vector(16, i8), opIntAdd),
+            .i16x8_add => try self.vBinTryOp(@Vector(8, i16), opIntAdd),
+            .i32x4_add => try self.vBinTryOp(@Vector(4, i32), opIntAdd),
+            .i64x2_add => try self.vBinTryOp(@Vector(2, i64), opIntAdd),
+            .i8x16_add_sat_s => try self.vBinTryOp(@Vector(16, i8), opIntAddSat),
+            .i16x8_add_sat_s => try self.vBinTryOp(@Vector(8, i16), opIntAddSat),
+            .i8x16_add_sat_u => try self.vBinTryOp(@Vector(16, u8), opIntAddSat),
+            .i16x8_add_sat_u => try self.vBinTryOp(@Vector(8, u16), opIntAddSat),
+            .i8x16_sub => try self.vBinTryOp(@Vector(16, i8), opIntSub),
+            .i16x8_sub => try self.vBinTryOp(@Vector(8, i16), opIntSub),
+            .i32x4_sub => try self.vBinTryOp(@Vector(4, i32), opIntSub),
+            .i64x2_sub => try self.vBinTryOp(@Vector(2, i64), opIntSub),
+            .i8x16_sub_sat_s => try self.vBinTryOp(@Vector(16, i8), opIntSubSat),
+            .i16x8_sub_sat_s => try self.vBinTryOp(@Vector(8, i16), opIntSubSat),
+            .i8x16_sub_sat_u => try self.vBinTryOp(@Vector(16, u8), opIntSubSat),
+            .i16x8_sub_sat_u => try self.vBinTryOp(@Vector(8, u16), opIntSubSat),
             .f64x2_ceil => try self.vUnOpEx(@Vector(2, f64), opFloatCeil),
             .f64x2_nearest => try self.vUnOpEx(@Vector(2, f64), opFloatNearest),
             .f64x2_floor => try self.vUnOpEx(@Vector(2, f64), opFloatFloor),
-            .i16x8_mul => try self.vBinOp(@Vector(8, i16), opIntMul),
-            .i32x4_mul => try self.vBinOp(@Vector(4, i32), opIntMul),
-            .i64x2_mul => try self.vBinOp(@Vector(2, i64), opIntMul),
-            .i8x16_min_s => try self.vBinOp(@Vector(16, i8), opVecMin),
-            .i16x8_min_s => try self.vBinOp(@Vector(8, i16), opVecMin),
-            .i32x4_min_s => try self.vBinOp(@Vector(4, i32), opVecMin),
+            .i16x8_mul => try self.vBinTryOp(@Vector(8, i16), opIntMul),
+            .i32x4_mul => try self.vBinTryOp(@Vector(4, i32), opIntMul),
+            .i64x2_mul => try self.vBinTryOp(@Vector(2, i64), opIntMul),
+            .i8x16_min_s => try self.vBinTryOp(@Vector(16, i8), opVecMin),
+            .i16x8_min_s => try self.vBinTryOp(@Vector(8, i16), opVecMin),
+            .i32x4_min_s => try self.vBinTryOp(@Vector(4, i32), opVecMin),
             .i64x2_eq => try self.vRelOpEx(@Vector(2, i64), opIntEq),
-            .i8x16_min_u => try self.vBinOp(@Vector(16, u8), opVecMin),
-            .i16x8_min_u => try self.vBinOp(@Vector(8, u16), opVecMin),
-            .i32x4_min_u => try self.vBinOp(@Vector(4, u32), opVecMin),
+            .i8x16_min_u => try self.vBinTryOp(@Vector(16, u8), opVecMin),
+            .i16x8_min_u => try self.vBinTryOp(@Vector(8, u16), opVecMin),
+            .i32x4_min_u => try self.vBinTryOp(@Vector(4, u32), opVecMin),
             .i64x2_ne => try self.vRelOpEx(@Vector(2, i64), opIntNe),
-            .i8x16_max_s => try self.vBinOp(@Vector(16, i8), opVecMax),
-            .i16x8_max_s => try self.vBinOp(@Vector(8, i16), opVecMax),
-            .i32x4_max_s => try self.vBinOp(@Vector(4, i32), opVecMax),
+            .i8x16_max_s => try self.vBinTryOp(@Vector(16, i8), opVecMax),
+            .i16x8_max_s => try self.vBinTryOp(@Vector(8, i16), opVecMax),
+            .i32x4_max_s => try self.vBinTryOp(@Vector(4, i32), opVecMax),
             .i64x2_lt_s => try self.vRelOpEx(@Vector(2, i64), opIntLt),
-            .i8x16_max_u => try self.vBinOp(@Vector(16, u8), opVecMax),
-            .i16x8_max_u => try self.vBinOp(@Vector(8, u16), opVecMax),
-            .i32x4_max_u => try self.vBinOp(@Vector(4, u32), opVecMax),
+            .i8x16_max_u => try self.vBinTryOp(@Vector(16, u8), opVecMax),
+            .i16x8_max_u => try self.vBinTryOp(@Vector(8, u16), opVecMax),
+            .i32x4_max_u => try self.vBinTryOp(@Vector(4, u32), opVecMax),
             .i64x2_gt_s => try self.vRelOpEx(@Vector(2, i64), opIntGt),
             .f64x2_trunc => try self.vUnOpEx(@Vector(2, f64), opFloatTrunc),
             .i32x4_dot_i16x8_s => try self.vDot(@Vector(4, i32), @Vector(8, i16)),
             .i64x2_le_s => try self.vRelOpEx(@Vector(2, i64), opIntLe),
-            .i8x16_avgr_u => try self.vBinOpEx(@Vector(16, u8), opIntAvgr),
-            .i16x8_avgr_u => try self.vBinOpEx(@Vector(8, u16), opIntAvgr),
+            .i8x16_avgr_u => try self.vBinTryOpEx(@Vector(16, u8), opIntAvgr),
+            .i16x8_avgr_u => try self.vBinTryOpEx(@Vector(8, u16), opIntAvgr),
             .i64x2_ge_s => try self.vRelOpEx(@Vector(2, i64), opIntGe),
             .i16x8_extadd_pairwise_i8x16_s => try self.vExtaddPairwise(@Vector(8, i16), @Vector(16, i8)),
             .i16x8_extmul_low_i8x16_s => try self.vExtmulHalf(0, @Vector(8, i16), @Vector(16, i8)),
@@ -787,22 +787,22 @@ pub const Instance = struct {
             .f64x2_neg => try self.vUnOp(@Vector(2, f64), opFloatNeg),
             .f32x4_sqrt => try self.vUnOp(@Vector(4, f32), opFloatSqrt),
             .f64x2_sqrt => try self.vUnOp(@Vector(2, f64), opFloatSqrt),
-            .f32x4_add => try self.vBinOp(@Vector(4, f32), opFloatAdd),
-            .f64x2_add => try self.vBinOp(@Vector(2, f64), opFloatAdd),
-            .f32x4_sub => try self.vBinOp(@Vector(4, f32), opFloatSub),
-            .f64x2_sub => try self.vBinOp(@Vector(2, f64), opFloatSub),
-            .f32x4_mul => try self.vBinOp(@Vector(4, f32), opFloatMul),
-            .f64x2_mul => try self.vBinOp(@Vector(2, f64), opFloatMul),
-            .f32x4_div => try self.vBinOp(@Vector(4, f32), opFloatDiv),
-            .f64x2_div => try self.vBinOp(@Vector(2, f64), opFloatDiv),
-            .f32x4_min => try self.vBinOpEx(@Vector(4, f32), opFloatMin),
-            .f64x2_min => try self.vBinOpEx(@Vector(2, f64), opFloatMin),
-            .f32x4_max => try self.vBinOpEx(@Vector(4, f32), opFloatMax),
-            .f64x2_max => try self.vBinOpEx(@Vector(2, f64), opFloatMax),
-            .f32x4_pmin => try self.vBinOpEx(@Vector(4, f32), opVecFloatMin),
-            .f64x2_pmin => try self.vBinOpEx(@Vector(2, f64), opVecFloatMin),
-            .f32x4_pmax => try self.vBinOpEx(@Vector(4, f32), opVecFloatMax),
-            .f64x2_pmax => try self.vBinOpEx(@Vector(2, f64), opVecFloatMax),
+            .f32x4_add => try self.vBinTryOp(@Vector(4, f32), opFloatAdd),
+            .f64x2_add => try self.vBinTryOp(@Vector(2, f64), opFloatAdd),
+            .f32x4_sub => try self.vBinTryOp(@Vector(4, f32), opFloatSub),
+            .f64x2_sub => try self.vBinTryOp(@Vector(2, f64), opFloatSub),
+            .f32x4_mul => try self.vBinTryOp(@Vector(4, f32), opFloatMul),
+            .f64x2_mul => try self.vBinTryOp(@Vector(2, f64), opFloatMul),
+            .f32x4_div => try self.vBinTryOp(@Vector(4, f32), opFloatDiv),
+            .f64x2_div => try self.vBinTryOp(@Vector(2, f64), opFloatDiv),
+            .f32x4_min => try self.vBinTryOpEx(@Vector(4, f32), opFloatMin),
+            .f64x2_min => try self.vBinTryOpEx(@Vector(2, f64), opFloatMin),
+            .f32x4_max => try self.vBinTryOpEx(@Vector(4, f32), opFloatMax),
+            .f64x2_max => try self.vBinTryOpEx(@Vector(2, f64), opFloatMax),
+            .f32x4_pmin => try self.vBinTryOpEx(@Vector(4, f32), opVecFloatMin),
+            .f64x2_pmin => try self.vBinTryOpEx(@Vector(2, f64), opVecFloatMin),
+            .f32x4_pmax => try self.vBinTryOpEx(@Vector(4, f32), opVecFloatMax),
+            .f64x2_pmax => try self.vBinTryOpEx(@Vector(2, f64), opVecFloatMax),
             .i32x4_trunc_sat_f32x4_s => try self.vCvtOpEx(@Vector(4, i32), @Vector(4, f32), opTruncSat),
             .i32x4_trunc_sat_f32x4_u => try self.vCvtOpEx(@Vector(4, u32), @Vector(4, f32), opTruncSat),
             .f32x4_convert_i32x4_s => try self.vCvtOpEx(@Vector(4, f32), @Vector(4, i32), opConvert),
@@ -1593,6 +1593,8 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
+    // SIMD ops
+
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-vunop-mathit-vunop
     inline fn vUnOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
@@ -1612,7 +1614,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-vbinop-mathit-vbinop
-    inline fn vBinOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) Error!void {
+    inline fn vBinTryOp(self: *Self, comptime T: type, comptime f: fn (type, T, T) Error!T) Error!void {
         const rhs = self.stack.pop().value.asVec(T);
         const lhs = self.stack.pop().value.asVec(T);
         const result = try f(T, lhs, rhs);
@@ -1620,7 +1622,7 @@ pub const Instance = struct {
     }
 
     const ChildTypeOf = types.ChildTypeOf;
-    inline fn vBinOpEx(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) Error!ChildTypeOf(T)) Error!void {
+    inline fn vBinTryOpEx(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) Error!ChildTypeOf(T)) Error!void {
         const rhs = self.stack.pop().value.asVec(T);
         const lhs = self.stack.pop().value.asVec(T);
 
@@ -1630,6 +1632,81 @@ pub const Instance = struct {
             result[i] = try f(ChildTypeOf(T), lhs[i], rhs[i]);
         }
         try self.stack.pushValueAs(T, result);
+    }
+
+    // v128.bitselect is a only member of v128.vvternop
+    inline fn vBitSelect(self: *Self) Error!void {
+        const v3 = self.stack.pop().value.as(u128);
+        const v2 = self.stack.pop().value.as(u128);
+        const v1 = self.stack.pop().value.as(u128);
+        const result = (v1 & v3) | (v2 & ~v3);
+        try self.stack.pushValueAs(u128, result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-any-true
+    inline fn vAnyTrue(self: *Self) Error!void {
+        const value = self.stack.pop().value.as(u128);
+        const result: i32 = if (value == 0) 0 else 1;
+        try self.stack.pushValueAs(i32, result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#mathsf-i8x16-xref-syntax-instructions-syntax-instr-vec-mathsf-swizzle
+    inline fn swizzle(self: *Self) Error!void {
+        const c2 = self.stack.pop().value.asVec(@Vector(16, u8));
+        const c1 = self.stack.pop().value.asVec(@Vector(16, u8));
+
+        var result: @Vector(16, u8) = undefined;
+        inline for (0..16) |i| {
+            const idx = c2[i];
+            result[i] = if (idx < 16) c1[idx] else 0;
+        }
+        try self.stack.pushValueAs(@Vector(16, u8), result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#mathsf-i8x16-xref-syntax-instructions-syntax-instr-vec-mathsf-shuffle-x-ast
+    inline fn shuffle(self: *Self, lane_idxs: [16]u8) Error!void {
+        const c2 = self.stack.pop().value.asVec(@Vector(16, u8));
+        const c1 = self.stack.pop().value.asVec(@Vector(16, u8));
+
+        var result: @Vector(16, u8) = undefined;
+        inline for (0..16) |i| {
+            const idx = lane_idxs[i];
+            assert(idx < 32);
+            result[i] = if (idx < 16) c1[idx] else c2[idx - 16];
+        }
+        try self.stack.pushValueAs(@Vector(16, u8), result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-splat
+    inline fn opVSplat(self: *Self, comptime S: type, comptime T: type) Error!void {
+        const t_len = @typeInfo(T).Vector.len;
+        const c1 = self.stack.pop().value.as(S);
+        const C = ChildTypeOf(T);
+        const val: ChildTypeOf(T) = if (S == f32 or S == f64) c1 else @intCast(c1 & std.math.maxInt(C));
+        var result: T = .{val} ** t_len;
+        try self.stack.pushValueAs(T, result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-1-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-extract-lane-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-x
+    inline fn extractLane(self: *Self, comptime R: type, comptime T: type, lane_idx: u8) Error!void {
+        const t_len = @typeInfo(T).Vector.len;
+        assert(lane_idx < t_len);
+        const c1 = self.stack.pop().value.asVec(T);
+        const c2 = c1[lane_idx];
+        try self.stack.pushValueAs(R, c2);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-replace-lane-x
+    inline fn replaceLane(self: *Self, comptime R: type, comptime T: type, lane_idx: u8) Error!void {
+        const t_len = @typeInfo(T).Vector.len;
+        assert(lane_idx < t_len);
+        const c2 = self.stack.pop().value.as(R);
+        const C = ChildTypeOf(T);
+        const val: C = if (R == f32 or R == f64) c2 else @intCast(c2 & std.math.maxInt(C));
+
+        var c1 = self.stack.pop().value.asVec(T);
+        c1[lane_idx] = val;
+        try self.stack.pushValueAs(T, c1);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vrelop-mathit-vrelop
@@ -1645,6 +1722,69 @@ pub const Instance = struct {
         var result: R = undefined;
         inline for (0..vec_len) |i| {
             result[i] = if (f(ChildTypeOf(T), lhs[i], rhs[i])) ~@as(I, 0) else 0;
+        }
+
+        try self.stack.pushValueAs(R, result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vishiftop-mathit-vishiftop
+    inline fn vShiftOp(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) Error!T) Error!void {
+        const C = ChildTypeOf(T);
+        const rhs = self.stack.pop().value.as(u32);
+        const v: C = @intCast(@mod(rhs, @bitSizeOf(C)));
+
+        const lhs = self.stack.pop().value.asVec(T);
+        const t_len = @typeInfo(T).Vector.len;
+        var result: T = undefined;
+        inline for (0..t_len) |i| {
+            result[i] = try f(C, lhs[i], v);
+        }
+
+        try self.stack.pushValueAs(T, result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-all-true
+    inline fn vAllTrue(self: *Self, comptime T: type) Error!void {
+        const vec_len = @typeInfo(T).Vector.len;
+        const zero_vec: T = .{0} ** vec_len;
+
+        const value = self.stack.pop().value.asVec(T);
+        const comp_result = zero_vec != value;
+        const reduce_result = @reduce(.And, comp_result);
+        const result: i32 = if (reduce_result) 1 else 0;
+        try self.stack.pushValueAs(i32, result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-bitmask
+    inline fn vBitmask(self: *Self, comptime T: type) Error!void {
+        const vec_len = @typeInfo(T).Vector.len;
+        const zero_vec: T = .{0} ** vec_len;
+
+        const value = self.stack.pop().value.asVec(T);
+        const comp_result = value >= zero_vec;
+
+        var result: i32 = 0;
+        inline for (0..vec_len) |i| {
+            result |= if (comp_result[i]) 0 else (1 << i);
+        }
+        try self.stack.pushValueAs(i32, result);
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-narrow-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
+    inline fn vNarrow(self: *Self, comptime R: type, comptime T: type) Error!void {
+        const r_len = @typeInfo(R).Vector.len;
+        const t_len = @typeInfo(T).Vector.len;
+        comptimeAssert(r_len == t_len * 2);
+
+        const c2 = self.stack.pop().value.asVec(T);
+        const c1 = self.stack.pop().value.asVec(T);
+
+        var result: R = undefined;
+        inline for (0..t_len) |i| {
+            result[i] = intSat(ChildTypeOf(R), ChildTypeOf(T), c1[i]);
+        }
+        inline for (0..t_len) |i| {
+            result[t_len + i] = intSat(ChildTypeOf(R), ChildTypeOf(T), c2[i]);
         }
 
         try self.stack.pushValueAs(R, result);
@@ -1695,6 +1835,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vcvtop-mathit-vcvtop-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-mathsf-zero
     inline fn vCvtOpZeroEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) ChildTypeOf(R)) Error!void {
         const r_len = @typeInfo(R).Vector.len;
         const t_len = @typeInfo(T).Vector.len;
@@ -1709,6 +1850,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#mathsf-i32x4-xref-syntax-instructions-syntax-instr-vec-mathsf-dot-mathsf-i16x8-s
     inline fn vDot(self: *Self, comptime R: type, comptime T: type) error{CallStackExhausted}!void {
         const r_len = @typeInfo(R).Vector.len;
         const t_len = @typeInfo(T).Vector.len;
@@ -1727,6 +1869,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-extmul-mathsf-xref-syntax-instructions-syntax-half-mathit-half-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
     inline fn vExtmulHalf(self: *Self, comptime offset: u8, comptime R: type, comptime T: type) error{CallStackExhausted}!void {
         const c2 = self.stack.pop().value.asVec(T);
         const c1 = self.stack.pop().value.asVec(T);
@@ -1746,6 +1889,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-extadd-pairwise-t-1-mathsf-x-m-xref-syntax-instructions-syntax-sx-mathit-sx
     inline fn vExtaddPairwise(self: *Self, comptime R: type, comptime T: type) error{CallStackExhausted}!void {
         const r_len = @typeInfo(R).Vector.len;
         const t_len = @typeInfo(T).Vector.len;
@@ -1760,144 +1904,6 @@ pub const Instance = struct {
         }
 
         try self.stack.pushValueAs(R, result);
-    }
-
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vishiftop-mathit-vishiftop
-    inline fn vShiftOp(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) Error!T) Error!void {
-        const C = ChildTypeOf(T);
-        const rhs = self.stack.pop().value.as(u32);
-        const v: C = @intCast(@mod(rhs, @bitSizeOf(C)));
-
-        const lhs = self.stack.pop().value.asVec(T);
-        const t_len = @typeInfo(T).Vector.len;
-        var result: T = undefined;
-        inline for (0..t_len) |i| {
-            result[i] = try f(C, lhs[i], v);
-        }
-
-        try self.stack.pushValueAs(T, result);
-    }
-
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-all-true
-    inline fn vAllTrue(self: *Self, comptime T: type) Error!void {
-        const vec_len = @typeInfo(T).Vector.len;
-        const zero_vec: T = .{0} ** vec_len;
-
-        const value = self.stack.pop().value.asVec(T);
-        const comp_result = zero_vec != value;
-        const reduce_result = @reduce(.And, comp_result);
-        const result: i32 = if (reduce_result) 1 else 0;
-        try self.stack.pushValueAs(i32, result);
-    }
-
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-any-true
-    inline fn vAnyTrue(self: *Self) Error!void {
-        const value = self.stack.pop().value.as(u128);
-        const result: i32 = if (value == 0) 0 else 1;
-        try self.stack.pushValueAs(i32, result);
-    }
-
-    // v128.bitselect is a only member of v128.vvternop
-    inline fn vBitSelect(self: *Self) Error!void {
-        const v3 = self.stack.pop().value.as(u128);
-        const v2 = self.stack.pop().value.as(u128);
-        const v1 = self.stack.pop().value.as(u128);
-        const result = (v1 & v3) | (v2 & ~v3);
-        try self.stack.pushValueAs(u128, result);
-    }
-
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#mathsf-i8x16-xref-syntax-instructions-syntax-instr-vec-mathsf-swizzle
-    inline fn swizzle(self: *Self) Error!void {
-        const c2 = self.stack.pop().value.asVec(@Vector(16, u8));
-        const c1 = self.stack.pop().value.asVec(@Vector(16, u8));
-
-        var result: @Vector(16, u8) = undefined;
-        inline for (0..16) |i| {
-            const idx = c2[i];
-            result[i] = if (idx < 16) c1[idx] else 0;
-        }
-        try self.stack.pushValueAs(@Vector(16, u8), result);
-    }
-
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#mathsf-i8x16-xref-syntax-instructions-syntax-instr-vec-mathsf-shuffle-x-ast
-    inline fn shuffle(self: *Self, lane_idxs: [16]u8) Error!void {
-        const c2 = self.stack.pop().value.asVec(@Vector(16, u8));
-        const c1 = self.stack.pop().value.asVec(@Vector(16, u8));
-
-        var result: @Vector(16, u8) = undefined;
-        inline for (0..16) |i| {
-            const idx = lane_idxs[i];
-            assert(idx < 32);
-            result[i] = if (idx < 16) c1[idx] else c2[idx - 16];
-        }
-        try self.stack.pushValueAs(@Vector(16, u8), result);
-    }
-
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-bitmask
-    inline fn vBitmask(self: *Self, comptime T: type) Error!void {
-        const vec_len = @typeInfo(T).Vector.len;
-        const zero_vec: T = .{0} ** vec_len;
-
-        const value = self.stack.pop().value.asVec(T);
-        const comp_result = value >= zero_vec;
-
-        var result: i32 = 0;
-        inline for (0..vec_len) |i| {
-            result |= if (comp_result[i]) 0 else (1 << i);
-        }
-        try self.stack.pushValueAs(i32, result);
-    }
-
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-narrow-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
-    inline fn vNarrow(self: *Self, comptime R: type, comptime T: type) Error!void {
-        const r_len = @typeInfo(R).Vector.len;
-        const t_len = @typeInfo(T).Vector.len;
-        comptimeAssert(r_len == t_len * 2);
-
-        const c2 = self.stack.pop().value.asVec(T);
-        const c1 = self.stack.pop().value.asVec(T);
-
-        var result: R = undefined;
-        inline for (0..t_len) |i| {
-            result[i] = intSat(ChildTypeOf(R), ChildTypeOf(T), c1[i]);
-        }
-        inline for (0..t_len) |i| {
-            result[t_len + i] = intSat(ChildTypeOf(R), ChildTypeOf(T), c2[i]);
-        }
-
-        try self.stack.pushValueAs(R, result);
-    }
-
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-splat
-    inline fn opVSplat(self: *Self, comptime S: type, comptime T: type) Error!void {
-        const t_len = @typeInfo(T).Vector.len;
-        const c1 = self.stack.pop().value.as(S);
-        const C = ChildTypeOf(T);
-        const val: ChildTypeOf(T) = if (S == f32 or S == f64) c1 else @intCast(c1 & std.math.maxInt(C));
-        var result: T = .{val} ** t_len;
-        try self.stack.pushValueAs(T, result);
-    }
-
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#t-1-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-extract-lane-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-x
-    inline fn extractLane(self: *Self, comptime R: type, comptime T: type, lane_idx: u8) Error!void {
-        const t_len = @typeInfo(T).Vector.len;
-        assert(lane_idx < t_len);
-        const c1 = self.stack.pop().value.asVec(T);
-        const c2 = c1[lane_idx];
-        try self.stack.pushValueAs(R, c2);
-    }
-
-    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-replace-lane-x
-    inline fn replaceLane(self: *Self, comptime R: type, comptime T: type, lane_idx: u8) Error!void {
-        const t_len = @typeInfo(T).Vector.len;
-        assert(lane_idx < t_len);
-        const c2 = self.stack.pop().value.as(R);
-        const C = ChildTypeOf(T);
-        const val: C = if (R == f32 or R == f64) c2 else @intCast(c2 & std.math.maxInt(C));
-
-        var c1 = self.stack.pop().value.asVec(T);
-        c1[lane_idx] = val;
-        try self.stack.pushValueAs(T, c1);
     }
 
     /// `expand_F` in wasm spec
