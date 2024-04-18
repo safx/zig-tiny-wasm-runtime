@@ -87,7 +87,7 @@ pub fn validationErrorFromString(str: []const u8) ValidationError {
     if (strcmp(str, "unknown global") or strcmp(str, "unknown global 0") or strcmp(str, "unknown global 1")) return E.UnknownGlobal;
     if (strcmp(str, "unknown function")) return E.UnknownFunction;
     if (strcmp(str, "unknown label")) return E.UnknownLabel;
-    if (strcmp(str, "unknown local")) return E.UnknownLocal;
+    if (strcmp(str, "unknown local") or strcmp(str, "unknown local 2")) return E.UnknownLocal;
     if (strcmp(str, "unknown memory") or strcmp(str, "unknown memory 0") or strcmp(str, "unknown memory 1")) return E.UnknownMemory;
     if (strcmp(str, "unknown table") or strcmp(str, "unknown table 0")) return E.UnknownTable;
     if (strcmp(str, "unknown type")) return E.UnknownType;

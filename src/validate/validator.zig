@@ -619,16 +619,16 @@ pub const ModuleValidator = struct {
             .v128_xor => try vvBinOp(type_stack),
             .v128_bitselect => try vvTernOp(type_stack),
             .v128_any_true => try vvTestOp(type_stack),
-            .v128_load8_lane => unreachable,
-            .v128_load16_lane => unreachable,
-            .v128_load32_lane => unreachable,
-            .v128_load64_lane => unreachable,
-            .v128_store8_lane => unreachable,
-            .v128_store16_lane => unreachable,
-            .v128_store32_lane => unreachable,
-            .v128_store64_lane => unreachable,
-            .v128_load32_zero => unreachable,
-            .v128_load64_zero => unreachable,
+            .v128_load8_lane => |mem_arg| try vLoadLane(8, mem_arg, type_stack),
+            .v128_load16_lane => |mem_arg| try vLoadLane(16, mem_arg, type_stack),
+            .v128_load32_lane => |mem_arg| try vLoadLane(32, mem_arg, type_stack),
+            .v128_load64_lane => |mem_arg| try vLoadLane(64, mem_arg, type_stack),
+            .v128_store8_lane => try vStoreLane(type_stack),
+            .v128_store16_lane => try vStoreLane(type_stack),
+            .v128_store32_lane => try vStoreLane(type_stack),
+            .v128_store64_lane => try vStoreLane(type_stack),
+            .v128_load32_zero => try vLoadZero(type_stack),
+            .v128_load64_zero => try vLoadZero(type_stack),
             .f32x4_demote_f64x2_zero => try vCvtOp(type_stack),
             .f64x2_promote_low_f32x4 => try vCvtOp(type_stack),
             .i8x16_abs => try vUnOp(type_stack),
@@ -640,7 +640,7 @@ pub const ModuleValidator = struct {
             .i32x4_neg => try vUnOp(type_stack),
             .i64x2_neg => try vUnOp(type_stack),
             .i8x16_popcnt => try vUnOp(type_stack),
-            .i16x8_q15mulr_sat_s => unreachable,
+            .i16x8_q15mulr_sat_s => try vBinOp(type_stack),
             .i8x16_all_true => try vTestOp(type_stack),
             .i16x8_all_true => try vTestOp(type_stack),
             .i32x4_all_true => try vTestOp(type_stack),
@@ -720,24 +720,24 @@ pub const ModuleValidator = struct {
             .i32x4_max_u => try vBinOp(type_stack),
             .i64x2_gt_s => try vBinOp(type_stack),
             .f64x2_trunc => try vUnOp(type_stack),
-            .i32x4_dot_i16x8_s => unreachable,
+            .i32x4_dot_i16x8_s => try vDot(type_stack),
             .i64x2_le_s => try vBinOp(type_stack),
             .i8x16_avgr_u => try vBinOp(type_stack),
             .i16x8_avgr_u => try vBinOp(type_stack),
             .i64x2_ge_s => try vBinOp(type_stack),
-            .i16x8_extadd_pairwise_i8x16_s => unreachable,
+            .i16x8_extadd_pairwise_i8x16_s => try vExtaddPairwise(type_stack),
             .i16x8_extmul_low_i8x16_s => try vExtmul(type_stack),
             .i32x4_extmul_low_i16x8_s => try vExtmul(type_stack),
             .i64x2_extmul_low_i32x4_s => try vExtmul(type_stack),
-            .i16x8_extadd_pairwise_i8x16_u => unreachable,
+            .i16x8_extadd_pairwise_i8x16_u => try vExtaddPairwise(type_stack),
             .i16x8_extmul_high_i8x16_s => try vExtmul(type_stack),
             .i32x4_extmul_high_i16x8_s => try vExtmul(type_stack),
             .i64x2_extmul_high_i32x4_s => try vExtmul(type_stack),
-            .i32x4_extadd_pairwise_i16x8_s => unreachable,
+            .i32x4_extadd_pairwise_i16x8_s => try vExtaddPairwise(type_stack),
             .i16x8_extmul_low_i8x16_u => try vExtmul(type_stack),
             .i32x4_extmul_low_i16x8_u => try vExtmul(type_stack),
             .i64x2_extmul_low_i32x4_u => try vExtmul(type_stack),
-            .i32x4_extadd_pairwise_i16x8_u => unreachable,
+            .i32x4_extadd_pairwise_i16x8_u => try vExtaddPairwise(type_stack),
             .i16x8_extmul_high_i8x16_u => try vExtmul(type_stack),
             .i32x4_extmul_high_i16x8_u => try vExtmul(type_stack),
             .i64x2_extmul_high_i32x4_u => try vExtmul(type_stack),
@@ -965,11 +965,29 @@ const vvTestOp = vTestOp;
 const vBitmask = vTestOp;
 const vNarrow = vBinOp;
 const vExtmul = vBinOp;
+const vDot = vBinOp;
+const vExtaddPairwise = vUnOp;
 
-inline fn viShiftOp(type_stack: *TypeStack) Error!void {
+inline fn vLoadLane(comptime N: u8, mem_arg: types.Instruction.MemArgWithLaneIdx, type_stack: *TypeStack) Error!void {
+    if (try exp2(mem_arg.@"align") > N / 8)
+        return Error.NegativeNumberAlignment;
+
+    if (mem_arg.lane_idx >= 128 / N)
+        return Error.InvalidLaneIndex;
+
     try type_stack.popWithCheckingValueType(.v128);
     try type_stack.popWithCheckingValueType(.i32);
-    try type_stack.pushValueType(.i128);
+    try type_stack.pushValueType(.v128);
+}
+
+inline fn vLoadZero(type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(.i32);
+    try type_stack.pushValueType(.v128);
+}
+
+inline fn vStoreLane(type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.popWithCheckingValueType(.i32);
 }
 
 fn validateImport(c: Context, imp: types.Import) Error!void {

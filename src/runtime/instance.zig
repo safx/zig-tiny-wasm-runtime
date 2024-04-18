@@ -659,16 +659,16 @@ pub const Instance = struct {
             .v128_xor => try self.binTryOp(u128, opIntXor),
             .v128_bitselect => try self.vBitSelect(),
             .v128_any_true => try self.vAnyTrue(),
-            .v128_load8_lane => unreachable,
-            .v128_load16_lane => unreachable,
-            .v128_load32_lane => unreachable,
-            .v128_load64_lane => unreachable,
-            .v128_store8_lane => unreachable,
-            .v128_store16_lane => unreachable,
-            .v128_store32_lane => unreachable,
-            .v128_store64_lane => unreachable,
-            .v128_load32_zero => unreachable,
-            .v128_load64_zero => unreachable,
+            .v128_load8_lane => |mem_arg| try self.opV128LoadLane(u8, mem_arg),
+            .v128_load16_lane => |mem_arg| try self.opV128LoadLane(u16, mem_arg),
+            .v128_load32_lane => |mem_arg| try self.opV128LoadLane(u32, mem_arg),
+            .v128_load64_lane => |mem_arg| try self.opV128LoadLane(u64, mem_arg),
+            .v128_store8_lane => |mem_arg| try self.opV128StoreLane(u8, mem_arg),
+            .v128_store16_lane => |mem_arg| try self.opV128StoreLane(u16, mem_arg),
+            .v128_store32_lane => |mem_arg| try self.opV128StoreLane(u32, mem_arg),
+            .v128_store64_lane => |mem_arg| try self.opV128StoreLane(u64, mem_arg),
+            .v128_load32_zero => |mem_arg| try self.opV128LoadZero(u32, mem_arg),
+            .v128_load64_zero => |mem_arg| try self.opV128LoadZero(u64, mem_arg),
             .f32x4_demote_f64x2_zero => try self.vCvtOpEx(@Vector(4, f32), @Vector(2, f64), opDemote),
             .f64x2_promote_low_f32x4 => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, f32), opPromote),
             .i8x16_abs => try self.vUnOpEx(@Vector(16, i8), opIntAbs),
@@ -680,7 +680,7 @@ pub const Instance = struct {
             .i32x4_neg => try self.vUnOp(@Vector(4, i32), opIntNeg),
             .i64x2_neg => try self.vUnOp(@Vector(2, i64), opIntNeg),
             .i8x16_popcnt => try self.vUnOpEx(@Vector(16, i8), opIntPopcnt),
-            .i16x8_q15mulr_sat_s => try self.vUnOpEx(@Vector(8, i16), opIntPopcnt),
+            .i16x8_q15mulr_sat_s => try self.vBinOpEx(@Vector(8, i16), opIntQMulrSat),
             .i8x16_all_true => try self.vAllTrue(@Vector(16, i8)),
             .i16x8_all_true => try self.vAllTrue(@Vector(8, i16)),
             .i32x4_all_true => try self.vAllTrue(@Vector(4, i32)),
@@ -760,24 +760,24 @@ pub const Instance = struct {
             .i32x4_max_u => try self.vBinOp(@Vector(4, u32), opVecMax),
             .i64x2_gt_s => try self.vRelOpEx(@Vector(2, i64), opIntGt),
             .f64x2_trunc => try self.vUnOpEx(@Vector(2, f64), opFloatTrunc),
-            .i32x4_dot_i16x8_s => unreachable,
+            .i32x4_dot_i16x8_s => try self.vDot(@Vector(4, i32), @Vector(8, i16)),
             .i64x2_le_s => try self.vRelOpEx(@Vector(2, i64), opIntLe),
             .i8x16_avgr_u => try self.vBinOpEx(@Vector(16, u8), opIntAvgr),
             .i16x8_avgr_u => try self.vBinOpEx(@Vector(8, u16), opIntAvgr),
             .i64x2_ge_s => try self.vRelOpEx(@Vector(2, i64), opIntGe),
-            .i16x8_extadd_pairwise_i8x16_s => unreachable,
+            .i16x8_extadd_pairwise_i8x16_s => try self.vExtaddPairwise(@Vector(8, i16), @Vector(16, i8)),
             .i16x8_extmul_low_i8x16_s => try self.vExtmulHalf(0, @Vector(8, i16), @Vector(16, i8)),
             .i32x4_extmul_low_i16x8_s => try self.vExtmulHalf(0, @Vector(4, i32), @Vector(8, i16)),
             .i64x2_extmul_low_i32x4_s => try self.vExtmulHalf(0, @Vector(2, i64), @Vector(4, i32)),
-            .i16x8_extadd_pairwise_i8x16_u => unreachable,
+            .i16x8_extadd_pairwise_i8x16_u => try self.vExtaddPairwise(@Vector(8, u16), @Vector(16, u8)),
             .i16x8_extmul_high_i8x16_s => try self.vExtmulHalf(4, @Vector(8, i16), @Vector(16, i8)),
             .i32x4_extmul_high_i16x8_s => try self.vExtmulHalf(2, @Vector(4, i32), @Vector(8, i16)),
             .i64x2_extmul_high_i32x4_s => try self.vExtmulHalf(1, @Vector(2, i64), @Vector(4, i32)),
-            .i32x4_extadd_pairwise_i16x8_s => unreachable,
+            .i32x4_extadd_pairwise_i16x8_s => try self.vExtaddPairwise(@Vector(4, i32), @Vector(8, i16)),
             .i16x8_extmul_low_i8x16_u => try self.vExtmulHalf(0, @Vector(8, u16), @Vector(16, u8)),
             .i32x4_extmul_low_i16x8_u => try self.vExtmulHalf(0, @Vector(4, u32), @Vector(8, u16)),
             .i64x2_extmul_low_i32x4_u => try self.vExtmulHalf(0, @Vector(2, u64), @Vector(4, u32)),
-            .i32x4_extadd_pairwise_i16x8_u => unreachable,
+            .i32x4_extadd_pairwise_i16x8_u => try self.vExtaddPairwise(@Vector(4, u32), @Vector(8, u16)),
             .i16x8_extmul_high_i8x16_u => try self.vExtmulHalf(4, @Vector(8, u16), @Vector(16, u8)),
             .i32x4_extmul_high_i16x8_u => try self.vExtmulHalf(2, @Vector(4, u32), @Vector(8, u16)),
             .i64x2_extmul_high_i32x4_u => try self.vExtmulHalf(1, @Vector(2, u64), @Vector(4, u32)),
@@ -1289,6 +1289,58 @@ pub const Instance = struct {
         try self.stack.pushValueAs(V, result);
     }
 
+    inline fn opV128LoadZero(self: *Self, comptime N: type, mem_arg: Instruction.MemArg) Error!void {
+        const module = self.stack.topFrame().module;
+        const a = module.mem_addrs[0];
+        const mem = &self.store.mems.items[a];
+
+        const ea: u32 = self.stack.pop().value.asU32();
+        const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
+        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
+            return Error.OutOfBoundsMemoryAccess;
+
+        const ea_start = ea_start_with_overflow[0];
+        const size = @sizeOf(N);
+        const ea_end_with_overflow = @addWithOverflow(ea_start, size);
+        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
+            return Error.OutOfBoundsMemoryAccess;
+
+        const ea_end = ea_end_with_overflow[0];
+
+        const len = 128 / @bitSizeOf(N);
+        const V = @Vector(len, N);
+        var result: V = .{0} ** len;
+        result[0] = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
+
+        try self.stack.pushValueAs(V, result);
+    }
+
+    inline fn opV128LoadLane(self: *Self, comptime N: type, mem_arg: Instruction.MemArgWithLaneIdx) Error!void {
+        const len = 128 / @bitSizeOf(N);
+        const V = @Vector(len, N);
+        var v = self.stack.pop().value.asVec(V);
+
+        const module = self.stack.topFrame().module;
+        const a = module.mem_addrs[0];
+        const mem = &self.store.mems.items[a];
+
+        const ea: u32 = self.stack.pop().value.asU32();
+        const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
+        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
+            return Error.OutOfBoundsMemoryAccess;
+
+        const ea_start = ea_start_with_overflow[0];
+        const size = @sizeOf(N);
+        const ea_end_with_overflow = @addWithOverflow(ea_start, size);
+        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
+            return Error.OutOfBoundsMemoryAccess;
+
+        const ea_end = ea_end_with_overflow[0];
+        v[mem_arg.lane_idx] = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
+
+        try self.stack.pushValueAs(V, v);
+    }
+
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-xref-syntax-instructions-syntax-memarg-mathit-memarg-and-t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-n-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opStore(self: *Self, comptime T: type, comptime bit_size: u32, mem_arg: Instruction.MemArg) error{OutOfBoundsMemoryAccess}!void {
         const module = self.stack.topFrame().module;
@@ -1315,6 +1367,31 @@ pub const Instance = struct {
             return Error.OutOfBoundsMemoryAccess;
 
         std.mem.writeInt(DestType, @as(*[byte_size]u8, @ptrCast(&mem.data[ea])), c, .Little);
+    }
+
+    inline fn opV128StoreLane(self: *Self, comptime N: type, mem_arg: Instruction.MemArgWithLaneIdx) Error!void {
+        const len = 128 / @bitSizeOf(N);
+        const V = @Vector(len, N);
+        var v = self.stack.pop().value.asVec(V);
+
+        const module = self.stack.topFrame().module;
+        const a = module.mem_addrs[0];
+        const mem = &self.store.mems.items[a];
+
+        const i: u32 = self.stack.pop().value.asU32();
+
+        const ea_with_overflow = @addWithOverflow(i, mem_arg.offset);
+        if (ea_with_overflow[1] == 1 or ea_with_overflow[0] > mem.data.len)
+            return Error.OutOfBoundsMemoryAccess;
+
+        const ea: u32 = ea_with_overflow[0];
+
+        const byte_size = @sizeOf(N);
+        const ea_plus_byte_size = @addWithOverflow(ea, byte_size);
+        if (ea_plus_byte_size[1] == 1 or ea_plus_byte_size[0] > mem.data.len)
+            return Error.OutOfBoundsMemoryAccess;
+
+        std.mem.writeInt(N, @as(*[byte_size]u8, @ptrCast(&mem.data[ea])), v[mem_arg.lane_idx], .Little);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-size
@@ -1633,6 +1710,24 @@ pub const Instance = struct {
         try self.stack.pushValueAs(R, result);
     }
 
+    inline fn vDot(self: *Self, comptime R: type, comptime T: type) error{CallStackExhausted}!void {
+        const r_len = @typeInfo(R).Vector.len;
+        const t_len = @typeInfo(T).Vector.len;
+        comptimeAssert(r_len * 2 == t_len);
+
+        const c2 = self.stack.pop().value.asVec(T);
+        const c1 = self.stack.pop().value.asVec(T);
+
+        const E = @Vector(t_len, ChildTypeOf(R));
+        const k = @as(E, c1) * @as(E, c2);
+        var result: R = undefined;
+        inline for (0..r_len) |i| {
+            result[i] = k[i] +% k[r_len + i];
+        }
+
+        try self.stack.pushValueAs(R, result);
+    }
+
     inline fn vExtmulHalf(self: *Self, comptime offset: u8, comptime R: type, comptime T: type) error{CallStackExhausted}!void {
         const c2 = self.stack.pop().value.asVec(T);
         const c1 = self.stack.pop().value.asVec(T);
@@ -1647,6 +1742,22 @@ pub const Instance = struct {
             const k1: C = c1[offset + i];
             const k2: C = c2[offset + i];
             result[i] = k1 * k2;
+        }
+
+        try self.stack.pushValueAs(R, result);
+    }
+
+    inline fn vExtaddPairwise(self: *Self, comptime R: type, comptime T: type) error{CallStackExhausted}!void {
+        const r_len = @typeInfo(R).Vector.len;
+        const t_len = @typeInfo(T).Vector.len;
+        comptimeAssert(r_len * 2 == t_len);
+
+        const E = @Vector(t_len, ChildTypeOf(R));
+        const c1 = @as(E, self.stack.pop().value.asVec(T));
+
+        var result: R = undefined;
+        inline for (0..r_len) |i| {
+            result[i] = c1[i] +% c1[r_len + i];
         }
 
         try self.stack.pushValueAs(R, result);
@@ -2117,6 +2228,19 @@ fn opIntAvgr(comptime T: type, lhs: T, rhs: T) Error!T {
     const half: T = std.math.maxInt(T) / 2 + 1;
     const r4 = r3 + (if (r1[1] | r2[1] == 0) 0 else half);
     return r4;
+}
+
+fn opIntQMulrSat(comptime T: type, lhs: T, rhs: T) Error!T {
+    comptimeAssert(T == i16);
+
+    const bitsize = @bitSizeOf(T);
+    const prod = @as(i32, lhs) * @as(i32, rhs);
+    const sum = prod +% (1 << (bitsize - 2));
+    const shifted = sum >> (bitsize - 1);
+
+    const max = std.math.maxInt(T);
+    const min = std.math.minInt(T);
+    return if (shifted > max) max else if (shifted < min) min else @intCast(shifted);
 }
 
 fn opVecEq(comptime T: type, lhs: T, rhs: T) Error!T {
