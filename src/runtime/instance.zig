@@ -531,31 +531,31 @@ pub const Instance = struct {
             .f64_copy_sign => try self.binTryOp(f64, opFloatCopySign),
 
             // numeric instructions (4)
-            .i32_wrap_i64 => try self.instrOp(u32, u64, opWrap),
-            .i32_trunc_f32_s => try self.instrTryOp(i32, f32, opTrunc),
-            .i32_trunc_f32_u => try self.instrTryOp(u32, f32, opTrunc),
-            .i32_trunc_f64_s => try self.instrTryOp(i32, f64, opTrunc),
-            .i32_trunc_f64_u => try self.instrTryOp(u32, f64, opTrunc),
+            .i32_wrap_i64 => try self.cvtOp(u32, u64, opWrap),
+            .i32_trunc_f32_s => try self.cvtTryOp(i32, f32, opTrunc),
+            .i32_trunc_f32_u => try self.cvtTryOp(u32, f32, opTrunc),
+            .i32_trunc_f64_s => try self.cvtTryOp(i32, f64, opTrunc),
+            .i32_trunc_f64_u => try self.cvtTryOp(u32, f64, opTrunc),
             .i64_extend_i32_s => try self.cvtOp(i64, i32, opExtend(i64, i32, i32)),
             .i64_extend_i32_u => try self.cvtOp(u64, u32, opExtend(u64, u32, u32)),
-            .i64_trunc_f32_s => try self.instrTryOp(i64, f32, opTrunc),
-            .i64_trunc_f32_u => try self.instrTryOp(u64, f32, opTrunc),
-            .i64_trunc_f64_s => try self.instrTryOp(i64, f64, opTrunc),
-            .i64_trunc_f64_u => try self.instrTryOp(u64, f64, opTrunc),
-            .f32_convert_i32_s => try self.instrOp(f32, i32, opConvert),
-            .f32_convert_i32_u => try self.instrOp(f32, u32, opConvert),
-            .f32_convert_i64_s => try self.instrOp(f32, i64, opConvert),
-            .f32_convert_i64_u => try self.instrOp(f32, u64, opConvert),
-            .f32_demote_f64 => try self.instrOp(f32, f64, opDemote),
-            .f64_convert_i32_s => try self.instrOp(f64, i32, opConvert),
-            .f64_convert_i32_u => try self.instrOp(f64, u32, opConvert),
-            .f64_convert_i64_s => try self.instrOp(f64, i64, opConvert),
-            .f64_convert_i64_u => try self.instrOp(f64, u64, opConvert),
-            .f64_promote_f32 => try self.instrOp(f64, f32, opPromote),
-            .i32_reinterpret_f32 => try self.instrOp(i32, f32, opReinterpret),
-            .i64_reinterpret_f64 => try self.instrOp(i64, f64, opReinterpret),
-            .f32_reinterpret_i32 => try self.instrOp(f32, i32, opReinterpret),
-            .f64_reinterpret_i64 => try self.instrOp(f64, i64, opReinterpret),
+            .i64_trunc_f32_s => try self.cvtTryOp(i64, f32, opTrunc),
+            .i64_trunc_f32_u => try self.cvtTryOp(u64, f32, opTrunc),
+            .i64_trunc_f64_s => try self.cvtTryOp(i64, f64, opTrunc),
+            .i64_trunc_f64_u => try self.cvtTryOp(u64, f64, opTrunc),
+            .f32_convert_i32_s => try self.cvtOp(f32, i32, opConvert),
+            .f32_convert_i32_u => try self.cvtOp(f32, u32, opConvert),
+            .f32_convert_i64_s => try self.cvtOp(f32, i64, opConvert),
+            .f32_convert_i64_u => try self.cvtOp(f32, u64, opConvert),
+            .f32_demote_f64 => try self.cvtOp(f32, f64, opDemote),
+            .f64_convert_i32_s => try self.cvtOp(f64, i32, opConvert),
+            .f64_convert_i32_u => try self.cvtOp(f64, u32, opConvert),
+            .f64_convert_i64_s => try self.cvtOp(f64, i64, opConvert),
+            .f64_convert_i64_u => try self.cvtOp(f64, u64, opConvert),
+            .f64_promote_f32 => try self.cvtOp(f64, f32, opPromote),
+            .i32_reinterpret_f32 => try self.cvtOp(i32, f32, opReinterpret),
+            .i64_reinterpret_f64 => try self.cvtOp(i64, f64, opReinterpret),
+            .f32_reinterpret_i32 => try self.cvtOp(f32, i32, opReinterpret),
+            .f64_reinterpret_i64 => try self.cvtOp(f64, i64, opReinterpret),
 
             // numeric instructions (5)
             .i32_extend8_s => try self.cvtOp(i32, i32, opExtend(i32, i32, i8)),
@@ -1225,6 +1225,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, val);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-m-mathsf-x-n-xref-syntax-instructions-syntax-sx-mathit-sx-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opV128Load(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) Error!void {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
@@ -1264,6 +1265,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-n-mathsf-splat-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opV128LoadSplat(self: *Self, comptime N: type, mem_arg: Instruction.MemArg) Error!void {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
@@ -1289,6 +1291,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(V, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-n-mathsf-zero-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opV128LoadZero(self: *Self, comptime N: type, mem_arg: Instruction.MemArg) Error!void {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
@@ -1315,6 +1318,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(V, result);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-n-mathsf-zero-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opV128LoadLane(self: *Self, comptime N: type, mem_arg: Instruction.MemArgWithLaneIdx) Error!void {
         const len = 128 / @bitSizeOf(N);
         const V = @Vector(len, N);
@@ -1369,6 +1373,7 @@ pub const Instance = struct {
         std.mem.writeInt(DestType, @as(*[byte_size]u8, @ptrCast(&mem.data[ea])), c, .Little);
     }
 
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-n-mathsf-lane-xref-syntax-instructions-syntax-memarg-mathit-memarg-x
     inline fn opV128StoreLane(self: *Self, comptime N: type, mem_arg: Instruction.MemArgWithLaneIdx) Error!void {
         const len = 128 / @bitSizeOf(N);
         const V = @Vector(len, N);
@@ -1545,18 +1550,6 @@ pub const Instance = struct {
 
     // numeric instructions
 
-    inline fn instrOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) R) error{CallStackExhausted}!void {
-        const value: T = self.stack.pop().value.as(T);
-        const result: R = f(R, T, value);
-        try self.stack.pushValueAs(R, result);
-    }
-
-    inline fn instrTryOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) Error!void {
-        const value: T = self.stack.pop().value.as(T);
-        const result: R = try f(R, T, value);
-        try self.stack.pushValueAs(R, result);
-    }
-
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-unop-mathit-unop
     inline fn unOp(self: *Self, comptime T: type, comptime f: fn (type, T) T) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.as(T);
@@ -1588,10 +1581,16 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-xref-syntax-instructions-syntax-cvtop-mathit-cvtop-mathsf-t-1-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
-    inline fn cvtOp(self: *Self, comptime T2: type, comptime T1: type, comptime f: fn (type, type, T1) T2) error{CallStackExhausted}!void {
-        const value = self.stack.pop().value.as(T1);
-        const result: T2 = f(T2, T1, value);
-        try self.stack.pushValueAs(T2, result);
+    inline fn cvtOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) R) error{CallStackExhausted}!void {
+        const value = self.stack.pop().value.as(T);
+        const result: R = f(R, T, value);
+        try self.stack.pushValueAs(R, result);
+    }
+
+    inline fn cvtTryOp(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, T) Error!R) Error!void {
+        const value: T = self.stack.pop().value.as(T);
+        const result: R = try f(R, T, value);
+        try self.stack.pushValueAs(R, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-vunop-mathit-vunop

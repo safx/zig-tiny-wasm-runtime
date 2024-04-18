@@ -1,6 +1,6 @@
 # Zig Web Assembly interpreter
 
-A tiny Web Assembly interpreter written in Zig. The interpreter supports Web Assembly Core Specification 1.0.
+A tiny Web Assembly interpreter written in Zig. The interpreter supports Web Assembly Core Specification 2.0 draft including SIMD operations.
 This project is intended for personal understanding of the Wasm spec. Do not use in production environment.
 
 ## How to Compile and Run
