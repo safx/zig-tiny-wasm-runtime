@@ -1204,22 +1204,10 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-xref-syntax-instructions-syntax-memarg-mathit-memarg-and-t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-n-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opLoad(self: *Self, comptime T: type, comptime N: type, mem_arg: Instruction.MemArg) Error!void {
-        const module = self.stack.topFrame().module;
-        const a = module.mem_addrs[0];
-        const mem = &self.store.mems.items[a];
-
-        const ea: u32 = self.stack.pop().value.asU32();
-        const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
-        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
-
-        const ea_start = ea_start_with_overflow[0];
-        const size = @sizeOf(N);
-        const ea_end_with_overflow = @addWithOverflow(ea_start, size);
-        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
-
-        const ea_end = ea_end_with_overflow[0];
+        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, @sizeOf(N));
+        const mem = mem_and_addr[0];
+        const ea_start = mem_and_addr[1];
+        const ea_end = mem_and_addr[2];
 
         const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
         try self.stack.pushValueAs(T, val);
@@ -1227,18 +1215,7 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-m-mathsf-x-n-xref-syntax-instructions-syntax-sx-mathit-sx-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opV128Load(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) Error!void {
-        const module = self.stack.topFrame().module;
-        const a = module.mem_addrs[0];
-        const mem = &self.store.mems.items[a];
-
-        const ea: u32 = self.stack.pop().value.asU32();
-        const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
-        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
-
-        const ea_start = ea_start_with_overflow[0];
-        const C = ChildTypeOf(T);
-        const HalfOfC = switch (C) {
+        const HalfOfC = switch (ChildTypeOf(T)) {
             i16 => i8,
             u16 => u8,
             i32 => i16,
@@ -1250,9 +1227,10 @@ pub const Instance = struct {
         const len = @typeInfo(T).Vector.len;
         const child_size = @sizeOf(HalfOfC);
         const size = child_size * len;
-        const ea_end_with_overflow = @addWithOverflow(ea_start, size);
-        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
+
+        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, size);
+        const mem = mem_and_addr[0];
+        const ea_start = mem_and_addr[1];
 
         var result: T = undefined;
         inline for (0..len) |i| {
@@ -1267,51 +1245,29 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-n-mathsf-splat-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opV128LoadSplat(self: *Self, comptime N: type, mem_arg: Instruction.MemArg) Error!void {
-        const module = self.stack.topFrame().module;
-        const a = module.mem_addrs[0];
-        const mem = &self.store.mems.items[a];
-
-        const ea: u32 = self.stack.pop().value.asU32();
-        const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
-        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
-
-        const ea_start = ea_start_with_overflow[0];
-        const size = @sizeOf(N);
-        const ea_end_with_overflow = @addWithOverflow(ea_start, size);
-        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
-
-        const ea_end = ea_end_with_overflow[0];
-
-        const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
         const len = 128 / @bitSizeOf(N);
         const V = @Vector(len, N);
+
+        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, @sizeOf(N));
+        const mem = mem_and_addr[0];
+        const ea_start = mem_and_addr[1];
+        const ea_end = mem_and_addr[2];
+
+        const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
         const result: V = .{val} ** len;
         try self.stack.pushValueAs(V, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-n-mathsf-zero-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opV128LoadZero(self: *Self, comptime N: type, mem_arg: Instruction.MemArg) Error!void {
-        const module = self.stack.topFrame().module;
-        const a = module.mem_addrs[0];
-        const mem = &self.store.mems.items[a];
-
-        const ea: u32 = self.stack.pop().value.asU32();
-        const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
-        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
-
-        const ea_start = ea_start_with_overflow[0];
-        const size = @sizeOf(N);
-        const ea_end_with_overflow = @addWithOverflow(ea_start, size);
-        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
-
-        const ea_end = ea_end_with_overflow[0];
-
         const len = 128 / @bitSizeOf(N);
         const V = @Vector(len, N);
+
+        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, @sizeOf(N));
+        const mem = mem_and_addr[0];
+        const ea_start = mem_and_addr[1];
+        const ea_end = mem_and_addr[2];
+
         var result: V = .{0} ** len;
         result[0] = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
 
@@ -1322,53 +1278,30 @@ pub const Instance = struct {
     inline fn opV128LoadLane(self: *Self, comptime N: type, mem_arg: Instruction.MemArgWithLaneIdx) Error!void {
         const len = 128 / @bitSizeOf(N);
         const V = @Vector(len, N);
+
         var v = self.stack.pop().value.asVec(V);
 
-        const module = self.stack.topFrame().module;
-        const a = module.mem_addrs[0];
-        const mem = &self.store.mems.items[a];
+        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, @sizeOf(N));
+        const mem = mem_and_addr[0];
+        const ea_start = mem_and_addr[1];
+        const ea_end = mem_and_addr[2];
 
-        const ea: u32 = self.stack.pop().value.asU32();
-        const ea_start_with_overflow = @addWithOverflow(ea, mem_arg.offset);
-        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
-
-        const ea_start = ea_start_with_overflow[0];
-        const size = @sizeOf(N);
-        const ea_end_with_overflow = @addWithOverflow(ea_start, size);
-        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
-
-        const ea_end = ea_end_with_overflow[0];
         v[mem_arg.lane_idx] = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
-
         try self.stack.pushValueAs(V, v);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-xref-syntax-instructions-syntax-memarg-mathit-memarg-and-t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-n-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opStore(self: *Self, comptime T: type, comptime bit_size: u32, mem_arg: Instruction.MemArg) error{OutOfBoundsMemoryAccess}!void {
-        const module = self.stack.topFrame().module;
-        const a = module.mem_addrs[0];
-        const mem = &self.store.mems.items[a];
-
         // change to integer type of same size to operate bit shift
         const IntType = IntOfBitSizeOf(@bitSizeOf(T));
         const ci: IntType = @bitCast(self.stack.pop().value.as(T));
         const DestType = IntOfBitSizeOf(bit_size);
         const c: DestType = @truncate(ci);
-
-        const i: u32 = self.stack.pop().value.asU32();
-
-        const ea_with_overflow = @addWithOverflow(i, mem_arg.offset);
-        if (ea_with_overflow[1] == 1 or ea_with_overflow[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
-
-        const ea: u32 = ea_with_overflow[0];
-
         const byte_size = bit_size / 8;
-        const ea_plus_byte_size = @addWithOverflow(ea, byte_size);
-        if (ea_plus_byte_size[1] == 1 or ea_plus_byte_size[0] > mem.data.len)
-            return Error.OutOfBoundsMemoryAccess;
+
+        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, byte_size);
+        const mem = mem_and_addr[0];
+        const ea = mem_and_addr[1];
 
         std.mem.writeInt(DestType, @as(*[byte_size]u8, @ptrCast(&mem.data[ea])), c, .Little);
     }
@@ -1376,27 +1309,35 @@ pub const Instance = struct {
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-n-mathsf-lane-xref-syntax-instructions-syntax-memarg-mathit-memarg-x
     inline fn opV128StoreLane(self: *Self, comptime N: type, mem_arg: Instruction.MemArgWithLaneIdx) Error!void {
         const len = 128 / @bitSizeOf(N);
-        const V = @Vector(len, N);
-        var v = self.stack.pop().value.asVec(V);
+        var v = self.stack.pop().value.asVec(@Vector(len, N));
+        const byte_size = @sizeOf(N);
 
+        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, byte_size);
+        const mem = mem_and_addr[0];
+        const ea = mem_and_addr[1];
+
+        std.mem.writeInt(N, @as(*[byte_size]u8, @ptrCast(&mem.data[ea])), v[mem_arg.lane_idx], .Little);
+    }
+
+    /// returns memery and effective address for load and store operations
+    inline fn getMemoryAndAddress(self: *Self, offset: u32, size: u32) error{OutOfBoundsMemoryAccess}!struct { *types.MemInst, u32, u32 } {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
 
-        const i: u32 = self.stack.pop().value.asU32();
-
-        const ea_with_overflow = @addWithOverflow(i, mem_arg.offset);
-        if (ea_with_overflow[1] == 1 or ea_with_overflow[0] > mem.data.len)
+        const ea: u32 = self.stack.pop().value.asU32();
+        const ea_start_with_overflow = @addWithOverflow(ea, offset);
+        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        const ea: u32 = ea_with_overflow[0];
+        const ea_start = ea_start_with_overflow[0];
 
-        const byte_size = @sizeOf(N);
-        const ea_plus_byte_size = @addWithOverflow(ea, byte_size);
-        if (ea_plus_byte_size[1] == 1 or ea_plus_byte_size[0] > mem.data.len)
+        const ea_end_with_overflow = @addWithOverflow(ea_start, size);
+        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
+        const ea_end = ea_end_with_overflow[0];
 
-        std.mem.writeInt(N, @as(*[byte_size]u8, @ptrCast(&mem.data[ea])), v[mem_arg.lane_idx], .Little);
+        return .{ mem, ea_start, ea_end };
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-size
