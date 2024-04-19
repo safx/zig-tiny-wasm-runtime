@@ -1652,10 +1652,11 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#mathsf-i8x16-xref-syntax-instructions-syntax-instr-vec-mathsf-swizzle
     inline fn swizzle(self: *Self) Error!void {
-        const c2 = self.stack.pop().value.asVec(@Vector(16, u8));
-        const c1 = self.stack.pop().value.asVec(@Vector(16, u8));
+        const Vec = @Vector(16, u8);
+        const c2 = self.stack.pop().value.asVec(Vec);
+        const c1 = self.stack.pop().value.asVec(Vec);
 
-        var result: @Vector(16, u8) = undefined;
+        var result: Vec = undefined;
         inline for (0..16) |i| {
             const idx = c2[i];
             result[i] = if (idx < 16) c1[idx] else 0;
@@ -1665,8 +1666,9 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#mathsf-i8x16-xref-syntax-instructions-syntax-instr-vec-mathsf-shuffle-x-ast
     inline fn shuffle(self: *Self, lane_idxs: [16]u8) Error!void {
-        const c2 = self.stack.pop().value.asVec(@Vector(16, u8));
-        const c1 = self.stack.pop().value.asVec(@Vector(16, u8));
+        const Vec = @Vector(16, u8);
+        const c2 = self.stack.pop().value.asVec(Vec);
+        const c1 = self.stack.pop().value.asVec(Vec);
 
         var result: @Vector(16, u8) = undefined;
         inline for (0..16) |i| {
@@ -1674,7 +1676,7 @@ pub const Instance = struct {
             assert(idx < 32);
             result[i] = if (idx < 16) c1[idx] else c2[idx - 16];
         }
-        try self.stack.pushValueAs(@Vector(16, u8), result);
+        try self.stack.pushValueAs(Vec, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-splat
@@ -1682,7 +1684,7 @@ pub const Instance = struct {
         const t_len = @typeInfo(T).Vector.len;
         const c1 = self.stack.pop().value.as(S);
         const C = ChildTypeOf(T);
-        const val: ChildTypeOf(T) = if (S == f32 or S == f64) c1 else @intCast(c1 & std.math.maxInt(C));
+        const val: C = if (S == f32 or S == f64) c1 else @intCast(c1 & std.math.maxInt(C));
         var result: T = .{val} ** t_len;
         try self.stack.pushValueAs(T, result);
     }
@@ -1871,16 +1873,17 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-extmul-mathsf-xref-syntax-instructions-syntax-half-mathit-half-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
     inline fn vExtmulHalf(self: *Self, comptime offset: u8, comptime R: type, comptime T: type) error{CallStackExhausted}!void {
-        const c2 = self.stack.pop().value.asVec(T);
-        const c1 = self.stack.pop().value.asVec(T);
-
         const r_len = @typeInfo(R).Vector.len;
         const t_len = @typeInfo(T).Vector.len;
         comptimeAssert(r_len * 2 == t_len);
 
+        const c2 = self.stack.pop().value.asVec(T);
+        const c1 = self.stack.pop().value.asVec(T);
+
         const C = ChildTypeOf(R);
         var result: R = undefined;
         inline for (0..r_len) |i| {
+            // extends to C
             const k1: C = c1[offset + i];
             const k2: C = c2[offset + i];
             result[i] = k1 * k2;
@@ -2243,9 +2246,7 @@ fn opIntQMulrSat(comptime T: type, lhs: T, rhs: T) Error!T {
     const sum = prod +% (1 << (bitsize - 2));
     const shifted = sum >> (bitsize - 1);
 
-    const max = std.math.maxInt(T);
-    const min = std.math.minInt(T);
-    return if (shifted > max) max else if (shifted < min) min else @intCast(shifted);
+    return intSat(T, i32, shifted);
 }
 
 fn opVecEq(comptime T: type, lhs: T, rhs: T) Error!T {
