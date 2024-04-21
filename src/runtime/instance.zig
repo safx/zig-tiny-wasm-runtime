@@ -1204,12 +1204,8 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-xref-syntax-instructions-syntax-memarg-mathit-memarg-and-t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-n-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opLoad(self: *Self, comptime T: type, comptime N: type, mem_arg: Instruction.MemArg) Error!void {
-        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, @sizeOf(N));
-        const mem = mem_and_addr[0];
-        const ea_start = mem_and_addr[1];
-        const ea_end = mem_and_addr[2];
-
-        const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
+        const val = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
         try self.stack.pushValueAs(T, val);
     }
 
@@ -1228,15 +1224,12 @@ pub const Instance = struct {
         const child_size = @sizeOf(HalfOfC);
         const size = child_size * len;
 
-        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, size);
-        const mem = mem_and_addr[0];
-        const ea_start = mem_and_addr[1];
-
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, size);
         var result: T = undefined;
         inline for (0..len) |i| {
-            const start = ea_start + i * child_size;
+            const start = m.start + i * child_size;
             const end = start + child_size;
-            const val = decode.safeNumCast(HalfOfC, mem.data[start..end]);
+            const val = decode.safeNumCast(HalfOfC, m.mem.data[start..end]);
             result[i] = val;
         }
 
@@ -1248,12 +1241,8 @@ pub const Instance = struct {
         const len = 128 / @bitSizeOf(N);
         const V = @Vector(len, N);
 
-        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, @sizeOf(N));
-        const mem = mem_and_addr[0];
-        const ea_start = mem_and_addr[1];
-        const ea_end = mem_and_addr[2];
-
-        const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
+        const val = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
         const result: V = @splat(val);
         try self.stack.pushValueAs(V, result);
     }
@@ -1263,13 +1252,9 @@ pub const Instance = struct {
         const len = 128 / @bitSizeOf(N);
         const V = @Vector(len, N);
 
-        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, @sizeOf(N));
-        const mem = mem_and_addr[0];
-        const ea_start = mem_and_addr[1];
-        const ea_end = mem_and_addr[2];
-
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
         var result: V = @splat(0);
-        result[0] = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
+        result[0] = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
 
         try self.stack.pushValueAs(V, result);
     }
@@ -1281,12 +1266,8 @@ pub const Instance = struct {
 
         var v = self.stack.pop().value.asVec(V);
 
-        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, @sizeOf(N));
-        const mem = mem_and_addr[0];
-        const ea_start = mem_and_addr[1];
-        const ea_end = mem_and_addr[2];
-
-        v[mem_arg.lane_idx] = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
+        v[mem_arg.lane_idx] = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
         try self.stack.pushValueAs(V, v);
     }
 
@@ -1299,11 +1280,8 @@ pub const Instance = struct {
         const c: DestType = @truncate(ci);
         const byte_size = bit_size / 8;
 
-        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, byte_size);
-        const mem = mem_and_addr[0];
-        const ea = mem_and_addr[1];
-
-        std.mem.writeInt(DestType, @as(*[byte_size]u8, @ptrCast(&mem.data[ea])), c, .Little);
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, byte_size);
+        std.mem.writeInt(DestType, @as(*[byte_size]u8, @ptrCast(&m.mem.data[m.start])), c, .Little);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-n-mathsf-lane-xref-syntax-instructions-syntax-memarg-mathit-memarg-x
@@ -1312,15 +1290,12 @@ pub const Instance = struct {
         var v = self.stack.pop().value.asVec(@Vector(len, N));
         const byte_size = @sizeOf(N);
 
-        const mem_and_addr = try self.getMemoryAndAddress(mem_arg.offset, byte_size);
-        const mem = mem_and_addr[0];
-        const ea = mem_and_addr[1];
-
-        std.mem.writeInt(N, @as(*[byte_size]u8, @ptrCast(&mem.data[ea])), v[mem_arg.lane_idx], .Little);
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, byte_size);
+        std.mem.writeInt(N, @as(*[byte_size]u8, @ptrCast(&m.mem.data[m.start])), v[mem_arg.lane_idx], .Little);
     }
 
     /// returns memery and effective address for load and store operations
-    inline fn getMemoryAndAddress(self: *Self, offset: u32, size: u32) error{OutOfBoundsMemoryAccess}!struct { *types.MemInst, u32, u32 } {
+    inline fn getMemoryAndEffectiveAddress(self: *Self, offset: u32, size: u32) error{OutOfBoundsMemoryAccess}!MemoryAndEffectiveAddress {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[0];
         const mem = &self.store.mems.items[a];
@@ -1337,8 +1312,14 @@ pub const Instance = struct {
             return Error.OutOfBoundsMemoryAccess;
         const ea_end = ea_end_with_overflow[0];
 
-        return .{ mem, ea_start, ea_end };
+        return .{ .mem = mem, .start = ea_start, .end = ea_end };
     }
+
+    const MemoryAndEffectiveAddress = struct {
+        mem: *types.MemInst,
+        start: u32,
+        end: u32,
+    };
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-size
     inline fn opMemorySize(self: *Self) error{CallStackExhausted}!void {
