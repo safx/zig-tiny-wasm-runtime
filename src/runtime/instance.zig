@@ -675,10 +675,10 @@ pub const Instance = struct {
             .i16x8_abs => try self.vUnOpEx(@Vector(8, i16), opIntAbs),
             .i32x4_abs => try self.vUnOpEx(@Vector(4, i32), opIntAbs),
             .i64x2_abs => try self.vUnOpEx(@Vector(2, i64), opIntAbs),
-            .i8x16_neg => try self.vUnOp(@Vector(16, u8), opIntNeg),
-            .i16x8_neg => try self.vUnOp(@Vector(8, i16), opIntNeg),
-            .i32x4_neg => try self.vUnOp(@Vector(4, i32), opIntNeg),
-            .i64x2_neg => try self.vUnOp(@Vector(2, i64), opIntNeg),
+            .i8x16_neg => try self.vUnOp(@Vector(16, u8), opVecIntNeg),
+            .i16x8_neg => try self.vUnOp(@Vector(8, i16), opVecIntNeg),
+            .i32x4_neg => try self.vUnOp(@Vector(4, i32), opVecIntNeg),
+            .i64x2_neg => try self.vUnOp(@Vector(2, i64), opVecIntNeg),
             .i8x16_popcnt => try self.vUnOpEx(@Vector(16, i8), opIntPopcnt),
             .i16x8_q15mulr_sat_s => try self.vBinTryOpEx(@Vector(8, i16), opIntQMulrSat),
             .i8x16_all_true => try self.vAllTrue(@Vector(16, i8)),
@@ -1254,7 +1254,7 @@ pub const Instance = struct {
         const ea_end = mem_and_addr[2];
 
         const val = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
-        const result: V = .{val} ** len;
+        const result: V = @splat(val);
         try self.stack.pushValueAs(V, result);
     }
 
@@ -1268,7 +1268,7 @@ pub const Instance = struct {
         const ea_start = mem_and_addr[1];
         const ea_end = mem_and_addr[2];
 
-        var result: V = .{0} ** len;
+        var result: V = @splat(0);
         result[0] = decode.safeNumCast(N, mem.data[ea_start..ea_end]);
 
         try self.stack.pushValueAs(V, result);
@@ -1622,11 +1622,10 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-splat
     inline fn opVSplat(self: *Self, comptime S: type, comptime T: type) Error!void {
-        const t_len = @typeInfo(T).Vector.len;
         const c1 = self.stack.pop().value.as(S);
         const C = ChildTypeOf(T);
         const val: C = if (S == f32 or S == f64) c1 else @intCast(c1 & std.math.maxInt(C));
-        var result: T = .{val} ** t_len;
+        var result: T = @splat(val);
         try self.stack.pushValueAs(T, result);
     }
 
@@ -1688,9 +1687,7 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-all-true
     inline fn vAllTrue(self: *Self, comptime T: type) Error!void {
-        const vec_len = @typeInfo(T).Vector.len;
-        const zero_vec: T = .{0} ** vec_len;
-
+        const zero_vec: T = @splat(0);
         const value = self.stack.pop().value.asVec(T);
         const comp_result = zero_vec != value;
         const reduce_result = @reduce(.And, comp_result);
@@ -1701,7 +1698,7 @@ pub const Instance = struct {
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-bitmask
     inline fn vBitmask(self: *Self, comptime T: type) Error!void {
         const vec_len = @typeInfo(T).Vector.len;
-        const zero_vec: T = .{0} ** vec_len;
+        const zero_vec: T = @splat(0);
 
         const value = self.stack.pop().value.asVec(T);
         const comp_result = value >= zero_vec;
@@ -1738,8 +1735,7 @@ pub const Instance = struct {
         const value = self.stack.pop().value.asVec(T);
 
         const t_len = @typeInfo(T).Vector.len;
-        const r_len = @typeInfo(R).Vector.len;
-        var result: R = .{0} ** r_len;
+        var result: R = @splat(0);
         inline for (0..t_len) |i| {
             result[i] = f(ChildTypeOf(R), ChildTypeOf(T), value[i]);
         }
@@ -1751,8 +1747,7 @@ pub const Instance = struct {
         const value = self.stack.pop().value.asVec(T);
 
         const t_len = @typeInfo(T).Vector.len;
-        const r_len = @typeInfo(R).Vector.len;
-        var result: R = .{0} ** r_len;
+        var result: R = @splat(0);
         inline for (0..t_len) |i| {
             result[i] = try f(ChildTypeOf(R), ChildTypeOf(T), value[i]);
         }
@@ -1786,7 +1781,7 @@ pub const Instance = struct {
 
         const c = self.stack.pop().value.asVec(T);
 
-        var result: R = .{0} ** r_len;
+        var result: R = @splat(0);
         inline for (0..t_len) |i| {
             result[i] = f(ChildTypeOf(R), ChildTypeOf(T), c[i]);
         }
@@ -1933,18 +1928,16 @@ fn opNot(comptime T: type, value: T) T {
     return ~value;
 }
 
-fn opIntNeg(comptime T: type, value: T) T {
-    const t_len = @typeInfo(T).Vector.len;
-    const zero: @Vector(t_len, types.ChildTypeOf(T)) = .{0} ** t_len;
+fn opVecIntNeg(comptime T: type, value: T) T {
+    const zero: T = @splat(0);
     return zero -% value;
 }
 
 fn opIntAbs(comptime T: type, value: T) T {
-    if (value >= 0)
-        return value;
-    if (value == std.math.minInt(T))
-        return value;
-    return -value;
+    return if (value >= 0 or value == std.math.minInt(T))
+        value
+    else
+        -value;
 }
 
 fn opIntClz(comptime T: type, value: T) T {
@@ -1960,14 +1953,7 @@ fn opIntPopcnt(comptime T: type, value: T) T {
 }
 
 fn intSat(comptime R: type, comptime T: type, value: T) R {
-    const min = std.math.minInt(R);
-    const max = std.math.maxInt(R);
-
-    if (value > max)
-        return max;
-    if (value < min)
-        return min;
-    return @intCast(value);
+    return @intCast(std.math.clamp(value, std.math.minInt(R), std.math.maxInt(R)));
 }
 
 fn opTrunc(comptime R: type, comptime T: type, value: T) Error!R {
@@ -2043,7 +2029,7 @@ fn opPromote(comptime R: type, comptime T: type, value: T) R {
 }
 
 fn opWrap(comptime R: type, comptime T: type, value: T) R {
-    return @intCast(value & 0xffffffff);
+    return @intCast(value & std.math.maxInt(R));
 }
 
 fn opDemote(comptime R: type, comptime T: type, value: T) R {
@@ -2191,11 +2177,8 @@ fn opIntQMulrSat(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opVecEq(comptime T: type, lhs: T, rhs: T) Error!T {
-    const len = @typeInfo(T).Vector.len;
-
-    const zero: T = .{0} ** len;
-    const one: T = .{1} ** len;
-
+    const zero: T = @splat(0);
+    const one: T = @splat(1);
     return @select(types.ChildTypeOf(T), lhs == rhs, one, zero);
 }
 
@@ -2208,16 +2191,16 @@ fn opVecMax(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opVecFloatMin(comptime T: type, lhs: T, rhs: T) Error!T {
-    if (std.math.isNan(lhs)) return lhs;
-    if (std.math.isNan(rhs)) return lhs;
-    if (lhs == 0 and rhs == 0) return lhs;
+    if (std.math.isNan(lhs) or
+        std.math.isNan(rhs) or
+        (lhs == 0 and rhs == 0)) return lhs;
     return @min(lhs, rhs);
 }
 
 fn opVecFloatMax(comptime T: type, lhs: T, rhs: T) Error!T {
-    if (std.math.isNan(lhs)) return lhs;
-    if (std.math.isNan(rhs)) return lhs;
-    if (lhs == 0 and rhs == 0) return lhs;
+    if (std.math.isNan(lhs) or
+        std.math.isNan(rhs) or
+        (lhs == 0 and rhs == 0)) return lhs;
     return @max(lhs, rhs);
 }
 
