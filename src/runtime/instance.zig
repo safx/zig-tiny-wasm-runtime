@@ -1281,17 +1281,17 @@ pub const Instance = struct {
         const byte_size = bit_size / 8;
 
         const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, byte_size);
-        std.mem.writeInt(DestType, @as(*[byte_size]u8, @ptrCast(&m.mem.data[m.start])), c, .Little);
+        std.mem.writeInt(DestType, @as(*[byte_size]u8, @ptrCast(&m.mem.data[m.start])), c, .little);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-n-mathsf-lane-xref-syntax-instructions-syntax-memarg-mathit-memarg-x
     inline fn opV128StoreLane(self: *Self, comptime N: type, mem_arg: Instruction.MemArgWithLaneIdx) Error!void {
         const len = 128 / @bitSizeOf(N);
-        var v = self.stack.pop().value.asVec(@Vector(len, N));
+        const v = self.stack.pop().value.asVec(@Vector(len, N));
         const byte_size = @sizeOf(N);
 
         const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, byte_size);
-        std.mem.writeInt(N, @as(*[byte_size]u8, @ptrCast(&m.mem.data[m.start])), v[mem_arg.lane_idx], .Little);
+        std.mem.writeInt(N, @as(*[byte_size]u8, @ptrCast(&m.mem.data[m.start])), v[mem_arg.lane_idx], .little);
     }
 
     /// returns memery and effective address for load and store operations
@@ -1524,7 +1524,7 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
-    inline fn vUnOpEx(self: *Self, comptime T: type, comptime f: fn (type, T) T) error{CallStackExhausted}!void {
+    inline fn vUnOpEx(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T)) T) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
 
         const vec_len = @typeInfo(T).Vector.len;
@@ -1606,7 +1606,7 @@ pub const Instance = struct {
         const c1 = self.stack.pop().value.as(S);
         const C = ChildTypeOf(T);
         const val: C = if (S == f32 or S == f64) c1 else @intCast(c1 & std.math.maxInt(C));
-        var result: T = @splat(val);
+        const result: T = @splat(val);
         try self.stack.pushValueAs(T, result);
     }
 
@@ -2186,7 +2186,7 @@ fn opVecFloatMax(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opFloatAbs(comptime T: type, value: T) T {
-    return std.math.fabs(value);
+    return @abs(value);
 }
 
 fn opFloatNeg(comptime T: type, value: T) T {
@@ -2318,8 +2318,8 @@ fn comptimeAssert(comptime ok: bool) void {
 
 test opFloatEq {
     const expectEqual = std.testing.expectEqual;
-    try expectEqual(false, opFloatEq(f32, std.math.nan_f32, 1));
-    try expectEqual(false, opFloatEq(f32, 100, std.math.nan_f32));
+    try expectEqual(false, opFloatEq(f32, std.math.nan(f32), 1));
+    try expectEqual(false, opFloatEq(f32, 100, std.math.nan(f32)));
     try expectEqual(true, opFloatEq(f32, -0.0, -0.0));
     try expectEqual(true, opFloatEq(f32, 1.0, 1.0));
     try expectEqual(false, opFloatEq(f32, 1.0, 0.0));
@@ -2327,8 +2327,8 @@ test opFloatEq {
 
 test opFloatNe {
     const expectEqual = std.testing.expectEqual;
-    try expectEqual(true, opFloatNe(f32, std.math.nan_f32, 1));
-    try expectEqual(true, opFloatNe(f32, 100, std.math.nan_f32));
+    try expectEqual(true, opFloatNe(f32, std.math.nan(f32), 1));
+    try expectEqual(true, opFloatNe(f32, 100, std.math.nan(f32)));
     try expectEqual(false, opFloatNe(f32, -0.0, -0.0));
     try expectEqual(false, opFloatNe(f32, 1.0, 1.0));
     try expectEqual(true, opFloatNe(f32, 1.0, 0.0));
@@ -2343,7 +2343,7 @@ test opExtend {
 test opFloatNearest {
     const expect = std.testing.expect;
     const expectEqual = std.testing.expectEqual;
-    try expect(std.math.isNan(opFloatNearest(f32, std.math.nan_f32)));
+    try expect(std.math.isNan(opFloatNearest(f32, std.math.nan(f32))));
     try expect(std.math.isPositiveInf(opFloatNearest(f32, std.math.inf(f32))));
     try expect(std.math.isNegativeInf(opFloatNearest(f32, -std.math.inf(f32))));
     try expectEqual(@as(f32, 0.0), opFloatNearest(f32, 0.0));

@@ -37,7 +37,7 @@ pub const BinaryReader = struct {
 
     pub fn readI128(reader: *BinaryReader) Error!i128 {
         const buf = try reader.readBytes(16);
-        var val: i128 = std.mem.readInt(i128, @as(*[16]u8, @ptrCast(@constCast(&buf[0]))), .Little);
+        const val: i128 = std.mem.readInt(i128, @as(*[16]u8, @ptrCast(@constCast(&buf[0]))), .little);
         return val;
     }
 

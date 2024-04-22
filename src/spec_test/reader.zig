@@ -124,7 +124,7 @@ fn vectorArgFromJson(json: std.json.Value) !Value {
     const lane_type = json.object.get("lane_type").?.string;
     const arr = json.object.get("value").?.array;
 
-    var val = if (strcmp(lane_type, "i8"))
+    const val = if (strcmp(lane_type, "i8"))
         vectorArgFromJsonArray(u8, arr)
     else if (strcmp(lane_type, "i16"))
         vectorArgFromJsonArray(u16, arr)
@@ -211,7 +211,7 @@ fn vectorFromJson(json: std.json.Value) !Result {
 
 fn vectorFloatFromJsonArray(comptime T: type, arr: std.json.Array) !Result {
     const len = 16 / @sizeOf(T);
-    var val: [len]types.FloatType(T) = .{} ** len;
+    var val: [len]types.FloatType(T) = undefined;
     std.debug.assert(arr.items.len == len);
 
     for (arr.items, 0..) |v, i| {

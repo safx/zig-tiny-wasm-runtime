@@ -17,7 +17,7 @@ pub fn main() !void {
             const base_dir = std.mem.span(std.os.argv[pos]);
             var buf: [4096]u8 = undefined;
             const cwd = std.fs.cwd();
-            try std.os.chdir(try cwd.realpath(base_dir, &buf));
+            try std.posix.chdir(try cwd.realpath(base_dir, &buf));
         } else {
             file_name = arg;
         }

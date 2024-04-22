@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         inline for (modules) |info| {
-            exe.addModule(info.name, info.module);
+            exe.root_module.addImport(info.name, info.module);
         }
         exe.linkLibC();
         b.installArtifact(exe);
@@ -45,7 +45,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         inline for (spectest_modules) |info| {
-            exe.addModule(info.name, info.module);
+            exe.root_module.addImport(info.name, info.module);
         }
         exe.linkLibC();
         b.installArtifact(exe);
@@ -77,7 +77,7 @@ pub fn build(b: *std.Build) void {
             });
 
             inline for (all_modules) |i| {
-                unit_test.addModule(i.name, i.module);
+                unit_test.root_module.addImport(i.name, i.module);
             }
             unit_test.linkLibC();
 
@@ -99,19 +99,19 @@ const ModuleInfo = struct {
         const allcator = gpa.allocator();
         defer _ = gpa.deinit();
 
-        const deps = allcator.alloc(std.Build.ModuleDependency, dependencies.len) catch {
+        const imports = allcator.alloc(std.Build.Module.Import, dependencies.len) catch {
             std.debug.panic("allocation failed", .{});
         };
-        defer _ = allcator.free(deps);
+        defer _ = allcator.free(imports);
         for (dependencies, 0..) |d, i| {
-            deps[i] = .{
+            imports[i] = .{
                 .name = d.name,
                 .module = d.module,
             };
         }
         const module = b.addModule(name, .{
-            .source_file = .{ .path = path },
-            .dependencies = deps,
+            .root_source_file = .{ .path = path },
+            .imports = imports,
         });
         return .{ .module = module, .name = name, .path = path };
     }
