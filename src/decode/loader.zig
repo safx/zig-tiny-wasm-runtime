@@ -426,10 +426,10 @@ pub const ModuleLoader = struct {
     fn createLocals(self: *Self, vec: []const Locals) (Error || error{OutOfMemory})![]const types.ValueType {
         var total: u32 = 0;
         for (vec) |v| {
-            const r = @addWithOverflow(total, v.size);
-            if (r[1] == 1)
+            const r, const overflow = @addWithOverflow(total, v.size);
+            if (overflow == 1)
                 return Error.TooManyLocals;
-            total = r[0];
+            total = r;
         }
         if (total == 0) {
             return &.{};

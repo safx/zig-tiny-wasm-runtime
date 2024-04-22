@@ -1089,11 +1089,9 @@ pub const Instance = struct {
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-tables
     inline fn growtable(table_inst: types.TableInst, n: u32, val: types.RefValue, allocator: std.mem.Allocator) error{OutOfMemory}![]types.RefValue {
         const table_len: u32 = @intCast(table_inst.elem.len);
-        const len_with_overflow = @addWithOverflow(table_len, n);
-        if (len_with_overflow[1] == 1)
+        const len, const overflow = @addWithOverflow(table_len, n);
+        if (overflow == 1)
             return std.mem.Allocator.Error.OutOfMemory;
-
-        const len = len_with_overflow[0];
 
         const old_elem = table_inst.elem;
         const new_elem = try allocator.alloc(types.RefValue, len);
@@ -1114,8 +1112,8 @@ pub const Instance = struct {
         const val = self.stack.pop().value;
         var i: u32 = self.stack.pop().value.asU32();
 
-        const i_plus_n = @addWithOverflow(i, n);
-        if (i_plus_n[1] == 1 or i_plus_n[0] > tab.elem.len)
+        const i_plus_n, const overflow = @addWithOverflow(i, n);
+        if (overflow == 1 or i_plus_n > tab.elem.len)
             return Error.OutOfBoundsTableAccess;
 
         while (n > 0) {
@@ -1137,12 +1135,12 @@ pub const Instance = struct {
         var s: u32 = self.stack.pop().value.asU32();
         var d: u32 = self.stack.pop().value.asU32();
 
-        const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > tab_s.elem.len)
+        const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
+        if (overflow_sn == 1 or s_plus_n > tab_s.elem.len)
             return Error.OutOfBoundsTableAccess;
 
-        const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > tab_d.elem.len)
+        const d_plus_n, const overflow_dn = @addWithOverflow(d, n);
+        if (overflow_dn == 1 or d_plus_n > tab_d.elem.len)
             return Error.OutOfBoundsTableAccess;
 
         while (n > 0) : (n -= 1) {
@@ -1174,12 +1172,12 @@ pub const Instance = struct {
         var s: u32 = self.stack.pop().value.asU32();
         var d: u32 = self.stack.pop().value.asU32();
 
-        const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > elem.elem.len)
+        const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
+        if (overflow_sn == 1 or s_plus_n > elem.elem.len)
             return Error.OutOfBoundsTableAccess;
 
-        const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > tab.elem.len)
+        const d_plus_n, const overflow_dn = @addWithOverflow(d, n);
+        if (overflow_dn == 1 or d_plus_n > tab.elem.len)
             return Error.OutOfBoundsTableAccess;
 
         while (n > 0) : (n -= 1) {
@@ -1301,16 +1299,13 @@ pub const Instance = struct {
         const mem = &self.store.mems.items[a];
 
         const ea: u32 = self.stack.pop().value.asU32();
-        const ea_start_with_overflow = @addWithOverflow(ea, offset);
-        if (ea_start_with_overflow[1] == 1 or ea_start_with_overflow[0] > mem.data.len)
+        const ea_start, const overflow_start = @addWithOverflow(ea, offset);
+        if (overflow_start == 1 or ea_start > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        const ea_start = ea_start_with_overflow[0];
-
-        const ea_end_with_overflow = @addWithOverflow(ea_start, size);
-        if (ea_end_with_overflow[1] == 1 or ea_end_with_overflow[0] > mem.data.len)
+        const ea_end, const overflow_end = @addWithOverflow(ea_start, size);
+        if (overflow_end == 1 or ea_end > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
-        const ea_end = ea_end_with_overflow[0];
 
         return .{ .mem = mem, .start = ea_start, .end = ea_end };
     }
@@ -1384,8 +1379,8 @@ pub const Instance = struct {
         const val = self.stack.pop();
         var d: u32 = self.stack.pop().value.asU32();
 
-        const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > mem_inst.data.len)
+        const d_plus_n, const overflow = @addWithOverflow(d, n);
+        if (overflow == 1 or d_plus_n > mem_inst.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
         while (n > 0) : (n -= 1) {
@@ -1406,12 +1401,12 @@ pub const Instance = struct {
         var s: u32 = self.stack.pop().value.asU32();
         var d: u32 = self.stack.pop().value.asU32();
 
-        const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > mem_inst.data.len)
+        const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
+        if (overflow_sn == 1 or s_plus_n > mem_inst.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > mem_inst.data.len)
+        const d_plus_n, const overflow_dn = @addWithOverflow(d, n);
+        if (overflow_dn == 1 or d_plus_n > mem_inst.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
         while (n > 0) : (n -= 1) {
@@ -1443,12 +1438,12 @@ pub const Instance = struct {
         var s: u32 = self.stack.pop().value.asU32();
         var d: u32 = self.stack.pop().value.asU32();
 
-        const s_plus_n = @addWithOverflow(s, n);
-        if (s_plus_n[1] == 1 or s_plus_n[0] > data.data.len)
+        const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
+        if (overflow_sn == 1 or s_plus_n > data.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        const d_plus_n = @addWithOverflow(d, n);
-        if (d_plus_n[1] == 1 or d_plus_n[0] > mem.data.len)
+        const d_plus_n, const overflow_dn = @addWithOverflow(d, n);
+        if (overflow_dn == 1 or d_plus_n > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
         while (n > 0) : (n -= 1) {
@@ -2138,11 +2133,11 @@ fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opIntAvgr(comptime T: type, lhs: T, rhs: T) Error!T {
-    const r1 = @addWithOverflow(lhs, rhs);
-    const r2 = @addWithOverflow(r1[0], 1);
-    const r3 = @divTrunc(r2[0], 2);
+    const r1, const of1 = @addWithOverflow(lhs, rhs);
+    const r2, const of2 = @addWithOverflow(r1, 1);
+    const r3 = @divTrunc(r2, 2);
     const half: T = std.math.maxInt(T) / 2 + 1;
-    const r4 = r3 + (if (r1[1] | r2[1] == 0) 0 else half);
+    const r4 = r3 + (if (of1 | of2 == 0) 0 else half);
     return r4;
 }
 
