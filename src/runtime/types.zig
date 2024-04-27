@@ -237,7 +237,7 @@ pub const Value = union(core.ValueType) {
     }
 
     pub fn fromVec(val: anytype) Self {
-        const v: V128 = switch (ChildTypeOf(@TypeOf(val))) {
+        const v: V128 = switch (std.meta.Child(@TypeOf(val))) {
             i8 => .{ .i8 = val },
             u8 => .{ .u8 = val },
             i16 => .{ .i16 = val },
@@ -296,7 +296,7 @@ pub const Value = union(core.ValueType) {
 
     pub fn asVec(self: Self, comptime T: type) T {
         const v = V128{ .i128 = self.v128 };
-        return switch (ChildTypeOf(T)) {
+        return switch (std.meta.Child(T)) {
             i8 => v.i8,
             u8 => v.u8,
             i16 => v.i16,
@@ -327,10 +327,6 @@ pub const Value = union(core.ValueType) {
         }
     }
 };
-
-pub inline fn ChildTypeOf(comptime T: type) type {
-    return @typeInfo(T).Vector.child;
-}
 
 pub inline fn ShiftTypeOf(comptime T: type) type {
     return switch (T) {

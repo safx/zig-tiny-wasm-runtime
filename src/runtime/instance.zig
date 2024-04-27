@@ -1209,7 +1209,7 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-m-mathsf-x-n-xref-syntax-instructions-syntax-sx-mathit-sx-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opV128Load(self: *Self, comptime T: type, mem_arg: Instruction.MemArg) Error!void {
-        const HalfOfC = switch (ChildTypeOf(T)) {
+        const HalfOfC = switch (std.meta.Child(T)) {
             i16 => i8,
             u16 => u8,
             i32 => i16,
@@ -1519,13 +1519,13 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
-    inline fn vUnOpEx(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T)) T) error{CallStackExhausted}!void {
+    inline fn vUnOpEx(self: *Self, comptime T: type, comptime f: fn (type, std.meta.Child(T)) T) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
 
         const vec_len = @typeInfo(T).Vector.len;
         var result: T = undefined;
         inline for (0..vec_len) |i| {
-            result[i] = f(ChildTypeOf(T), value[i]);
+            result[i] = f(std.meta.Child(T), value[i]);
         }
         try self.stack.pushValueAs(T, result);
     }
@@ -1538,15 +1538,14 @@ pub const Instance = struct {
         try self.stack.pushValueAs(T, result);
     }
 
-    const ChildTypeOf = types.ChildTypeOf;
-    inline fn vBinTryOpEx(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) Error!ChildTypeOf(T)) Error!void {
+    inline fn vBinTryOpEx(self: *Self, comptime T: type, comptime f: fn (type, std.meta.Child(T), std.meta.Child(T)) Error!std.meta.Child(T)) Error!void {
         const rhs = self.stack.pop().value.asVec(T);
         const lhs = self.stack.pop().value.asVec(T);
 
         const vec_len = @typeInfo(T).Vector.len;
         var result: T = undefined;
         inline for (0..vec_len) |i| {
-            result[i] = try f(ChildTypeOf(T), lhs[i], rhs[i]);
+            result[i] = try f(std.meta.Child(T), lhs[i], rhs[i]);
         }
         try self.stack.pushValueAs(T, result);
     }
@@ -1599,7 +1598,7 @@ pub const Instance = struct {
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-splat
     inline fn opVSplat(self: *Self, comptime S: type, comptime T: type) Error!void {
         const c1 = self.stack.pop().value.as(S);
-        const C = ChildTypeOf(T);
+        const C = std.meta.Child(T);
         const val: C = if (S == f32 or S == f64) c1 else @intCast(c1 & std.math.maxInt(C));
         const result: T = @splat(val);
         try self.stack.pushValueAs(T, result);
@@ -1619,7 +1618,7 @@ pub const Instance = struct {
         const t_len = @typeInfo(T).Vector.len;
         assert(lane_idx < t_len);
         const c2 = self.stack.pop().value.as(R);
-        const C = ChildTypeOf(T);
+        const C = std.meta.Child(T);
         const val: C = if (R == f32 or R == f64) c2 else @intCast(c2 & std.math.maxInt(C));
 
         var c1 = self.stack.pop().value.asVec(T);
@@ -1628,26 +1627,26 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vrelop-mathit-vrelop
-    inline fn vRelOpEx(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) bool) error{CallStackExhausted}!void {
+    inline fn vRelOpEx(self: *Self, comptime T: type, comptime f: fn (type, std.meta.Child(T), std.meta.Child(T)) bool) error{CallStackExhausted}!void {
         @setEvalBranchQuota(2000);
 
         const rhs = self.stack.pop().value.asVec(T);
         const lhs = self.stack.pop().value.asVec(T);
 
         const vec_len = @typeInfo(T).Vector.len;
-        const I = IntOfBitSizeOf(@bitSizeOf(ChildTypeOf(T)));
+        const I = IntOfBitSizeOf(@bitSizeOf(std.meta.Child(T)));
         const R = @Vector(vec_len, I);
         var result: R = undefined;
         inline for (0..vec_len) |i| {
-            result[i] = if (f(ChildTypeOf(T), lhs[i], rhs[i])) ~@as(I, 0) else 0;
+            result[i] = if (f(std.meta.Child(T), lhs[i], rhs[i])) ~@as(I, 0) else 0;
         }
 
         try self.stack.pushValueAs(R, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vishiftop-mathit-vishiftop
-    inline fn vShiftOp(self: *Self, comptime T: type, comptime f: fn (type, ChildTypeOf(T), ChildTypeOf(T)) Error!T) Error!void {
-        const C = ChildTypeOf(T);
+    inline fn vShiftOp(self: *Self, comptime T: type, comptime f: fn (type, std.meta.Child(T), std.meta.Child(T)) Error!T) Error!void {
+        const C = std.meta.Child(T);
         const rhs = self.stack.pop().value.as(u32);
         const v: C = @intCast(@mod(rhs, @bitSizeOf(C)));
 
@@ -1697,42 +1696,42 @@ pub const Instance = struct {
 
         var result: R = undefined;
         inline for (0..t_len) |i| {
-            result[i] = intSat(ChildTypeOf(R), ChildTypeOf(T), c1[i]);
+            result[i] = intSat(std.meta.Child(R), std.meta.Child(T), c1[i]);
         }
         inline for (0..t_len) |i| {
-            result[t_len + i] = intSat(ChildTypeOf(R), ChildTypeOf(T), c2[i]);
+            result[t_len + i] = intSat(std.meta.Child(R), std.meta.Child(T), c2[i]);
         }
 
         try self.stack.pushValueAs(R, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vcvtop-mathit-vcvtop-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
-    inline fn vCvtOpEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) ChildTypeOf(R)) error{CallStackExhausted}!void {
+    inline fn vCvtOpEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, std.meta.Child(T)) std.meta.Child(R)) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
 
         const t_len = @typeInfo(T).Vector.len;
         var result: R = @splat(0);
         inline for (0..t_len) |i| {
-            result[i] = f(ChildTypeOf(R), ChildTypeOf(T), value[i]);
+            result[i] = f(std.meta.Child(R), std.meta.Child(T), value[i]);
         }
 
         try self.stack.pushValueAs(R, result);
     }
 
-    inline fn vCvtTryOpEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) Error!ChildTypeOf(R)) Error!void {
+    inline fn vCvtTryOpEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, std.meta.Child(T)) Error!std.meta.Child(R)) Error!void {
         const value = self.stack.pop().value.asVec(T);
 
         const t_len = @typeInfo(T).Vector.len;
         var result: R = @splat(0);
         inline for (0..t_len) |i| {
-            result[i] = try f(ChildTypeOf(R), ChildTypeOf(T), value[i]);
+            result[i] = try f(std.meta.Child(R), std.meta.Child(T), value[i]);
         }
 
         try self.stack.pushValueAs(R, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vcvtop-mathit-vcvtop-mathsf-xref-syntax-instructions-syntax-half-mathit-half-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
-    inline fn vCvtOpHalfEx(self: *Self, comptime offset: u8, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) ChildTypeOf(R)) error{CallStackExhausted}!void {
+    inline fn vCvtOpHalfEx(self: *Self, comptime offset: u8, comptime R: type, comptime T: type, comptime f: fn (type, type, std.meta.Child(T)) std.meta.Child(R)) error{CallStackExhausted}!void {
         @setEvalBranchQuota(3000);
 
         const value = self.stack.pop().value.asVec(T);
@@ -1743,14 +1742,14 @@ pub const Instance = struct {
 
         var result: R = undefined;
         inline for (0..r_len) |i| {
-            result[i] = f(ChildTypeOf(R), ChildTypeOf(T), value[offset + i]);
+            result[i] = f(std.meta.Child(R), std.meta.Child(T), value[offset + i]);
         }
 
         try self.stack.pushValueAs(R, result);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vcvtop-mathit-vcvtop-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-mathsf-zero
-    inline fn vCvtOpZeroEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, ChildTypeOf(T)) ChildTypeOf(R)) Error!void {
+    inline fn vCvtOpZeroEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, std.meta.Child(T)) std.meta.Child(R)) Error!void {
         const r_len = @typeInfo(R).Vector.len;
         const t_len = @typeInfo(T).Vector.len;
         comptimeAssert(r_len == t_len * 2);
@@ -1759,7 +1758,7 @@ pub const Instance = struct {
 
         var result: R = @splat(0);
         inline for (0..t_len) |i| {
-            result[i] = f(ChildTypeOf(R), ChildTypeOf(T), c[i]);
+            result[i] = f(std.meta.Child(R), std.meta.Child(T), c[i]);
         }
         try self.stack.pushValueAs(R, result);
     }
@@ -1773,7 +1772,7 @@ pub const Instance = struct {
         const c2 = self.stack.pop().value.asVec(T);
         const c1 = self.stack.pop().value.asVec(T);
 
-        const E = @Vector(t_len, ChildTypeOf(R));
+        const E = @Vector(t_len, std.meta.Child(R));
         const k = @as(E, c1) * @as(E, c2);
         var result: R = undefined;
         inline for (0..r_len) |i| {
@@ -1792,7 +1791,7 @@ pub const Instance = struct {
         const c2 = self.stack.pop().value.asVec(T);
         const c1 = self.stack.pop().value.asVec(T);
 
-        const C = ChildTypeOf(R);
+        const C = std.meta.Child(R);
         var result: R = undefined;
         inline for (0..r_len) |i| {
             // extends to C
@@ -1810,7 +1809,7 @@ pub const Instance = struct {
         const t_len = @typeInfo(T).Vector.len;
         comptimeAssert(r_len * 2 == t_len);
 
-        const E = @Vector(t_len, ChildTypeOf(R));
+        const E = @Vector(t_len, std.meta.Child(R));
         const c1 = @as(E, self.stack.pop().value.asVec(T));
 
         var result: R = undefined;
@@ -2155,7 +2154,7 @@ fn opIntQMulrSat(comptime T: type, lhs: T, rhs: T) Error!T {
 fn opVecEq(comptime T: type, lhs: T, rhs: T) Error!T {
     const zero: T = @splat(0);
     const one: T = @splat(1);
-    return @select(types.ChildTypeOf(T), lhs == rhs, one, zero);
+    return @select(std.meta.Child(T), lhs == rhs, one, zero);
 }
 
 fn opVecMin(comptime T: type, lhs: T, rhs: T) Error!T {
