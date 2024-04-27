@@ -87,11 +87,10 @@ pub const BinaryReader = struct {
 
         const bit_size = @bitSizeOf(NumType);
         const max_shift = if (bit_size == 32) 28 else 63;
-        const signed_integer_type = NumType == i32 or NumType == i64;
-        const ShiftType = if (bit_size == 32) u5 else u6;
+        const signed_integer_type = @typeInfo(NumType).Int.signedness == .signed;
 
         var result: NumType = 0;
-        var shift: ShiftType = 0;
+        var shift: std.math.Log2Int(NumType) = 0;
         while (true) : (shift += 7) {
             const byte = try self.readU8();
 

@@ -1272,9 +1272,9 @@ pub const Instance = struct {
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-xref-syntax-instructions-syntax-memarg-mathit-memarg-and-t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-store-n-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opStore(self: *Self, comptime T: type, comptime bit_size: u32, mem_arg: Instruction.MemArg) error{OutOfBoundsMemoryAccess}!void {
         // change to integer type of same size to operate bit shift
-        const IntType = IntOfBitSizeOf(@bitSizeOf(T));
+        const IntType = std.meta.Int(.unsigned, @bitSizeOf(T));
         const ci: IntType = @bitCast(self.stack.pop().value.as(T));
-        const DestType = IntOfBitSizeOf(bit_size);
+        const DestType = std.meta.Int(.unsigned, bit_size);
         const c: DestType = @truncate(ci);
         const byte_size = bit_size / 8;
 
@@ -1634,7 +1634,7 @@ pub const Instance = struct {
         const lhs = self.stack.pop().value.asVec(T);
 
         const vec_len = @typeInfo(T).Vector.len;
-        const I = IntOfBitSizeOf(@bitSizeOf(std.meta.Child(T)));
+        const I = std.meta.Int(.unsigned, @bitSizeOf(std.meta.Child(T)));
         const R = @Vector(vec_len, I);
         var result: R = undefined;
         inline for (0..vec_len) |i| {
@@ -2118,14 +2118,14 @@ fn opIntShrU(comptime T: type, lhs: T, rhs: T) Error!T {
 }
 
 fn opIntRotl(comptime T: type, lhs: T, rhs: T) Error!T {
-    const UnsignedType = if (T == i32) u32 else u64;
+    const UnsignedType = std.meta.Int(.unsigned, @bitSizeOf(T));
     const num: UnsignedType = @bitCast(lhs);
     const res = std.math.rotl(UnsignedType, num, rhs);
     return @bitCast(res);
 }
 
 fn opIntRotr(comptime T: type, lhs: T, rhs: T) Error!T {
-    const UnsignedType = if (T == i32) u32 else u64;
+    const UnsignedType = std.meta.Int(.unsigned, @bitSizeOf(T));
     const num: UnsignedType = @bitCast(lhs);
     const res = std.math.rotr(UnsignedType, num, rhs);
     return @bitCast(res);
@@ -2292,17 +2292,6 @@ fn canonNan(comptime T: type) T {
     comptimeAssert(T == f64 or T == f32);
     const v = if (T == f64) @as(u64, 0x7ff8_0000_0000_0000) else @as(u32, 0x7fc0_0000);
     return @bitCast(v);
-}
-
-fn IntOfBitSizeOf(comptime size: u16) type {
-    return switch (size) {
-        8 => u8,
-        16 => u16,
-        32 => u32,
-        64 => u64,
-        128 => u128,
-        else => unreachable,
-    };
 }
 
 fn comptimeAssert(comptime ok: bool) void {

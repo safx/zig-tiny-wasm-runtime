@@ -328,17 +328,6 @@ pub const Value = union(core.ValueType) {
     }
 };
 
-pub inline fn ShiftTypeOf(comptime T: type) type {
-    return switch (T) {
-        i8, u8 => u3,
-        i16, u16 => u4,
-        i32, u32, f32 => u5,
-        i64, u64, f64 => u6,
-        i128, u128 => u7,
-        else => unreachable,
-    };
-}
-
 const V128 = extern union {
     u128: u128,
     i128: i128,
