@@ -1,6 +1,6 @@
 #!/bin/sh
 
-zig build -Doptimize=ReleaseSafe
+zig build test && zig build -Doptimize=ReleaseSafe
 
 ls *.json | while read i; do
     p=`../zig-out/bin/spec_test $i 2>&1 | grep 'test pass' | wc -l`

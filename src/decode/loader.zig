@@ -149,11 +149,12 @@ pub const ModuleLoader = struct {
             .code => .{ .code = try self.createArray(ModFunc, code) },
             .data => .{ .data = try self.createArray(types.Data, data) },
             .data_count => .{ .data_count = try self.reader.readVarU32() },
-            _ => Error.MalformedSectionId,
+            else => Error.MalformedSectionId,
         };
     }
 
-    // section
+    // sections
+
     fn funcType(self: *Self) (Error || error{OutOfMemory})!types.FuncType {
         const marker = try self.reader.readU8();
         if (marker != std.wasm.function_type)
@@ -284,30 +285,30 @@ pub const ModuleLoader = struct {
 
     fn data(self: *Self) (Error || error{OutOfMemory})!types.Data {
         const kind = try self.reader.readVarU32();
+        const dupe = std.mem.Allocator.dupe;
         switch (kind) {
             0 => {
                 const exp = try self.initExpr();
                 const len = try self.reader.readVarU32();
-                const init_array = try self.readBytesWithCopy(len);
+                const init_array = try dupe(self.allocator, u8, try self.reader.readBytes(len));
                 const mode = types.DataMode{ .active = .{ .mem_idx = 0, .offset = exp } };
                 return .{ .init = init_array, .mode = mode };
             },
             1 => {
                 const len = try self.reader.readVarU32();
-                const init_array = try self.readBytesWithCopy(len);
+                const init_array = try dupe(self.allocator, u8, try self.reader.readBytes(len));
                 return .{ .init = init_array, .mode = .passive };
             },
             2 => {
                 const x = try self.reader.readVarU32();
                 const exp = try self.initExpr();
                 const len = try self.reader.readVarU32();
-                const init_array = try self.readBytesWithCopy(len);
+                const init_array = try dupe(self.allocator, u8, try self.reader.readBytes(len));
                 const mode = types.DataMode{ .active = .{ .mem_idx = x, .offset = exp } };
                 return .{ .init = init_array, .mode = mode };
             },
             else => unreachable,
         }
-        unreachable;
     }
 
     fn custom(self: *Self, size: u32) (Error || error{OutOfMemory})!CustomInfo {
@@ -445,11 +446,9 @@ pub const ModuleLoader = struct {
     }
 
     fn name(self: *Self) (Error || error{OutOfMemory})![]const u8 {
-        return self.nameWithLength(try self.reader.readVarU32());
-    }
-
-    fn nameWithLength(self: *Self, len: u32) (Error || error{OutOfMemory})![]const u8 {
-        return try self.readBytesWithCopy(len);
+        const len = try self.reader.readVarU32();
+        const array = try self.reader.readBytes(len);
+        return std.mem.Allocator.dupe(self.allocator, u8, array);
     }
 
     fn resultType(self: *Self) (Error || error{OutOfMemory})![]const types.ValueType {
@@ -485,13 +484,6 @@ pub const ModuleLoader = struct {
             else => return Error.MalformedLimitId,
         };
         return .{ .min = min, .max = max };
-    }
-
-    fn readBytesWithCopy(self: *Self, size: usize) (error{UnexpectedEndOfBuffer} || error{OutOfMemory})![]const u8 {
-        const copied_array = try self.allocator.alloc(u8, size); // freed by arena allocator in Module
-        const array = try self.reader.readBytes(size);
-        @memcpy(copied_array, array);
-        return copied_array;
     }
 
     fn createArray(self: *Self, comptime T: type, filler: fn (*Self) (Error || error{OutOfMemory})!T) (Error || error{OutOfMemory})![]const T {
