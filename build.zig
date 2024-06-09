@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) void {
 
         const exe = b.addExecutable(.{
             .name = "zig-wasm-interp",
-            .root_source_file = .{ .path = "src/main.zig" },
+            .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
         });
@@ -40,7 +40,7 @@ pub fn build(b: *std.Build) void {
         const spectest_modules = all_modules;
         const exe = b.addExecutable(.{
             .name = "spec_test",
-            .root_source_file = .{ .path = "src/spec_test.zig" },
+            .root_source_file = b.path("src/spec_test.zig"),
             .target = target,
             .optimize = optimize,
         });
@@ -62,7 +62,7 @@ pub fn build(b: *std.Build) void {
 
     {
         const unit_tests = b.addTest(.{
-            .root_source_file = .{ .path = "src/main.zig" },
+            .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
         });
@@ -71,7 +71,7 @@ pub fn build(b: *std.Build) void {
         const test_step = b.step("test", "Run unit tests");
         inline for (all_modules) |info| {
             const unit_test = b.addTest(.{
-                .root_source_file = .{ .path = info.path },
+                .root_source_file = b.path(info.path),
                 .target = target,
                 .optimize = optimize,
             });
@@ -110,7 +110,7 @@ const ModuleInfo = struct {
             };
         }
         const module = b.addModule(name, .{
-            .root_source_file = .{ .path = path },
+            .root_source_file = b.path(path),
             .imports = imports,
         });
         return .{ .module = module, .name = name, .path = path };
