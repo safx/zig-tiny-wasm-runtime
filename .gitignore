@@ -5,3 +5,4 @@
 /spec_test/*.wat
 /spec_test/*.json
 /spec_test/testsuite
+/.claude
