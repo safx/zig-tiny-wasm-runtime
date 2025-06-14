@@ -87,7 +87,7 @@ pub const BinaryReader = struct {
 
         const bit_size = @bitSizeOf(NumType);
         const max_shift = if (bit_size == 32) 28 else 63;
-        const signed_integer_type = @typeInfo(NumType).Int.signedness == .signed;
+        const signed_integer_type = @typeInfo(NumType).int.signedness == .signed;
 
         var result: NumType = 0;
         var shift: std.math.Log2Int(NumType) = 0;

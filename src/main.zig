@@ -53,7 +53,7 @@ pub fn main() !void {
 }
 
 fn parseValue(string: []const u8) !runtime.Value {
-    var parts = std.mem.split(u8, string, ":");
+    var parts = std.mem.splitSequence(u8, string, ":");
 
     var ty: []const u8 = "";
     var num: []const u8 = "";

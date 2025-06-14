@@ -5,7 +5,7 @@ This project is intended for personal understanding of the Wasm spec. Do not use
 
 ## Requrements
 
-- Zig 0.12
+- Zig 0.14.1
 - wabt (to run Wasm TestSuite)
 
 ## Compile and Run

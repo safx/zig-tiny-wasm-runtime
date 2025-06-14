@@ -55,7 +55,7 @@ pub const TypeStack = struct {
     pub fn pop(self: *Self) error{TypeMismatch}!ValidationType {
         if (self.isEmpty())
             return Error.TypeMismatch;
-        return self.array.pop();
+        return self.array.pop().?;
     }
 
     pub fn polymophicPop(self: *Self) error{TypeMismatch}!ValidationType {

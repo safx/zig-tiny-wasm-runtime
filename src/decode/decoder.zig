@@ -31,7 +31,7 @@ pub const Decoder = struct {
                 if (nested_blocks.items.len == 0)
                     return instArray.toOwnedSlice();
 
-                const idx = nested_blocks.pop();
+                const idx = nested_blocks.pop().?;
                 try fillEnd(&instArray.items[idx], pos);
             }
         }
@@ -55,8 +55,12 @@ pub const Decoder = struct {
         }
     }
 
+    fn opcode2int(op: std.wasm.Opcode) u32 {
+        return @intFromEnum(op);
+    }
+
     fn parse(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction {
-        const n = std.wasm.opcode;
+        const n = opcode2int;
         const op_code = try reader.readU8();
         const inst: Instruction = switch (op_code) {
             n(.end) => .end,
@@ -289,8 +293,12 @@ pub const Decoder = struct {
         return inst;
     }
 
+    fn miscOpcode2int(op: std.wasm.MiscOpcode) u32 {
+        return @intFromEnum(op);
+    }
+
     fn miscOpcode(reader: *BinaryReader) (Error || error{OutOfMemory})!Instruction {
-        const n = std.wasm.miscOpcode;
+        const n = miscOpcode2int;
         const op_code = try reader.readVarU32();
         return switch (op_code) {
             // table instructions
@@ -324,8 +332,12 @@ pub const Decoder = struct {
         };
     }
 
+    fn simdOpcode2int(op: std.wasm.SimdOpcode) u32 {
+        return @intFromEnum(op);
+    }
+
     fn simdOpcode(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction {
-        const n = std.wasm.simdOpcode;
+        const n = simdOpcode2int;
         const op_code = try reader.readVarU32();
         return switch (op_code) {
             // SIMD instructions

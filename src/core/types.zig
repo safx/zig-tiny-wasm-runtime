@@ -18,15 +18,15 @@ pub const RefType = wasm.RefType;
 
 pub const ValueType = enum(u8) {
     // numtype
-    i32 = wasm.valtype(.i32),
-    i64 = wasm.valtype(.i64),
-    f32 = wasm.valtype(.f32),
-    f64 = wasm.valtype(.f64),
+    i32 = @intFromEnum(wasm.Valtype.i32),
+    i64 = @intFromEnum(wasm.Valtype.i64),
+    f32 = @intFromEnum(wasm.Valtype.f32),
+    f64 = @intFromEnum(wasm.Valtype.f64),
     // vectype
-    v128 = wasm.valtype(.v128),
+    v128 = @intFromEnum(wasm.Valtype.v128),
     // reftype
-    func_ref = wasm.reftype(.funcref),
-    extern_ref = wasm.reftype(.externref),
+    func_ref = @intFromEnum(wasm.RefType.funcref),
+    extern_ref = @intFromEnum(wasm.RefType.externref),
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         try writer.print("{s}", .{@tagName(self)});

@@ -580,9 +580,9 @@ pub const Instruction = union(enum) {
         switch (self) {
             inline else => |val| if (@TypeOf(val) == void) {
                 try writer.print("{s}", .{@tagName(self)});
-            } else if (@typeInfo(@TypeOf(val)) == .Struct) {
+            } else if (@typeInfo(@TypeOf(val)) == .@"struct") {
                 try writer.print("{s} (", .{@tagName(self)});
-                const fields = @typeInfo(@TypeOf(val)).Struct.fields;
+                const fields = @typeInfo(@TypeOf(val)).@"struct".fields;
                 inline for (fields, 0..) |f, i| {
                     try writer.print("{s} = {any}", .{ f.name, @field(val, f.name) });
                     if (i + 1 < fields.len)

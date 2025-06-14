@@ -62,7 +62,7 @@ pub const Stack = struct {
     }
 
     pub fn pop(self: *Self) StackItem {
-        return self.array.pop();
+        return self.array.pop().?;
     }
 
     pub fn getNthLabelFromTop(self: *Self, num_labels: usize) Label {

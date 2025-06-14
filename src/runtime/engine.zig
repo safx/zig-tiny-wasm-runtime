@@ -92,7 +92,7 @@ pub const Engine = struct {
 };
 
 fn getFilename(path: []const u8) []const u8 {
-    var parts = std.mem.split(u8, path, "/");
+    var parts = std.mem.splitSequence(u8, path, "/");
     var elem: []const u8 = "";
     while (parts.next()) |p|
         elem = p;

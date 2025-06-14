@@ -29,7 +29,7 @@ pub fn doWasmSpecTest() !void {
 }
 
 fn getExtention(filename: []const u8) []const u8 {
-    var parts = std.mem.split(u8, filename, ".");
+    var parts = std.mem.splitSequence(u8, filename, ".");
     var elem: []const u8 = "";
     while (parts.next()) |p| {
         elem = p;

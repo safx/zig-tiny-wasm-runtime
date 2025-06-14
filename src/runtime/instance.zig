@@ -671,15 +671,15 @@ pub const Instance = struct {
             .v128_load64_zero => |mem_arg| try self.opV128LoadZero(u64, mem_arg),
             .f32x4_demote_f64x2_zero => try self.vCvtOpEx(@Vector(4, f32), @Vector(2, f64), opDemote),
             .f64x2_promote_low_f32x4 => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, f32), opPromote),
-            .i8x16_abs => try self.vUnOpEx(@Vector(16, i8), opIntAbs),
-            .i16x8_abs => try self.vUnOpEx(@Vector(8, i16), opIntAbs),
-            .i32x4_abs => try self.vUnOpEx(@Vector(4, i32), opIntAbs),
-            .i64x2_abs => try self.vUnOpEx(@Vector(2, i64), opIntAbs),
+            .i8x16_abs => try self.vUnOp(@Vector(16, i8), opVecIntAbs),
+            .i16x8_abs => try self.vUnOp(@Vector(8, i16), opVecIntAbs),
+            .i32x4_abs => try self.vUnOp(@Vector(4, i32), opVecIntAbs),
+            .i64x2_abs => try self.vUnOp(@Vector(2, i64), opVecIntAbs),
             .i8x16_neg => try self.vUnOp(@Vector(16, u8), opVecIntNeg),
             .i16x8_neg => try self.vUnOp(@Vector(8, i16), opVecIntNeg),
             .i32x4_neg => try self.vUnOp(@Vector(4, i32), opVecIntNeg),
             .i64x2_neg => try self.vUnOp(@Vector(2, i64), opVecIntNeg),
-            .i8x16_popcnt => try self.vUnOpEx(@Vector(16, i8), opIntPopcnt),
+            .i8x16_popcnt => try self.vUnOp(@Vector(16, i8), opVecIntPopcnt),
             .i16x8_q15mulr_sat_s => try self.vBinTryOpEx(@Vector(8, i16), opIntQMulrSat),
             .i8x16_all_true => try self.vAllTrue(@Vector(16, i8)),
             .i16x8_all_true => try self.vAllTrue(@Vector(8, i16)),
@@ -693,19 +693,19 @@ pub const Instance = struct {
             .i16x8_narrow_i32x4_s => try self.vNarrow(@Vector(8, i16), @Vector(4, i32)),
             .i8x16_narrow_i16x8_u => try self.vNarrow(@Vector(16, u8), @Vector(8, i16)),
             .i16x8_narrow_i32x4_u => try self.vNarrow(@Vector(8, u16), @Vector(4, i32)),
-            .f32x4_ceil => try self.vUnOpEx(@Vector(4, f32), opFloatCeil),
+            .f32x4_ceil => try self.vUnOp(@Vector(4, f32), opVecFloatCeil),
             .i16x8_extend_low_i8x16_s => try self.vCvtOpHalfEx(0, @Vector(8, i16), @Vector(16, i8), opExtend(i16, i8, i8)),
             .i32x4_extend_low_i16x8_s => try self.vCvtOpHalfEx(0, @Vector(4, i32), @Vector(8, i16), opExtend(i32, i16, i16)),
             .i64x2_extend_low_i32x4_s => try self.vCvtOpHalfEx(0, @Vector(2, i64), @Vector(4, i32), opExtend(i64, i32, i32)),
-            .f32x4_floor => try self.vUnOpEx(@Vector(4, f32), opFloatFloor),
+            .f32x4_floor => try self.vUnOp(@Vector(4, f32), opVecFloatFloor),
             .i16x8_extend_high_i8x16_s => try self.vCvtOpHalfEx(8, @Vector(8, i16), @Vector(16, i8), opExtend(i16, i8, i8)),
             .i32x4_extend_high_i16x8_s => try self.vCvtOpHalfEx(4, @Vector(4, i32), @Vector(8, i16), opExtend(i32, i16, i16)),
             .i64x2_extend_high_i32x4_s => try self.vCvtOpHalfEx(2, @Vector(2, i64), @Vector(4, i32), opExtend(i64, i32, i32)),
-            .f32x4_trunc => try self.vUnOpEx(@Vector(4, f32), opFloatTrunc),
+            .f32x4_trunc => try self.vUnOp(@Vector(4, f32), opVecFloatTrunc),
             .i16x8_extend_low_i8x16_u => try self.vCvtOpHalfEx(0, @Vector(8, u16), @Vector(16, u8), opExtend(u16, u8, u8)),
             .i32x4_extend_low_i16x8_u => try self.vCvtOpHalfEx(0, @Vector(4, u32), @Vector(8, u16), opExtend(u32, u16, u16)),
             .i64x2_extend_low_i32x4_u => try self.vCvtOpHalfEx(0, @Vector(2, u64), @Vector(4, u32), opExtend(u64, u32, u32)),
-            .f32x4_nearest => try self.vUnOpEx(@Vector(4, f32), opFloatNearest),
+            .f32x4_nearest => try self.vUnOp(@Vector(4, f32), opVecFloatNearest),
             .i16x8_extend_high_i8x16_u => try self.vCvtOpHalfEx(8, @Vector(8, u16), @Vector(16, u8), opExtend(u16, u8, u8)),
             .i32x4_extend_high_i16x8_u => try self.vCvtOpHalfEx(4, @Vector(4, u32), @Vector(8, u16), opExtend(u32, u16, u16)),
             .i64x2_extend_high_i32x4_u => try self.vCvtOpHalfEx(2, @Vector(2, u64), @Vector(4, u32), opExtend(u64, u32, u32)),
@@ -737,9 +737,9 @@ pub const Instance = struct {
             .i16x8_sub_sat_s => try self.vBinTryOp(@Vector(8, i16), opIntSubSat),
             .i8x16_sub_sat_u => try self.vBinTryOp(@Vector(16, u8), opIntSubSat),
             .i16x8_sub_sat_u => try self.vBinTryOp(@Vector(8, u16), opIntSubSat),
-            .f64x2_ceil => try self.vUnOpEx(@Vector(2, f64), opFloatCeil),
-            .f64x2_nearest => try self.vUnOpEx(@Vector(2, f64), opFloatNearest),
-            .f64x2_floor => try self.vUnOpEx(@Vector(2, f64), opFloatFloor),
+            .f64x2_ceil => try self.vUnOp(@Vector(2, f64), opVecFloatCeil),
+            .f64x2_nearest => try self.vUnOp(@Vector(2, f64), opVecFloatNearest),
+            .f64x2_floor => try self.vUnOp(@Vector(2, f64), opVecFloatFloor),
             .i16x8_mul => try self.vBinTryOp(@Vector(8, i16), opIntMul),
             .i32x4_mul => try self.vBinTryOp(@Vector(4, i32), opIntMul),
             .i64x2_mul => try self.vBinTryOp(@Vector(2, i64), opIntMul),
@@ -759,7 +759,7 @@ pub const Instance = struct {
             .i16x8_max_u => try self.vBinTryOp(@Vector(8, u16), opVecMax),
             .i32x4_max_u => try self.vBinTryOp(@Vector(4, u32), opVecMax),
             .i64x2_gt_s => try self.vRelOpEx(@Vector(2, i64), opIntGt),
-            .f64x2_trunc => try self.vUnOpEx(@Vector(2, f64), opFloatTrunc),
+            .f64x2_trunc => try self.vUnOp(@Vector(2, f64), opVecFloatTrunc),
             .i32x4_dot_i16x8_s => try self.vDot(@Vector(4, i32), @Vector(8, i16)),
             .i64x2_le_s => try self.vRelOpEx(@Vector(2, i64), opIntLe),
             .i8x16_avgr_u => try self.vBinTryOpEx(@Vector(16, u8), opIntAvgr),
@@ -1218,7 +1218,7 @@ pub const Instance = struct {
             u64 => u32,
             else => unreachable,
         };
-        const len = @typeInfo(T).Vector.len;
+        const len = @typeInfo(T).vector.len;
         const child_size = @sizeOf(HalfOfC);
         const size = child_size * len;
 
@@ -1522,7 +1522,7 @@ pub const Instance = struct {
     inline fn vUnOpEx(self: *Self, comptime T: type, comptime f: fn (type, std.meta.Child(T)) T) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
 
-        const vec_len = @typeInfo(T).Vector.len;
+        const vec_len = @typeInfo(T).vector.len;
         var result: T = undefined;
         inline for (0..vec_len) |i| {
             result[i] = f(std.meta.Child(T), value[i]);
@@ -1542,7 +1542,7 @@ pub const Instance = struct {
         const rhs = self.stack.pop().value.asVec(T);
         const lhs = self.stack.pop().value.asVec(T);
 
-        const vec_len = @typeInfo(T).Vector.len;
+        const vec_len = @typeInfo(T).vector.len;
         var result: T = undefined;
         inline for (0..vec_len) |i| {
             result[i] = try f(std.meta.Child(T), lhs[i], rhs[i]);
@@ -1606,7 +1606,7 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-1-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-extract-lane-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-x
     inline fn extractLane(self: *Self, comptime R: type, comptime T: type, lane_idx: u8) Error!void {
-        const t_len = @typeInfo(T).Vector.len;
+        const t_len = @typeInfo(T).vector.len;
         assert(lane_idx < t_len);
         const c1 = self.stack.pop().value.asVec(T);
         const c2 = c1[lane_idx];
@@ -1615,7 +1615,7 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-shape-mathit-shape-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-replace-lane-x
     inline fn replaceLane(self: *Self, comptime R: type, comptime T: type, lane_idx: u8) Error!void {
-        const t_len = @typeInfo(T).Vector.len;
+        const t_len = @typeInfo(T).vector.len;
         assert(lane_idx < t_len);
         const c2 = self.stack.pop().value.as(R);
         const C = std.meta.Child(T);
@@ -1633,7 +1633,7 @@ pub const Instance = struct {
         const rhs = self.stack.pop().value.asVec(T);
         const lhs = self.stack.pop().value.asVec(T);
 
-        const vec_len = @typeInfo(T).Vector.len;
+        const vec_len = @typeInfo(T).vector.len;
         const I = std.meta.Int(.unsigned, @bitSizeOf(std.meta.Child(T)));
         const R = @Vector(vec_len, I);
         var result: R = undefined;
@@ -1645,13 +1645,13 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vishiftop-mathit-vishiftop
-    inline fn vShiftOp(self: *Self, comptime T: type, comptime f: fn (type, std.meta.Child(T), std.meta.Child(T)) Error!T) Error!void {
+    inline fn vShiftOp(self: *Self, comptime T: type, comptime f: fn (type, std.meta.Child(T), std.meta.Child(T)) Error!std.meta.Child(T)) Error!void {
         const C = std.meta.Child(T);
         const rhs = self.stack.pop().value.as(u32);
         const v: C = @intCast(@mod(rhs, @bitSizeOf(C)));
 
         const lhs = self.stack.pop().value.asVec(T);
-        const t_len = @typeInfo(T).Vector.len;
+        const t_len = @typeInfo(T).vector.len;
         var result: T = undefined;
         inline for (0..t_len) |i| {
             result[i] = try f(C, lhs[i], v);
@@ -1672,7 +1672,7 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-bitmask
     inline fn vBitmask(self: *Self, comptime T: type) Error!void {
-        const vec_len = @typeInfo(T).Vector.len;
+        const vec_len = @typeInfo(T).vector.len;
         const zero_vec: T = @splat(0);
 
         const value = self.stack.pop().value.asVec(T);
@@ -1687,8 +1687,8 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-narrow-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
     inline fn vNarrow(self: *Self, comptime R: type, comptime T: type) Error!void {
-        const r_len = @typeInfo(R).Vector.len;
-        const t_len = @typeInfo(T).Vector.len;
+        const r_len = @typeInfo(R).vector.len;
+        const t_len = @typeInfo(T).vector.len;
         comptimeAssert(r_len == t_len * 2);
 
         const c2 = self.stack.pop().value.asVec(T);
@@ -1709,7 +1709,7 @@ pub const Instance = struct {
     inline fn vCvtOpEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, std.meta.Child(T)) std.meta.Child(R)) error{CallStackExhausted}!void {
         const value = self.stack.pop().value.asVec(T);
 
-        const t_len = @typeInfo(T).Vector.len;
+        const t_len = @typeInfo(T).vector.len;
         var result: R = @splat(0);
         inline for (0..t_len) |i| {
             result[i] = f(std.meta.Child(R), std.meta.Child(T), value[i]);
@@ -1721,7 +1721,7 @@ pub const Instance = struct {
     inline fn vCvtTryOpEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, std.meta.Child(T)) Error!std.meta.Child(R)) Error!void {
         const value = self.stack.pop().value.asVec(T);
 
-        const t_len = @typeInfo(T).Vector.len;
+        const t_len = @typeInfo(T).vector.len;
         var result: R = @splat(0);
         inline for (0..t_len) |i| {
             result[i] = try f(std.meta.Child(R), std.meta.Child(T), value[i]);
@@ -1736,8 +1736,8 @@ pub const Instance = struct {
 
         const value = self.stack.pop().value.asVec(T);
 
-        const r_len = @typeInfo(R).Vector.len;
-        const t_len = @typeInfo(T).Vector.len;
+        const r_len = @typeInfo(R).vector.len;
+        const t_len = @typeInfo(T).vector.len;
         comptimeAssert(r_len * 2 == t_len);
 
         var result: R = undefined;
@@ -1750,8 +1750,8 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-vcvtop-mathit-vcvtop-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-mathsf-zero
     inline fn vCvtOpZeroEx(self: *Self, comptime R: type, comptime T: type, comptime f: fn (type, type, std.meta.Child(T)) std.meta.Child(R)) Error!void {
-        const r_len = @typeInfo(R).Vector.len;
-        const t_len = @typeInfo(T).Vector.len;
+        const r_len = @typeInfo(R).vector.len;
+        const t_len = @typeInfo(T).vector.len;
         comptimeAssert(r_len == t_len * 2);
 
         const c = self.stack.pop().value.asVec(T);
@@ -1765,8 +1765,8 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#mathsf-i32x4-xref-syntax-instructions-syntax-instr-vec-mathsf-dot-mathsf-i16x8-s
     inline fn vDot(self: *Self, comptime R: type, comptime T: type) error{CallStackExhausted}!void {
-        const r_len = @typeInfo(R).Vector.len;
-        const t_len = @typeInfo(T).Vector.len;
+        const r_len = @typeInfo(R).vector.len;
+        const t_len = @typeInfo(T).vector.len;
         comptimeAssert(r_len * 2 == t_len);
 
         const c2 = self.stack.pop().value.asVec(T);
@@ -1784,8 +1784,8 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-extmul-mathsf-xref-syntax-instructions-syntax-half-mathit-half-mathsf-t-1-mathsf-x-m-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx
     inline fn vExtmulHalf(self: *Self, comptime offset: u8, comptime R: type, comptime T: type) error{CallStackExhausted}!void {
-        const r_len = @typeInfo(R).Vector.len;
-        const t_len = @typeInfo(T).Vector.len;
+        const r_len = @typeInfo(R).vector.len;
+        const t_len = @typeInfo(T).vector.len;
         comptimeAssert(r_len * 2 == t_len);
 
         const c2 = self.stack.pop().value.asVec(T);
@@ -1805,8 +1805,8 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-2-mathsf-x-n-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-extadd-pairwise-t-1-mathsf-x-m-xref-syntax-instructions-syntax-sx-mathit-sx
     inline fn vExtaddPairwise(self: *Self, comptime R: type, comptime T: type) error{CallStackExhausted}!void {
-        const r_len = @typeInfo(R).Vector.len;
-        const t_len = @typeInfo(T).Vector.len;
+        const r_len = @typeInfo(R).vector.len;
+        const t_len = @typeInfo(T).vector.len;
         comptimeAssert(r_len * 2 == t_len);
 
         const E = @Vector(t_len, std.meta.Child(R));
@@ -1915,6 +1915,20 @@ fn opIntAbs(comptime T: type, value: T) T {
         -value;
 }
 
+fn opVecIntAbs(comptime T: type, value: T) T {
+    const ElementType = std.meta.Child(T);
+    const vec_len = @typeInfo(T).vector.len;
+    var result: T = undefined;
+    inline for (0..vec_len) |i| {
+        const val = value[i];
+        result[i] = if (val >= 0 or val == std.math.minInt(ElementType))
+            val
+        else
+            -val;
+    }
+    return result;
+}
+
 fn opIntClz(comptime T: type, value: T) T {
     return @clz(value);
 }
@@ -1925,6 +1939,15 @@ fn opIntCtz(comptime T: type, value: T) T {
 
 fn opIntPopcnt(comptime T: type, value: T) T {
     return @popCount(value);
+}
+
+fn opVecIntPopcnt(comptime T: type, value: T) T {
+    const vec_len = @typeInfo(T).vector.len;
+    var result: T = undefined;
+    inline for (0..vec_len) |i| {
+        result[i] = @popCount(value[i]);
+    }
+    return result;
 }
 
 fn intSat(comptime R: type, comptime T: type, value: T) R {
@@ -2195,12 +2218,39 @@ fn opFloatCeil(comptime T: type, value: T) T {
     return @ceil(value);
 }
 
+fn opVecFloatCeil(comptime T: type, value: T) T {
+    const vec_len = @typeInfo(T).vector.len;
+    var result: T = undefined;
+    inline for (0..vec_len) |i| {
+        result[i] = @ceil(value[i]);
+    }
+    return result;
+}
+
 fn opFloatFloor(comptime T: type, value: T) T {
     return @floor(value);
 }
 
+fn opVecFloatFloor(comptime T: type, value: T) T {
+    const vec_len = @typeInfo(T).vector.len;
+    var result: T = undefined;
+    inline for (0..vec_len) |i| {
+        result[i] = @floor(value[i]);
+    }
+    return result;
+}
+
 fn opFloatTrunc(comptime T: type, value: T) T {
     return @trunc(value);
+}
+
+fn opVecFloatTrunc(comptime T: type, value: T) T {
+    const vec_len = @typeInfo(T).vector.len;
+    var result: T = undefined;
+    inline for (0..vec_len) |i| {
+        result[i] = @trunc(value[i]);
+    }
+    return result;
 }
 
 fn opFloatNearest(comptime T: type, value: T) T {
@@ -2224,6 +2274,37 @@ fn opFloatNearest(comptime T: type, value: T) T {
         return val - 1;
 
     return val;
+}
+
+fn opVecFloatNearest(comptime T: type, value: T) T {
+    const ElementType = std.meta.Child(T);
+    const vec_len = @typeInfo(T).vector.len;
+    var result: T = undefined;
+    inline for (0..vec_len) |i| {
+        const v = value[i];
+        if (std.math.isInf(v)) {
+            result[i] = v;
+        } else {
+            const val: ElementType = @trunc(v);
+            if (v == val) {
+                result[i] = v;
+            } else if (val == 0 and 0 < v and v <= 0.5) {
+                result[i] = 0.0;
+            } else if (val == 0 and -0.5 <= v and v < -0.0) {
+                result[i] = -0.0;
+            } else {
+                const q = v - val;
+                if (q == 0.5 and @mod(val, 2.0) != 0.0) {
+                    result[i] = val + 1;
+                } else if (q == -0.5 and @mod(val, 2.0) != 0.0) {
+                    result[i] = val - 1;
+                } else {
+                    result[i] = val;
+                }
+            }
+        }
+    }
+    return result;
 }
 
 fn opFloatEq(comptime T: type, lhs: T, rhs: T) bool {

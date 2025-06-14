@@ -374,8 +374,16 @@ pub const ModuleLoader = struct {
         return value;
     }
 
+    fn opcode2int(op: std.wasm.Opcode) u32 {
+        return @intFromEnum(op);
+    }
+
+    fn simdOpcode2int(op: std.wasm.SimdOpcode) u32 {
+        return @intFromEnum(op);
+    }
+
     fn initExprValue(self: *Self, op: u8) Error!types.InitExpression {
-        const n = std.wasm.opcode;
+        const n = opcode2int;
         return switch (op) {
             n(.i32_const) => .{ .i32_const = try self.reader.readVarI32() },
             n(.i64_const) => .{ .i64_const = try self.reader.readVarI64() },
@@ -386,7 +394,7 @@ pub const ModuleLoader = struct {
             0xd2 => .{ .ref_func = try self.reader.readVarU32() },
 
             n(.simd_prefix) => {
-                const s = std.wasm.simdOpcode;
+                const s = simdOpcode2int;
                 const op2 = try self.reader.readVarU32();
                 return switch (op2) {
                     s(.v128_const) => .{ .v128_const = try self.reader.readI128() },
