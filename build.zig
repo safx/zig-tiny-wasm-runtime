@@ -6,10 +6,11 @@ pub fn build(b: *std.Build) void {
 
     const core = ModuleInfo.init(b, "wasm-core", "src/core/mod.zig", &.{});
     const decode = ModuleInfo.init(b, "wasm-decode", "src/decode/mod.zig", &.{core});
+    const text_decode = ModuleInfo.init(b, "wasm-text-decode", "src/text_decode/mod.zig", &.{core});
     const validate = ModuleInfo.init(b, "wasm-validate", "src/validate/mod.zig", &.{core});
     const runtime = ModuleInfo.init(b, "wasm-runtime", "src/runtime/mod.zig", &.{ core, decode, validate });
     const spec = ModuleInfo.init(b, "wasm-spec-test", "src/spec_test/mod.zig", &.{ core, decode, validate, runtime });
-    const all_modules = .{ core, decode, validate, runtime, spec };
+    const all_modules = .{ core, decode, text_decode, validate, runtime, spec };
 
     {
         const modules = .{ core, decode, runtime };
@@ -56,7 +57,7 @@ pub fn build(b: *std.Build) void {
             run_cmd.addArgs(args);
         }
 
-        const run_step = b.step("spectest", "Run the wasm spec tests");
+        const run_step = b.step("spec_test", "Run the wasm spec tests");
         run_step.dependOn(&run_cmd.step);
     }
 

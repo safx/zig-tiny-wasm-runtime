@@ -63,7 +63,7 @@ pub const Engine = struct {
         return try self.loadModule(module, if (module_name) |n| n else getFilename(file_name));
     }
 
-    fn loadModule(self: *Self, module: types.Module, module_name: []const u8) (Error || error{OutOfMemory})!*types.ModuleInst {
+    pub fn loadModule(self: *Self, module: types.Module, module_name: []const u8) (Error || error{OutOfMemory})!*types.ModuleInst {
         const extern_vals = try resolver.resolveImports(self.instance.store, self.mod_insts, module, self.allocator);
         defer self.allocator.free(extern_vals);
         const mod_inst = try self.instance.instantiate(module, extern_vals);

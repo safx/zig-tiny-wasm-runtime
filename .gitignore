@@ -1,8 +1,8 @@
 *~
 /.zig-cache
 /zig-out
-/spec_test/*.wasm
-/spec_test/*.wat
-/spec_test/*.json
-/spec_test/testsuite
+/wasm_tests
+/spec_test
+/spectec
 /.claude
+/test-output
