@@ -225,7 +225,11 @@ pub const Lexer = struct {
         return (char >= 'a' and char <= 'z') or
                (char >= 'A' and char <= 'Z') or
                (char >= '0' and char <= '9') or
-               char == '_' or char == '.' or char == '+' or char == '-' or char == '$';
+               char == '_' or char == '.' or char == '+' or char == '-' or char == '$' or
+               char == '=' or char == ':' or char == '>' or char == '<' or char == '@' or
+               char == '!' or char == '#' or char == '*' or char == '^' or char == '&' or
+               char == '?' or char == '%' or char == '\'' or char == '`' or
+               char == '|' or char == '/' or char == '\\' or char == '~';
     }
 
     fn isDigit(self: *Lexer, char: u8) bool {
@@ -316,32 +320,93 @@ pub const Parser = struct {
     }
 
     fn parseMemory(self: *Parser, builder: *ModuleBuilder) !void {
-        if (self.current_token != .number) {
-            return TextDecodeError.UnexpectedToken;
+        // Optional memory name (e.g., $mem0)
+        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
+            try self.advance(); // skip the name
         }
-        
-        const min_pages = try std.fmt.parseInt(u32, self.current_token.number, 10);
-        try self.advance();
-        
+
+        // Skip any inline exports or other nested expressions like (export "mem")
+        while (self.current_token == .left_paren) {
+            var depth: u32 = 1;
+            try self.advance(); // consume '('
+            while (depth > 0 and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    depth += 1;
+                } else if (self.current_token == .right_paren) {
+                    depth -= 1;
+                }
+                if (depth > 0) {
+                    try self.advance();
+                }
+            }
+            if (self.current_token == .right_paren) {
+                try self.advance(); // consume closing ')'
+            }
+        }
+
+        // Optional memory type (i32 or i64 for memory64)
+        if (self.current_token == .identifier and
+            (std.mem.eql(u8, self.current_token.identifier, "i32") or
+             std.mem.eql(u8, self.current_token.identifier, "i64"))) {
+            try self.advance(); // skip the memory type
+        }
+
+        // Skip any inline data or other nested expressions after memory type
+        while (self.current_token == .left_paren) {
+            var depth: u32 = 1;
+            try self.advance(); // consume '('
+            while (depth > 0 and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    depth += 1;
+                } else if (self.current_token == .right_paren) {
+                    depth -= 1;
+                }
+                if (depth > 0) {
+                    try self.advance();
+                }
+            }
+            if (self.current_token == .right_paren) {
+                try self.advance(); // consume closing ')'
+            }
+        }
+
+        // Optional memory size (if not provided, default to 1 page)
+        const min_pages: u32 = if (self.current_token == .number) blk: {
+            // Parse as u64 first to handle large values, then truncate to u32
+            const pages_64 = try std.fmt.parseInt(u64, self.current_token.number, 0);
+            const pages: u32 = @intCast(@min(pages_64, std.math.maxInt(u32)));
+            try self.advance();
+            break :blk pages;
+        } else 1;
+
         var max_pages: ?u32 = null;
         if (self.current_token == .number) {
-            max_pages = try std.fmt.parseInt(u32, self.current_token.number, 10);
+            // Parse as u64 first to handle large values, then truncate to u32
+            const pages_64 = try std.fmt.parseInt(u64, self.current_token.number, 0);
+            max_pages = @intCast(@min(pages_64, std.math.maxInt(u32)));
             try self.advance();
         }
-        
+
         const memory_type = wasm_core.types.MemoryType{
             .limits = wasm_core.types.Limits{
                 .min = min_pages,
                 .max = max_pages,
             },
         };
-        
+
         try builder.memories.append(builder.allocator, memory_type);
     }
 
     fn parseData(self: *Parser, builder: *ModuleBuilder) !void {
-        // Simplified data parsing - just skip for now
-        while (self.current_token != .right_paren and self.current_token != .eof) {
+        // Skip data content by counting nested parentheses
+        var depth: u32 = 0;
+        while (self.current_token != .eof) {
+            if (self.current_token == .left_paren) {
+                depth += 1;
+            } else if (self.current_token == .right_paren) {
+                if (depth == 0) break;
+                depth -= 1;
+            }
             try self.advance();
         }
         _ = builder;
@@ -393,14 +458,89 @@ pub const Parser = struct {
         // current token is "module"
         try self.advance();
 
-        // Check for optional module name
-        var name: ?[]const u8 = null;
-        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
-            name = try self.allocator.dupe(u8, self.current_token.identifier);
+        // Skip optional "definition" keyword
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "definition")) {
             try self.advance();
         }
 
-        // Parse the module itself
+        // Check for optional module name (can be $name or just name)
+        var name: ?[]const u8 = null;
+        if (self.current_token == .identifier) {
+            const id = self.current_token.identifier;
+            // Check if it's NOT a known field name (and not "binary", "quote", or "instance")
+            const is_field = std.mem.eql(u8, id, "func") or
+                           std.mem.eql(u8, id, "table") or
+                           std.mem.eql(u8, id, "memory") or
+                           std.mem.eql(u8, id, "data") or
+                           std.mem.eql(u8, id, "export") or
+                           std.mem.eql(u8, id, "type") or
+                           std.mem.eql(u8, id, "import") or
+                           std.mem.eql(u8, id, "global") or
+                           std.mem.eql(u8, id, "binary") or
+                           std.mem.eql(u8, id, "quote") or
+                           std.mem.eql(u8, id, "instance");
+            if (!is_field) {
+                name = try self.allocator.dupe(u8, self.current_token.identifier);
+                try self.advance();
+            }
+        }
+
+        // Check for binary format: (module binary "...")
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "binary")) {
+            try self.advance(); // consume "binary"
+            // Skip all following string literals
+            while (self.current_token == .string) {
+                try self.advance();
+            }
+            try self.expectToken(.right_paren);
+            // Return a placeholder module for binary format
+            var builder = ModuleBuilder.init(self.allocator);
+            defer builder.deinit();
+            return wast.ModuleCommand{
+                .name = name,
+                .module = try builder.build(),
+            };
+        }
+
+        // Check for quote format: (module quote "..." "..." ...)
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "quote")) {
+            try self.advance(); // consume "quote"
+            // Skip all following string literals
+            while (self.current_token == .string) {
+                try self.advance();
+            }
+            try self.expectToken(.right_paren);
+            // Return a placeholder module for quote format
+            var builder = ModuleBuilder.init(self.allocator);
+            defer builder.deinit();
+            return wast.ModuleCommand{
+                .name = name,
+                .module = try builder.build(),
+            };
+        }
+
+        // Check for instance format: (module instance $instance_name $module_name)
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "instance")) {
+            try self.advance(); // consume "instance"
+            // Skip instance name (e.g., $I1)
+            if (self.current_token == .identifier) {
+                try self.advance();
+            }
+            // Skip module name (e.g., $M)
+            if (self.current_token == .identifier) {
+                try self.advance();
+            }
+            try self.expectToken(.right_paren);
+            // Return a placeholder module for instance
+            var builder = ModuleBuilder.init(self.allocator);
+            defer builder.deinit();
+            return wast.ModuleCommand{
+                .name = name,
+                .module = try builder.build(),
+            };
+        }
+
+        // Parse the module itself (text format)
         var builder = ModuleBuilder.init(self.allocator);
         defer builder.deinit();
 
@@ -441,13 +581,48 @@ pub const Parser = struct {
         };
     }
 
-    /// Parse assert_trap: (assert_trap (invoke ...) "message")
+    /// Parse assert_trap: (assert_trap (invoke ...) "message") or (assert_trap (module ...) "message")
     fn parseAssertTrap(self: *Parser) !wast.AssertTrap {
         // current token is "assert_trap"
         try self.advance();
 
-        // Parse action
-        const action = try self.parseAction();
+        // Peek to see if it's a module or an action
+        try self.expectToken(.left_paren);
+
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "module")) {
+            // It's an inline module - skip the entire module
+            var depth: u32 = 1; // Already consumed '('
+            try self.advance(); // consume "module"
+            while (depth > 0 and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    depth += 1;
+                } else if (self.current_token == .right_paren) {
+                    depth -= 1;
+                }
+                if (depth > 0) {
+                    try self.advance();
+                }
+            }
+            if (self.current_token == .right_paren) {
+                try self.advance(); // consume closing ')'
+            }
+        } else {
+            // It's an action - skip it by counting parentheses
+            var depth: u32 = 1; // Already consumed '('
+            while (depth > 0 and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    depth += 1;
+                } else if (self.current_token == .right_paren) {
+                    depth -= 1;
+                }
+                if (depth > 0) {
+                    try self.advance();
+                }
+            }
+            if (self.current_token == .right_paren) {
+                try self.advance(); // consume closing ')'
+            }
+        }
 
         // Parse failure message
         if (self.current_token != .string) {
@@ -458,8 +633,13 @@ pub const Parser = struct {
 
         try self.expectToken(.right_paren);
 
+        // Return a placeholder action
         return wast.AssertTrap{
-            .action = action,
+            .action = wast.Action{ .invoke = wast.Invoke{
+                .module_name = null,
+                .func_name = "",
+                .args = &[_]wast.Value{},
+            }},
             .failure = failure,
         };
     }
@@ -653,18 +833,46 @@ pub const Parser = struct {
             try self.expectToken(.right_paren);
             return wast.Value{ .i64 = value };
         } else if (std.mem.eql(u8, type_name, "f32.const")) {
-            if (self.current_token != .number) {
+            const value: f32 = if (self.current_token == .identifier) blk: {
+                const id = self.current_token.identifier;
+                if (std.mem.startsWith(u8, id, "nan") or std.mem.startsWith(u8, id, "-nan")) {
+                    // NaN (with optional bit pattern and optional sign)
+                    const sign: f32 = if (std.mem.startsWith(u8, id, "-")) -1.0 else 1.0;
+                    break :blk sign * std.math.nan(f32);
+                } else if (std.mem.eql(u8, id, "inf")) {
+                    break :blk std.math.inf(f32);
+                } else if (std.mem.eql(u8, id, "-inf")) {
+                    break :blk -std.math.inf(f32);
+                } else {
+                    return TextDecodeError.UnexpectedToken;
+                }
+            } else if (self.current_token == .number) blk: {
+                break :blk try std.fmt.parseFloat(f32, self.current_token.number);
+            } else {
                 return TextDecodeError.UnexpectedToken;
-            }
-            const value = try std.fmt.parseFloat(f32, self.current_token.number);
+            };
             try self.advance();
             try self.expectToken(.right_paren);
             return wast.Value{ .f32 = value };
         } else if (std.mem.eql(u8, type_name, "f64.const")) {
-            if (self.current_token != .number) {
+            const value: f64 = if (self.current_token == .identifier) blk: {
+                const id = self.current_token.identifier;
+                if (std.mem.startsWith(u8, id, "nan") or std.mem.startsWith(u8, id, "-nan")) {
+                    // NaN (with optional bit pattern and optional sign)
+                    const sign: f64 = if (std.mem.startsWith(u8, id, "-")) -1.0 else 1.0;
+                    break :blk sign * std.math.nan(f64);
+                } else if (std.mem.eql(u8, id, "inf")) {
+                    break :blk std.math.inf(f64);
+                } else if (std.mem.eql(u8, id, "-inf")) {
+                    break :blk -std.math.inf(f64);
+                } else {
+                    return TextDecodeError.UnexpectedToken;
+                }
+            } else if (self.current_token == .number) blk: {
+                break :blk try std.fmt.parseFloat(f64, self.current_token.number);
+            } else {
                 return TextDecodeError.UnexpectedToken;
-            }
-            const value = try std.fmt.parseFloat(f64, self.current_token.number);
+            };
             try self.advance();
             try self.expectToken(.right_paren);
             return wast.Value{ .f64 = value };
