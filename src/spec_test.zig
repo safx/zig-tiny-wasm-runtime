@@ -88,8 +88,6 @@ fn runWastFile(allocator: std.mem.Allocator, file_path: []const u8, verbose: u8)
 const WastRunner = struct {
     allocator: std.mem.Allocator,
     verbose: u8,
-    engine: ?*runtime.Engine,
-    current_module: ?*runtime.types.ModuleInstance,
     passed: u32,
     failed: u32,
     total: u32,
@@ -98,8 +96,6 @@ const WastRunner = struct {
         return .{
             .allocator = allocator,
             .verbose = verbose,
-            .engine = null,
-            .current_module = null,
             .passed = 0,
             .failed = 0,
             .total = 0,

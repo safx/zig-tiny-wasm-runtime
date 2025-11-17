@@ -425,19 +425,19 @@ pub const Parser = struct {
         const action = try self.parseAction();
 
         // Parse expected results
-        var expected = std.ArrayList(wast.Value).init(self.allocator);
-        defer expected.deinit();
+        var expected: std.ArrayList(wast.Value) = .{};
+        defer expected.deinit(self.allocator);
 
         while (self.current_token != .right_paren and self.current_token != .eof) {
             const value = try self.parseValue();
-            try expected.append(value);
+            try expected.append(self.allocator, value);
         }
 
         try self.expectToken(.right_paren);
 
         return wast.AssertReturn{
             .action = action,
-            .expected = try expected.toOwnedSlice(),
+            .expected = try expected.toOwnedSlice(self.allocator),
         };
     }
 
@@ -469,11 +469,25 @@ pub const Parser = struct {
         // current token is "assert_invalid"
         try self.advance();
 
-        // For now, just capture the module text and skip it
-        const start_pos = self.lexer.pos;
-        try self.skipToClosingParen();
-        const end_pos = self.lexer.pos;
-        const module_text = try self.allocator.dupe(u8, self.lexer.input[start_pos..end_pos]);
+        // Expect (module ...)
+        try self.expectToken(.left_paren);
+
+        if (self.current_token != .identifier or !std.mem.eql(u8, self.current_token.identifier, "module")) {
+            return TextDecodeError.UnexpectedToken;
+        }
+
+        // Skip the module section by counting nested parentheses
+        var depth: u32 = 1; // We're already inside (module
+        try self.advance(); // consume "module"
+
+        while (depth > 0 and self.current_token != .eof) {
+            if (self.current_token == .left_paren) {
+                depth += 1;
+            } else if (self.current_token == .right_paren) {
+                depth -= 1;
+            }
+            try self.advance();
+        }
 
         // Parse failure message
         if (self.current_token != .string) {
@@ -485,7 +499,7 @@ pub const Parser = struct {
         try self.expectToken(.right_paren);
 
         return wast.AssertInvalid{
-            .module_text = module_text,
+            .module_text = "",  // We don't need to store the module text for now
             .failure = failure,
         };
     }
@@ -554,12 +568,12 @@ pub const Parser = struct {
         try self.advance();
 
         // Parse arguments
-        var args = std.ArrayList(wast.Value).init(self.allocator);
-        defer args.deinit();
+        var args: std.ArrayList(wast.Value) = .{};
+        defer args.deinit(self.allocator);
 
         while (self.current_token != .right_paren and self.current_token != .eof) {
             const value = try self.parseValue();
-            try args.append(value);
+            try args.append(self.allocator, value);
         }
 
         try self.expectToken(.right_paren);
@@ -567,7 +581,7 @@ pub const Parser = struct {
         return wast.Invoke{
             .module_name = module_name,
             .func_name = func_name,
-            .args = try args.toOwnedSlice(),
+            .args = try args.toOwnedSlice(self.allocator),
         };
     }
 
@@ -610,7 +624,15 @@ pub const Parser = struct {
             if (self.current_token != .number) {
                 return TextDecodeError.UnexpectedToken;
             }
-            const value = try std.fmt.parseInt(i32, self.current_token.number, 0);
+            const number_str = self.current_token.number;
+            const value: i32 = if (number_str.len > 0 and number_str[0] == '-') blk: {
+                // Negative number: parse directly as i32
+                break :blk try std.fmt.parseInt(i32, number_str, 0);
+            } else blk: {
+                // Positive or hex number: parse as u32 then bitcast
+                const unsigned_value = try std.fmt.parseInt(u32, number_str, 0);
+                break :blk @bitCast(unsigned_value);
+            };
             try self.advance();
             try self.expectToken(.right_paren);
             return wast.Value{ .i32 = value };
@@ -618,7 +640,15 @@ pub const Parser = struct {
             if (self.current_token != .number) {
                 return TextDecodeError.UnexpectedToken;
             }
-            const value = try std.fmt.parseInt(i64, self.current_token.number, 0);
+            const number_str = self.current_token.number;
+            const value: i64 = if (number_str.len > 0 and number_str[0] == '-') blk: {
+                // Negative number: parse directly as i64
+                break :blk try std.fmt.parseInt(i64, number_str, 0);
+            } else blk: {
+                // Positive or hex number: parse as u64 then bitcast
+                const unsigned_value = try std.fmt.parseInt(u64, number_str, 0);
+                break :blk @bitCast(unsigned_value);
+            };
             try self.advance();
             try self.expectToken(.right_paren);
             return wast.Value{ .i64 = value };

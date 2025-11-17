@@ -9,7 +9,7 @@ pub const WastScript = struct {
     pub fn init(allocator: std.mem.Allocator) WastScript {
         return .{
             .allocator = allocator,
-            .commands = std.ArrayList(Command).init(allocator),
+            .commands = .{},
         };
     }
 
@@ -17,11 +17,11 @@ pub const WastScript = struct {
         for (self.commands.items) |*cmd| {
             cmd.deinit(self.allocator);
         }
-        self.commands.deinit();
+        self.commands.deinit(self.allocator);
     }
 
     pub fn addCommand(self: *WastScript, command: Command) !void {
-        try self.commands.append(command);
+        try self.commands.append(self.allocator, command);
     }
 };
 
