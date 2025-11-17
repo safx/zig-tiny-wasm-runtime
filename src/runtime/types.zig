@@ -12,14 +12,14 @@ pub const Store = struct {
     elems: std.ArrayList(ElemInst),
     datas: std.ArrayList(DataInst),
 
-    pub fn new(allocator: std.mem.Allocator) Store {
+    pub fn new(_: std.mem.Allocator) Store {
         return .{
-            .funcs = std.ArrayList(FuncInst).init(allocator),
-            .tables = std.ArrayList(TableInst).init(allocator),
-            .mems = std.ArrayList(MemInst).init(allocator),
-            .globals = std.ArrayList(GlobalInst).init(allocator),
-            .elems = std.ArrayList(ElemInst).init(allocator),
-            .datas = std.ArrayList(DataInst).init(allocator),
+            .funcs = .empty,
+            .tables = .empty,
+            .mems = .empty,
+            .globals = .empty,
+            .elems = .empty,
+            .datas = .empty,
         };
     }
 };
@@ -28,10 +28,14 @@ pub const Stack = struct {
     const Self = @This();
     const max_stack_size = 4096;
 
+    allocator: std.mem.Allocator,
     array: std.ArrayList(StackItem),
 
     pub fn new(allocator: std.mem.Allocator) Stack {
-        return .{ .array = std.ArrayList(StackItem).init(allocator) };
+        return .{
+            .allocator = allocator,
+            .array = .empty,
+        };
     }
 
     inline fn checkStackExhausted(self: Self) Error!void {
@@ -41,23 +45,23 @@ pub const Stack = struct {
 
     pub fn pushValueAs(self: *Self, comptime T: type, value: T) Error!void {
         const val = Value.from(value);
-        self.push(.{ .value = val }) catch return CallStackExhausted;
+        self.array.append(self.allocator, .{ .value = val }) catch return CallStackExhausted;
         try self.checkStackExhausted();
     }
 
     pub fn push(self: *Self, value: StackItem) Error!void {
-        self.array.append(value) catch return CallStackExhausted;
+        self.array.append(self.allocator, value) catch return CallStackExhausted;
         try self.checkStackExhausted();
     }
 
     pub fn appendSlice(self: *Self, values: []const StackItem) Error!void {
-        self.array.appendSlice(values) catch return CallStackExhausted;
+        self.array.appendSlice(self.allocator, values) catch return CallStackExhausted;
         try self.checkStackExhausted();
     }
 
     pub fn insertAt(self: *Self, index_from_top: usize, value: StackItem) Error!void {
         const pos = self.array.items.len - index_from_top;
-        self.array.insert(pos, value) catch return CallStackExhausted;
+        self.array.insert(self.allocator, pos, value) catch return CallStackExhausted;
         try self.checkStackExhausted();
     }
 
@@ -88,7 +92,7 @@ pub const Stack = struct {
         @memcpy(popped_values.*, self.array.items[new_len..len]);
         for (popped_values.*) |v| std.debug.assert(v == .value);
 
-        self.array.resize(new_len) catch return CallStackExhausted;
+        self.array.resize(self.allocator, new_len) catch return CallStackExhausted;
     }
 
     fn find(self: Self, comptime item_type: StackItemType) usize {
@@ -171,28 +175,28 @@ pub const DataAddr = u32;
 pub const ExternAddr = u32;
 
 pub const FuncInst = struct {
-    type: core.FuncType,
+    type: core.types.FuncType,
     module: *ModuleInst,
-    code: core.Func,
+    code: core.types.Func,
 };
 
 pub const TableInst = struct {
-    type: core.TableType,
+    type: core.types.TableType,
     elem: []RefValue,
 };
 
 pub const MemInst = struct {
-    type: core.MemoryType,
+    type: core.types.MemoryType,
     data: []u8,
 };
 
 pub const GlobalInst = struct {
-    type: core.GlobalType,
+    type: core.types.GlobalType,
     value: Value,
 };
 
 pub const ElemInst = struct {
-    type: core.RefType,
+    type: core.types.RefType,
     elem: []RefValue,
 };
 
@@ -205,7 +209,7 @@ pub const ExportInst = struct {
     value: ExternalValue,
 };
 
-pub const Value = union(core.ValueType) {
+pub const Value = union(core.types.ValueType) {
     const Self = @This();
 
     // num
@@ -261,7 +265,7 @@ pub const Value = union(core.ValueType) {
         };
     }
 
-    pub fn defaultValueFrom(ty: core.ValueType) Self {
+    pub fn defaultValueFrom(ty: core.types.ValueType) Self {
         return switch (ty) {
             .i32 => .{ .i32 = 0 },
             .i64 => .{ .i64 = 0 },
@@ -317,13 +321,13 @@ pub const Value = union(core.ValueType) {
 
     pub fn format(self: Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
-            .i32 => |val| try writer.print("{}_i32", .{val}),
-            .i64 => |val| try writer.print("{}_i64", .{val}),
+            .i32 => |val| try writer.print("{any}_i32", .{val}),
+            .i64 => |val| try writer.print("{any}_i64", .{val}),
             .f32 => try writer.print("{d:.2}_f32", .{self.as(f32)}),
             .f64 => try writer.print("{d:.2}_f64", .{self.as(f64)}),
-            .v128 => |val| try writer.print("{}_i128", .{val}),
-            .func_ref => |val| if (val) |v| try writer.print("{}_ref", .{v}) else try writer.print("null_ref", .{}),
-            .extern_ref => |val| if (val) |v| try writer.print("{}_extref", .{v}) else try writer.print("null_extref", .{}),
+            .v128 => |val| try writer.print("{any}_i128", .{val}),
+            .func_ref => |val| if (val) |v| try writer.print("{any}_ref", .{v}) else try writer.print("null_ref", .{}),
+            .extern_ref => |val| if (val) |v| try writer.print("{any}_extref", .{v}) else try writer.print("null_extref", .{}),
         }
     }
 };
@@ -365,8 +369,8 @@ pub const RefValue = union(enum) {
 
     pub fn format(self: Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
-            .func_ref => |val| if (val) |v| try writer.print("{}_ref", .{v}) else try writer.print("null_ref", .{}),
-            .extern_ref => |val| if (val) |v| try writer.print("{}_extref", .{v}) else try writer.print("null_extref", .{}),
+            .func_ref => |val| if (val) |v| try writer.print("{any}_ref", .{v}) else try writer.print("null_ref", .{}),
+            .extern_ref => |val| if (val) |v| try writer.print("{any}_extref", .{v}) else try writer.print("null_extref", .{}),
         }
     }
 };
@@ -383,23 +387,23 @@ pub const Label = struct {
     type: LabelType,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("{any} (arity = {})", .{ self.type, self.arity });
+        try writer.print("{any} (arity = {any})", .{ self.type, self.arity });
     }
 };
 
 pub const LabelType = union(enum) {
     root,
-    func: core.InstractionAddr,
-    block: core.InstractionAddr,
-    @"if": core.InstractionAddr,
-    loop: core.InstractionAddr,
+    func: core.types.InstractionAddr,
+    block: core.types.InstractionAddr,
+    @"if": core.types.InstractionAddr,
+    loop: core.types.InstractionAddr,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         switch (self) {
             inline else => |addr| if (@TypeOf(addr) == void) {
                 try writer.print("{s}", .{@tagName(self)});
             } else {
-                try writer.print("{s} ({})", .{ @tagName(self), addr });
+                try writer.print("{s} ({any})", .{ @tagName(self), addr });
             },
         }
     }
@@ -409,6 +413,6 @@ pub const ActivationFrame = struct {
     locals: []Value = &.{},
     arity: u32 = 0,
     module: *ModuleInst = undefined,
-    instructions: []const core.Instruction = &.{},
-    ip: core.InstractionAddr = 0,
+    instructions: []const core.types.Instruction = &.{},
+    ip: core.types.InstractionAddr = 0,
 };

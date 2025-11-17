@@ -1,5 +1,5 @@
 const std = @import("std");
-const types = @import("wasm-core");
+const types = @import("wasm-core").types;
 const BinaryReader = @import("./binary_reader.zig").BinaryReader;
 const Decoder = @import("./decoder.zig").Decoder;
 const utils = @import("./utils.zig");

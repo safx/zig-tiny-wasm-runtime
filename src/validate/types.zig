@@ -1,8 +1,9 @@
 const std = @import("std");
-const types = struct {
-    usingnamespace @import("wasm-core");
-};
+const core = @import("wasm-core");
 const Error = @import("./errors.zig").Error || error{OutOfMemory};
+
+// Type aliases for convenience
+const ValueType = core.types.ValueType;
 
 pub const ValidationType = enum(u8) {
     i32 = val(.i32),
@@ -15,7 +16,7 @@ pub const ValidationType = enum(u8) {
 
     any = 0,
 
-    fn val(comptime v: types.ValueType) u8 {
+    fn val(comptime v: ValueType) u8 {
         return @intFromEnum(v);
     }
 
@@ -26,7 +27,7 @@ pub const ValidationType = enum(u8) {
 
 pub const TypeStack = struct {
     const Self = @This();
-    const Stack = std.ArrayList(ValidationType);
+    const Stack = std.array_list.Managed(ValidationType);
 
     array: Stack,
     polymophic: bool = false,
@@ -43,11 +44,11 @@ pub const TypeStack = struct {
         try self.array.append(val_type);
     }
 
-    pub fn pushValueType(self: *Self, value_type: types.ValueType) error{OutOfMemory}!void {
+    pub fn pushValueType(self: *Self, value_type: ValueType) error{OutOfMemory}!void {
         try self.push(validationTypeFromValueType(value_type));
     }
 
-    pub fn appendValueType(self: *Self, value_types: []const types.ValueType) error{OutOfMemory}!void {
+    pub fn appendValueType(self: *Self, value_types: []const ValueType) error{OutOfMemory}!void {
         for (value_types) |v|
             try self.pushValueType(v);
     }
@@ -82,11 +83,11 @@ pub const TypeStack = struct {
             return Error.TypeMismatch;
     }
 
-    pub fn popWithCheckingValueType(self: *Self, expected_value_type: types.ValueType) error{TypeMismatch}!void {
+    pub fn popWithCheckingValueType(self: *Self, expected_value_type: ValueType) error{TypeMismatch}!void {
         try self.popWithChecking(validationTypeFromValueType(expected_value_type));
     }
 
-    pub fn popValuesWithCheckingValueType(self: *Self, expected_value_types: []const types.ValueType) error{TypeMismatch}!void {
+    pub fn popValuesWithCheckingValueType(self: *Self, expected_value_types: []const ValueType) error{TypeMismatch}!void {
         var i = expected_value_types.len;
         while (i > 0) : (i -= 1) {
             try self.popWithCheckingValueType(expected_value_types[i - 1]);
@@ -94,6 +95,6 @@ pub const TypeStack = struct {
     }
 };
 
-fn validationTypeFromValueType(ty: types.ValueType) ValidationType {
+fn validationTypeFromValueType(ty: ValueType) ValidationType {
     return @enumFromInt(@intFromEnum(ty));
 }

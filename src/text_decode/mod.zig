@@ -3,62 +3,62 @@ const wasm_core = @import("wasm-core");
 
 pub const ModuleBuilder = struct {
     allocator: std.mem.Allocator,
-    types: std.ArrayList(wasm_core.FuncType),
-    funcs: std.ArrayList(wasm_core.Func),
-    tables: std.ArrayList(wasm_core.TableType),
-    memories: std.ArrayList(wasm_core.MemoryType),
-    globals: std.ArrayList(wasm_core.Global),
-    elements: std.ArrayList(wasm_core.Element),
-    datas: std.ArrayList(wasm_core.Data),
-    start: ?wasm_core.FuncIdx,
-    imports: std.ArrayList(wasm_core.Import),
-    exports: std.ArrayList(wasm_core.Export),
+    types: std.ArrayList(wasm_core.types.FuncType),
+    funcs: std.ArrayList(wasm_core.types.Func),
+    tables: std.ArrayList(wasm_core.types.TableType),
+    memories: std.ArrayList(wasm_core.types.MemoryType),
+    globals: std.ArrayList(wasm_core.types.Global),
+    elements: std.ArrayList(wasm_core.types.Element),
+    datas: std.ArrayList(wasm_core.types.Data),
+    start: ?wasm_core.types.FuncIdx,
+    imports: std.ArrayList(wasm_core.types.Import),
+    exports: std.ArrayList(wasm_core.types.Export),
 
     pub fn init(allocator: std.mem.Allocator) ModuleBuilder {
         return ModuleBuilder{
             .allocator = allocator,
-            .types = std.ArrayList(wasm_core.FuncType).init(allocator),
-            .funcs = std.ArrayList(wasm_core.Func).init(allocator),
-            .tables = std.ArrayList(wasm_core.TableType).init(allocator),
-            .memories = std.ArrayList(wasm_core.MemoryType).init(allocator),
-            .globals = std.ArrayList(wasm_core.Global).init(allocator),
-            .elements = std.ArrayList(wasm_core.Element).init(allocator),
-            .datas = std.ArrayList(wasm_core.Data).init(allocator),
+            .types = std.ArrayList(wasm_core.types.FuncType){},
+            .funcs = std.ArrayList(wasm_core.types.Func){},
+            .tables = std.ArrayList(wasm_core.types.TableType){},
+            .memories = std.ArrayList(wasm_core.types.MemoryType){},
+            .globals = std.ArrayList(wasm_core.types.Global){},
+            .elements = std.ArrayList(wasm_core.types.Element){},
+            .datas = std.ArrayList(wasm_core.types.Data){},
             .start = null,
-            .imports = std.ArrayList(wasm_core.Import).init(allocator),
-            .exports = std.ArrayList(wasm_core.Export).init(allocator),
+            .imports = std.ArrayList(wasm_core.types.Import){},
+            .exports = std.ArrayList(wasm_core.types.Export){},
         };
     }
 
-    pub fn build(self: *ModuleBuilder) !wasm_core.Module {
+    pub fn build(self: *ModuleBuilder) !wasm_core.types.Module {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         const arena_allocator = arena.allocator();
-        
-        return wasm_core.Module{
-            .types = try arena_allocator.dupe(wasm_core.FuncType, self.types.items),
-            .funcs = try arena_allocator.dupe(wasm_core.Func, self.funcs.items),
-            .tables = try arena_allocator.dupe(wasm_core.TableType, self.tables.items),
-            .memories = try arena_allocator.dupe(wasm_core.MemoryType, self.memories.items),
-            .globals = try arena_allocator.dupe(wasm_core.Global, self.globals.items),
-            .elements = try arena_allocator.dupe(wasm_core.Element, self.elements.items),
-            .datas = try arena_allocator.dupe(wasm_core.Data, self.datas.items),
+
+        return wasm_core.types.Module{
+            .types = try arena_allocator.dupe(wasm_core.types.FuncType, self.types.items),
+            .funcs = try arena_allocator.dupe(wasm_core.types.Func, self.funcs.items),
+            .tables = try arena_allocator.dupe(wasm_core.types.TableType, self.tables.items),
+            .memories = try arena_allocator.dupe(wasm_core.types.MemoryType, self.memories.items),
+            .globals = try arena_allocator.dupe(wasm_core.types.Global, self.globals.items),
+            .elements = try arena_allocator.dupe(wasm_core.types.Element, self.elements.items),
+            .datas = try arena_allocator.dupe(wasm_core.types.Data, self.datas.items),
             .start = self.start,
-            .imports = try arena_allocator.dupe(wasm_core.Import, self.imports.items),
-            .exports = try arena_allocator.dupe(wasm_core.Export, self.exports.items),
+            .imports = try arena_allocator.dupe(wasm_core.types.Import, self.imports.items),
+            .exports = try arena_allocator.dupe(wasm_core.types.Export, self.exports.items),
             .arena = arena,
         };
     }
     
     pub fn deinit(self: *ModuleBuilder) void {
-        self.types.deinit();
-        self.funcs.deinit();
-        self.tables.deinit();
-        self.memories.deinit();
-        self.globals.deinit();
-        self.elements.deinit();
-        self.datas.deinit();
-        self.imports.deinit();
-        self.exports.deinit();
+        self.types.deinit(self.allocator);
+        self.funcs.deinit(self.allocator);
+        self.tables.deinit(self.allocator);
+        self.memories.deinit(self.allocator);
+        self.globals.deinit(self.allocator);
+        self.elements.deinit(self.allocator);
+        self.datas.deinit(self.allocator);
+        self.imports.deinit(self.allocator);
+        self.exports.deinit(self.allocator);
     }
 };
 
@@ -260,7 +260,7 @@ pub const Parser = struct {
         try self.advance();
     }
 
-    pub fn parseModule(self: *Parser) !wasm_core.Module {
+    pub fn parseModule(self: *Parser) !wasm_core.types.Module {
         try self.expectToken(.left_paren);
         
         if (self.current_token != .identifier or !std.mem.eql(u8, self.current_token.identifier, "module")) {
@@ -328,14 +328,14 @@ pub const Parser = struct {
             try self.advance();
         }
         
-        const memory_type = wasm_core.MemoryType{
-            .limits = wasm_core.Limits{
+        const memory_type = wasm_core.types.MemoryType{
+            .limits = wasm_core.types.Limits{
                 .min = min_pages,
                 .max = max_pages,
             },
         };
         
-        try builder.memories.append(memory_type);
+        try builder.memories.append(builder.allocator, memory_type);
     }
 
     fn parseData(self: *Parser, builder: *ModuleBuilder) !void {
@@ -370,7 +370,7 @@ pub const Parser = struct {
     }
 };
 
-pub fn parseWastModule(allocator: std.mem.Allocator, input: []const u8) !wasm_core.Module {
+pub fn parseWastModule(allocator: std.mem.Allocator, input: []const u8) !wasm_core.types.Module {
     var parser = try Parser.init(allocator, input);
     return parser.parseModule();
 }

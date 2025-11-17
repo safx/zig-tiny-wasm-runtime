@@ -1,9 +1,14 @@
 const std = @import("std");
-const types = @import("wasm-core");
-const Instruction = types.Instruction;
+const core = @import("wasm-core");
+const Instruction = core.Instruction;
 const BinaryReader = @import("./binary_reader.zig").BinaryReader;
 const utils = @import("./utils.zig");
 const Error = @import("./errors.zig").Error;
+
+// Type aliases
+const RefType = core.types.RefType;
+const ValueType = core.types.ValueType;
+const LabelIdx = core.types.LabelIdx;
 
 pub const Decoder = struct {
     const InstArray = std.ArrayList(Instruction);
@@ -12,24 +17,24 @@ pub const Decoder = struct {
         return .{};
     }
 
-    pub fn parseAll(_: Decoder, buffer: []const u8, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const types.Instruction {
+    pub fn parseAll(_: Decoder, buffer: []const u8, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const core.types.Instruction {
         var reader = BinaryReader.new(buffer);
-        var instArray = std.ArrayList(types.Instruction).init(allocator);
-        var nested_blocks = std.ArrayList(types.InstractionAddr).init(allocator);
+        var instArray: std.ArrayList(core.types.Instruction) = .empty;
+        var nested_blocks: std.ArrayList(core.types.InstractionAddr) = .empty;
 
         while (!reader.eof()) {
             const inst = try parse(&reader, allocator);
             const pos: u32 = @intCast(instArray.items.len);
-            try instArray.append(inst);
+            try instArray.append(allocator, inst);
 
             if (inst == .block or inst == .loop or inst == .@"if") {
-                try nested_blocks.append(pos);
+                try nested_blocks.append(allocator, pos);
             } else if (inst == .@"else") {
                 const idx = nested_blocks.getLast();
                 try fillElse(&instArray.items[idx], pos);
             } else if (inst == .end) {
                 if (nested_blocks.items.len == 0)
-                    return instArray.toOwnedSlice();
+                    return instArray.toOwnedSlice(allocator);
 
                 const idx = nested_blocks.pop().?;
                 try fillEnd(&instArray.items[idx], pos);
@@ -652,12 +657,12 @@ fn tableCopyArg(reader: *BinaryReader) Error!Instruction.TableCopyArg {
     return .{ .table_idx_dst = dst, .table_idx_src = src };
 }
 
-fn refType(reader: *BinaryReader) Error!types.RefType {
+fn refType(reader: *BinaryReader) Error!RefType {
     const byte = try reader.readU8();
     return utils.refTypeFromNum(byte) orelse return Error.MalformedRefType;
 }
 
-fn valueType(reader: *BinaryReader) Error!types.ValueType {
+fn valueType(reader: *BinaryReader) Error!ValueType {
     const byte = try reader.readU8();
     return utils.valueTypeFromNum(byte) orelse return Error.MalformedValueType;
 }
@@ -666,9 +671,9 @@ fn block(reader: *BinaryReader) Error!Instruction.BlockInfo {
     return .{ .type = try blockType(reader) }; // `end` is set at the end of block
 }
 
-fn selectv(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]types.ValueType {
+fn selectv(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]ValueType {
     const len = try reader.readVarU32();
-    const array = try allocator.alloc(types.ValueType, len); // freed by arena allocator in Module
+    const array = try allocator.alloc(ValueType, len); // freed by arena allocator in Module
     for (0..len) |i|
         array[i] = try valueType(reader);
 
@@ -696,7 +701,7 @@ fn blockType(reader: *BinaryReader) Error!Instruction.BlockType {
 
 fn brTable(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction.BrTableType {
     const size = try reader.readVarU32();
-    const label_idxs = try allocator.alloc(types.LabelIdx, size); // freed by arena allocator in Module
+    const label_idxs = try allocator.alloc(LabelIdx, size); // freed by arena allocator in Module
 
     for (0..size) |i|
         label_idxs[i] = try reader.readVarU32();

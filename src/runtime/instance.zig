@@ -1,11 +1,36 @@
 const std = @import("std");
-const types = struct {
-    usingnamespace @import("wasm-core");
-    usingnamespace @import("./types.zig");
-};
-const Instruction = types.Instruction;
+const core = @import("wasm-core");
+const local_types = @import("./types.zig");
 const decode = @import("wasm-decode");
 pub const Error = @import("./errors.zig").Error;
+
+// Type aliases for convenience
+const Instruction = core.types.Instruction;
+const Module = core.types.Module;
+const FuncType = core.types.FuncType;
+const RefType = core.types.RefType;
+const InitExpression = core.types.InitExpression;
+const DataIdx = core.types.DataIdx;
+const ElemIdx = core.types.ElemIdx;
+const FuncAddr = local_types.FuncAddr;
+const ModuleInst = local_types.ModuleInst;
+const ActivationFrame = local_types.ActivationFrame;
+const Stack = local_types.Stack;
+const StackItem = local_types.StackItem;
+const Store = local_types.Store;
+const Value = local_types.Value;
+const RefValue = local_types.RefValue;
+const ExternalValue = local_types.ExternalValue;
+const LabelType = local_types.LabelType;
+const Label = local_types.Label;
+const InstractionAddr = core.types.InstractionAddr;
+const MemInst = local_types.MemInst;
+const TableInst = local_types.TableInst;
+const LabelIdx = core.types.LabelIdx;
+const FuncIdx = core.types.FuncIdx;
+const TableIdx = core.types.TableIdx;
+const LocalIdx = core.types.LocalIdx;
+const GlobalIdx = core.types.GlobalIdx;
 
 pub const page_size = 65_536;
 
@@ -13,27 +38,30 @@ pub const page_size = 65_536;
 pub const Instance = struct {
     const Self = @This();
     const assert = std.debug.assert;
-    const ModInstList = std.SinglyLinkedList(types.ModuleInst);
+    const ModuleInstNode = struct {
+        node: std.SinglyLinkedList.Node = .{},
+        data: *ModuleInst,
+    };
 
     allocator: std.mem.Allocator,
-    modules: ModInstList,
-    store: types.Store,
-    stack: types.Stack,
+    modules: std.SinglyLinkedList,
+    store: Store,
+    stack: Stack,
     trace_mode: bool,
 
     pub fn new(allocator: std.mem.Allocator, trace_mode: bool) Self {
         return .{
             .allocator = allocator,
             .modules = .{},
-            .store = types.Store.new(allocator),
-            .stack = types.Stack.new(allocator),
+            .store = Store.new(allocator),
+            .stack = Stack.new(allocator),
             .trace_mode = trace_mode,
         };
     }
 
     /// `Invocation of function address` and `Returning from a function`
     /// https://webassembly.github.io/spec/core/exec/instructions.html#function-calls
-    fn invokeFunction(self: *Self, func_addr: types.FuncAddr) (Error || error{OutOfMemory})!void {
+    fn invokeFunction(self: *Self, func_addr: FuncAddr) (Error || error{OutOfMemory})!void {
         // 1:
         assert(func_addr < self.store.funcs.items.len);
 
@@ -44,9 +72,9 @@ pub const Instance = struct {
         // 4, 8:
         const p_len = func_type.parameter_types.len;
         const num_locals = p_len + func_inst.code.locals.len;
-        const locals = try self.allocator.alloc(types.Value, num_locals); // freed in returnFunction
+        const locals = try self.allocator.alloc(Value, num_locals); // freed in returnFunction
         for (func_inst.code.locals, p_len..) |l, i| {
-            locals[i] = types.Value.defaultValueFrom(l);
+            locals[i] = Value.defaultValueFrom(l);
         }
 
         // 6, 7:
@@ -59,7 +87,7 @@ pub const Instance = struct {
 
         // 8, 9, 10:
         const num_returns = func_type.result_types.len;
-        const frame = types.ActivationFrame{
+        const frame = ActivationFrame{
             .locals = locals,
             .arity = @intCast(num_returns),
             .module = func_inst.module,
@@ -70,7 +98,7 @@ pub const Instance = struct {
 
         self.debugPrint("---------------\n", .{});
         for (func_inst.code.body, 0..) |op, idx|
-            self.debugPrint("[{}] {}\n", .{ idx, op });
+            self.debugPrint("[{any}] {any}\n", .{ idx, op });
         self.debugPrint("---------------\n", .{});
     }
 
@@ -81,7 +109,7 @@ pub const Instance = struct {
         const num_returns = top_frame.arity;
 
         // 4, 5:
-        var popped_values = try self.allocator.alloc(types.StackItem, num_returns);
+        var popped_values = try self.allocator.alloc(StackItem, num_returns);
         defer self.allocator.free(popped_values);
         try self.stack.popValues(&popped_values);
 
@@ -95,7 +123,7 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#invocation
     /// The coller should free the returned slice
-    pub fn invokeFunctionByAddr(self: *Self, func_addr: types.FuncAddr, args: []const types.Value) (Error || error{OutOfMemory})![]const types.Value {
+    pub fn invokeFunctionByAddr(self: *Self, func_addr: FuncAddr, args: []const Value) (Error || error{OutOfMemory})![]const Value {
         // 1:
         assert(func_addr < self.store.funcs.items.len);
 
@@ -115,7 +143,7 @@ pub const Instance = struct {
         }
 
         // 6:
-        const empty_frame = types.ActivationFrame{};
+        const empty_frame = ActivationFrame{};
         try self.stack.push(.{ .frame = empty_frame });
 
         // 8:
@@ -131,7 +159,7 @@ pub const Instance = struct {
 
         // 1, 2: pop values
         const num_returns = func_type.result_types.len;
-        const return_values = try self.allocator.alloc(types.Value, num_returns);
+        const return_values = try self.allocator.alloc(Value, num_returns);
         var i = num_returns;
         while (i > 0) : (i -= 1) {
             const item = self.stack.pop();
@@ -153,12 +181,12 @@ pub const Instance = struct {
             const instr = instrs[ip];
 
             self.printStack();
-            self.debugPrint("= [{}]: {}\n", .{ ip, instr });
+            self.debugPrint("= [{any}]: {any}\n", .{ ip, instr });
 
             const flow_ctrl = try self.execInstruction(instr);
 
             if (flow_ctrl != .none)
-                self.debugPrint("\t-> {}\n", .{flow_ctrl});
+                self.debugPrint("\t-> {any}\n", .{flow_ctrl});
 
             switch (flow_ctrl) {
                 .none => self.stack.updateTopFrameIp(ip + 1),
@@ -181,7 +209,7 @@ pub const Instance = struct {
         unreachable;
     }
 
-    pub fn instantiate(self: *Self, module: types.Module, extern_vals: []const types.ExternalValue) (Error || error{OutOfMemory})!*types.ModuleInst {
+    pub fn instantiate(self: *Self, module: Module, extern_vals: []const ExternalValue) (Error || error{OutOfMemory})!*ModuleInst {
         return self.instantiateInner(module, extern_vals) catch |err| {
             self.clearStack();
             return err;
@@ -190,7 +218,7 @@ pub const Instance = struct {
 
     /// `instantiate` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/modules.html#instantiation
-    inline fn instantiateInner(self: *Self, module: types.Module, extern_vals: []const types.ExternalValue) (Error || error{OutOfMemory})!*types.ModuleInst {
+    inline fn instantiateInner(self: *Self, module: Module, extern_vals: []const ExternalValue) (Error || error{OutOfMemory})!*ModuleInst {
         // 1, 2: validate
 
         // 3: check length
@@ -200,17 +228,17 @@ pub const Instance = struct {
         // 4: verifying external value is done in resolver
 
         // 5: aux module
-        var aux_module = try types.ModuleInst.auxiliaryInstance(&self.store, module, extern_vals, self.allocator);
+        var aux_module = try ModuleInst.auxiliaryInstance(&self.store, module, extern_vals, self.allocator);
         defer aux_module.deinit(self.allocator);
 
         // 6, 7: push aux frame to stack
-        const aux_frame_init = types.ActivationFrame{
+        const aux_frame_init = ActivationFrame{
             .module = &aux_module,
         };
         try self.stack.push(.{ .frame = aux_frame_init });
 
         // 8: Get `val*`
-        const vals = try self.allocator.alloc(types.Value, module.globals.len);
+        const vals = try self.allocator.alloc(Value, module.globals.len);
         defer self.allocator.free(vals);
         for (module.globals, 0..) |global, i| {
             try self.execOneInstruction(instractionFromInitExpr(global.init));
@@ -218,15 +246,15 @@ pub const Instance = struct {
         }
 
         // 9: Get `ref*`
-        const refs = try self.allocator.alloc([]types.RefValue, module.elements.len);
+        const refs = try self.allocator.alloc([]RefValue, module.elements.len);
         defer self.allocator.free(refs);
         for (module.elements, 0..) |element, i| {
             // no need to free because refs[i] are assigned to ModuleInst
-            refs[i] = try self.allocator.alloc(types.RefValue, element.init.len);
+            refs[i] = try self.allocator.alloc(RefValue, element.init.len);
             for (element.init, 0..) |e, j| {
                 try self.execOneInstruction(instractionFromInitExpr(e));
                 const value = self.stack.pop().value;
-                const val: types.RefValue = switch (value) {
+                const val: RefValue = switch (value) {
                     .func_ref => |v| .{ .func_ref = v },
                     .extern_ref => |v| .{ .extern_ref = v },
                     else => unreachable,
@@ -235,18 +263,19 @@ pub const Instance = struct {
             }
         }
 
-        try self.store.funcs.resize(self.store.funcs.items.len - module.funcs.len); // purge funcs of aux_module
+        try self.store.funcs.resize(self.allocator, self.store.funcs.items.len - module.funcs.len); // purge funcs of aux_module
 
         // 10: pop init frame from stack
         _ = self.stack.pop();
 
         // 11: alloc module
-        const mod_inst = try types.ModuleInst.allocateModule(&self.store, module, extern_vals, vals, refs, self.allocator);
-        var node = ModInstList.Node{ .data = mod_inst.* };
-        self.modules.prepend(&node);
+        const mod_inst = try ModuleInst.allocateModule(&self.store, module, extern_vals, vals, refs, self.allocator);
+        const node_ptr = try self.allocator.create(ModuleInstNode);
+        node_ptr.* = .{ .data = mod_inst };
+        self.modules.prepend(&node_ptr.node);
 
         // 12, 13: push aux frame
-        const aux_frame = types.ActivationFrame{
+        const aux_frame = ActivationFrame{
             .module = mod_inst,
         };
         try self.stack.push(.{ .frame = aux_frame });
@@ -314,22 +343,22 @@ pub const Instance = struct {
         const len = self.stack.array.items.len;
         const slice = if (len > 10) self.stack.array.items[len - 10 ..] else self.stack.array.items;
         if (len > 10) {
-            self.debugPrint("  : ({} more items)\n  :\n", .{len - 10});
+            self.debugPrint("  : ({any} more items)\n  :\n", .{len - 10});
         }
         for (slice) |i| {
             if (i == .frame and i.frame.instructions.len == 0)
                 continue;
             switch (i) {
-                .value => |v| self.debugPrint("  V {}\n", .{v}),
-                .label => |v| self.debugPrint("  L {}\n", .{v}),
-                .frame => |v| self.debugPrint("  F locals: {any}, arity: {}, ip: {}\n", .{ v.locals, v.arity, v.ip }),
+                .value => |v| self.debugPrint("  V {any}\n", .{v}),
+                .label => |v| self.debugPrint("  L {any}\n", .{v}),
+                .frame => |v| self.debugPrint("  F locals: {any}, arity: {any}, ip: {any}\n", .{ v.locals, v.arity, v.ip }),
             }
         }
     }
 
     /// executes an instruction without control flow
     fn execOneInstruction(self: *Self, instr: Instruction) (Error || error{OutOfMemory})!void {
-        self.debugPrint("= {}\n", .{instr});
+        self.debugPrint("= {any}\n", .{instr});
         _ = try self.execInstruction(instr);
     }
 
@@ -868,11 +897,11 @@ pub const Instance = struct {
         return FlowControl.newAtOpIf(block_info, cond);
     }
 
-    inline fn insertLabel(self: *Self, block_type: Instruction.BlockType, label_type: types.LabelType) error{CallStackExhausted}!void {
+    inline fn insertLabel(self: *Self, block_type: Instruction.BlockType, label_type: LabelType) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const func_type = expandToFuncType(module, block_type);
         const arity = if (label_type == .loop) func_type.parameter_types.len else func_type.result_types.len;
-        const label = types.StackItem{ .label = .{
+        const label = StackItem{ .label = .{
             .arity = @intCast(arity),
             .type = label_type,
         } };
@@ -880,10 +909,10 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-br-l
-    inline fn opBr(self: *Self, label_idx: types.LabelIdx) (error{CallStackExhausted} || error{OutOfMemory})!FlowControl {
+    inline fn opBr(self: *Self, label_idx: LabelIdx) (error{CallStackExhausted} || error{OutOfMemory})!FlowControl {
         const label = self.stack.getNthLabelFromTop(label_idx);
 
-        var array = try self.allocator.alloc(types.StackItem, label.arity);
+        var array = try self.allocator.alloc(StackItem, label.arity);
         defer self.allocator.free(array);
         try self.stack.popValues(&array);
 
@@ -896,7 +925,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-br-if-l
-    inline fn opBrIf(self: *Self, label_idx: types.LabelIdx) (error{CallStackExhausted} || error{OutOfMemory})!FlowControl {
+    inline fn opBrIf(self: *Self, label_idx: LabelIdx) (error{CallStackExhausted} || error{OutOfMemory})!FlowControl {
         const value = self.stack.pop().value;
         return if (value.i32 == 0) FlowControl.none else self.opBr(label_idx);
     }
@@ -909,7 +938,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-call-x
-    inline fn opCall(self: *Self, func_idx: types.FuncIdx) Error!FlowControl {
+    inline fn opCall(self: *Self, func_idx: FuncIdx) Error!FlowControl {
         const module = self.stack.topFrame().module;
         return .{ .call = module.func_addrs[func_idx] };
     }
@@ -948,8 +977,8 @@ pub const Instance = struct {
     // reference instructions
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-ref-mathsf-ref-null-t
-    inline fn opRefNull(self: *Self, ref_type: types.RefType) error{CallStackExhausted}!void {
-        const val: types.Value = switch (ref_type) {
+    inline fn opRefNull(self: *Self, ref_type: RefType) error{CallStackExhausted}!void {
+        const val: Value = switch (ref_type) {
             .funcref => .{ .func_ref = null },
             .externref => .{ .extern_ref = null },
         };
@@ -964,7 +993,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-ref-mathsf-ref-func-x
-    inline fn opRefFunc(self: *Self, func_idx: types.FuncIdx) error{CallStackExhausted}!void {
+    inline fn opRefFunc(self: *Self, func_idx: FuncIdx) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const a = module.func_addrs[func_idx];
         try self.stack.push(.{ .value = .{ .func_ref = a } });
@@ -983,21 +1012,21 @@ pub const Instance = struct {
     // variable instructions
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-local-get-x
-    inline fn opLocalGet(self: *Self, local_idx: types.LocalIdx) error{CallStackExhausted}!void {
+    inline fn opLocalGet(self: *Self, local_idx: LocalIdx) error{CallStackExhausted}!void {
         const frame = self.stack.topFrame();
         const val = frame.locals[local_idx];
         try self.stack.push(.{ .value = val });
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-local-set-x
-    inline fn opLocalSet(self: *Self, local_idx: types.LocalIdx) void {
+    inline fn opLocalSet(self: *Self, local_idx: LocalIdx) void {
         const frame = self.stack.topFrame();
         const val = self.stack.pop().value;
         frame.locals[local_idx] = val;
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-local-tee-x
-    inline fn opLocalTee(self: *Self, local_idx: types.LocalIdx) error{CallStackExhausted}!void {
+    inline fn opLocalTee(self: *Self, local_idx: LocalIdx) error{CallStackExhausted}!void {
         const value = self.stack.pop();
         try self.stack.push(value);
         try self.stack.push(value);
@@ -1005,7 +1034,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-global-get-x
-    inline fn opGlobalGet(self: *Self, global_idx: types.GlobalIdx) error{CallStackExhausted}!void {
+    inline fn opGlobalGet(self: *Self, global_idx: GlobalIdx) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const a = module.global_addrs[global_idx];
         const glob = self.store.globals.items[a];
@@ -1013,7 +1042,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-variable-mathsf-global-set-x
-    inline fn opGlobalSet(self: *Self, global_idx: types.GlobalIdx) void {
+    inline fn opGlobalSet(self: *Self, global_idx: GlobalIdx) void {
         const module = self.stack.topFrame().module;
         const a = module.global_addrs[global_idx];
         const value = self.stack.pop().value;
@@ -1023,7 +1052,7 @@ pub const Instance = struct {
     // table instructions
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-get-x
-    inline fn opTableGet(self: *Self, table_idx: types.TableIdx) (error{OutOfBoundsTableAccess} || error{CallStackExhausted})!void {
+    inline fn opTableGet(self: *Self, table_idx: TableIdx) (error{OutOfBoundsTableAccess} || error{CallStackExhausted})!void {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
@@ -1033,11 +1062,11 @@ pub const Instance = struct {
             return Error.OutOfBoundsTableAccess;
 
         const val = tab.elem[i];
-        try self.stack.push(.{ .value = types.Value.fromRefValue(val) });
+        try self.stack.push(.{ .value = Value.fromRefValue(val) });
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-set-x
-    inline fn opTableSet(self: *Self, table_idx: types.TableIdx) error{OutOfBoundsTableAccess}!void {
+    inline fn opTableSet(self: *Self, table_idx: TableIdx) error{OutOfBoundsTableAccess}!void {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
@@ -1047,11 +1076,11 @@ pub const Instance = struct {
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
 
-        tab.elem[i] = types.RefValue.fromValue(val);
+        tab.elem[i] = RefValue.fromValue(val);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-size-x
-    inline fn opTableSize(self: *Self, table_idx: types.TableIdx) error{CallStackExhausted}!void {
+    inline fn opTableSize(self: *Self, table_idx: TableIdx) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
@@ -1059,7 +1088,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-grow-x
-    inline fn opTableGrow(self: *Self, table_idx: types.TableIdx) error{CallStackExhausted}!void {
+    inline fn opTableGrow(self: *Self, table_idx: TableIdx) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
@@ -1074,7 +1103,7 @@ pub const Instance = struct {
 
         const sz: u32 = @intCast(tab.elem.len);
 
-        const new_elem = growtable(tab, n, types.RefValue.fromValue(val), self.allocator) catch |err| {
+        const new_elem = growtable(tab, n, RefValue.fromValue(val), self.allocator) catch |err| {
             assert(err == std.mem.Allocator.Error.OutOfMemory);
             try self.stack.pushValueAs(i32, -1);
             return;
@@ -1087,14 +1116,14 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-tables
-    inline fn growtable(table_inst: types.TableInst, n: u32, val: types.RefValue, allocator: std.mem.Allocator) error{OutOfMemory}![]types.RefValue {
+    inline fn growtable(table_inst: TableInst, n: u32, val: RefValue, allocator: std.mem.Allocator) error{OutOfMemory}![]RefValue {
         const table_len: u32 = @intCast(table_inst.elem.len);
         const len, const overflow = @addWithOverflow(table_len, n);
         if (overflow == 1)
             return std.mem.Allocator.Error.OutOfMemory;
 
         const old_elem = table_inst.elem;
-        const new_elem = try allocator.alloc(types.RefValue, len);
+        const new_elem = try allocator.alloc(RefValue, len);
         @memcpy(new_elem[0..old_elem.len], old_elem);
         @memset(new_elem[old_elem.len..], val);
 
@@ -1103,7 +1132,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-fill-x
-    inline fn opTableFill(self: *Self, table_idx: types.TableIdx) error{OutOfBoundsTableAccess}!void {
+    inline fn opTableFill(self: *Self, table_idx: TableIdx) error{OutOfBoundsTableAccess}!void {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
@@ -1117,7 +1146,7 @@ pub const Instance = struct {
             return Error.OutOfBoundsTableAccess;
 
         while (n > 0) {
-            tab.elem[i] = types.RefValue.fromValue(val);
+            tab.elem[i] = RefValue.fromValue(val);
             i += 1;
             n -= 1;
         }
@@ -1183,7 +1212,7 @@ pub const Instance = struct {
         while (n > 0) : (n -= 1) {
             const ref_val = elem.elem[s];
             try self.stack.pushValueAs(u32, d);
-            try self.stack.push(.{ .value = types.Value.fromRefValue(ref_val) });
+            try self.stack.push(.{ .value = Value.fromRefValue(ref_val) });
             try self.execOneInstruction(.{ .table_set = arg.table_idx });
             d += 1;
             s += 1;
@@ -1191,7 +1220,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-elem-drop-x
-    inline fn opElemDrop(self: *Self, elem_idx: types.ElemIdx) void {
+    inline fn opElemDrop(self: *Self, elem_idx: ElemIdx) void {
         const module = self.stack.topFrame().module;
         const a = module.elem_addrs[elem_idx];
         self.allocator.free(self.store.elems.items[a].elem);
@@ -1311,7 +1340,7 @@ pub const Instance = struct {
     }
 
     const MemoryAndEffectiveAddress = struct {
-        mem: *types.MemInst,
+        mem: *MemInst,
         start: u32,
         end: u32,
     };
@@ -1354,7 +1383,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-memories
-    fn growmem(mem_inst: types.MemInst, n: u32, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
+    fn growmem(mem_inst: MemInst, n: u32, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
         const data_len: u32 = @intCast(mem_inst.data.len / page_size);
         const len: u32 = data_len + n;
         if (len + n > 65536)
@@ -1427,7 +1456,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-init-x
-    inline fn opMemoryInit(self: *Self, data_idx: types.DataIdx) (Error || error{OutOfMemory})!void {
+    inline fn opMemoryInit(self: *Self, data_idx: DataIdx) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[0];
         const mem = self.store.mems.items[mem_addr];
@@ -1457,7 +1486,7 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-data-drop-x
-    inline fn opDataDrop(self: *Self, data_idx: types.DataIdx) void {
+    inline fn opDataDrop(self: *Self, data_idx: DataIdx) void {
         const module = self.stack.topFrame().module;
         const a = module.data_addrs[data_idx];
         const data = &self.store.datas.items[a];
@@ -1822,7 +1851,7 @@ pub const Instance = struct {
 
     /// `expand_F` in wasm spec
     /// https://webassembly.github.io/spec/core/exec/runtime.html#exec-expand
-    inline fn expandToFuncType(module: *types.ModuleInst, block_type: Instruction.BlockType) types.FuncType {
+    inline fn expandToFuncType(module: *ModuleInst, block_type: Instruction.BlockType) FuncType {
         return switch (block_type) {
             .empty => .{ .parameter_types = &.{}, .result_types = &.{} },
             .value_type => |vt| .{ .parameter_types = &.{}, .result_types = &.{vt} },
@@ -1837,7 +1866,7 @@ pub const Instance = struct {
     }
 };
 
-pub fn instractionFromInitExpr(init_expr: types.InitExpression) Instruction {
+pub fn instractionFromInitExpr(init_expr: InitExpression) Instruction {
     return switch (init_expr) {
         .i32_const => |val| .{ .i32_const = val },
         .i64_const => |val| .{ .i64_const = val },
@@ -1852,25 +1881,25 @@ pub fn instractionFromInitExpr(init_expr: types.InitExpression) Instruction {
 
 const FlowControl = union(enum) {
     none,
-    jump: types.InstractionAddr,
+    jump: InstractionAddr,
     exit,
-    call: types.FuncAddr,
+    call: FuncAddr,
 
-    pub fn newAtOpEnd(label: types.Label) FlowControl {
+    pub fn newAtOpEnd(label: Label) FlowControl {
         return switch (label.type) {
             .root => .exit,
             else => .none,
         };
     }
 
-    pub fn newAtOpElse(label: types.Label) FlowControl {
+    pub fn newAtOpElse(label: Label) FlowControl {
         return switch (label.type) {
             .@"if" => |idx| .{ .jump = idx },
             else => .none,
         };
     }
 
-    pub fn newAtOpBr(label: types.Label) FlowControl {
+    pub fn newAtOpBr(label: Label) FlowControl {
         return switch (label.type) {
             .root => .exit,
             .loop => |idx| .{ .jump = idx }, // jump to `loop`
@@ -2006,9 +2035,11 @@ fn opTruncSat(comptime R: type, comptime T: type, value: T) R {
         return max;
 
     const tval = @trunc(value);
-    if (tval > max)
+    const fmax: T = @floatFromInt(max);
+    const fmin: T = @floatFromInt(min);
+    if (tval > fmax)
         return max;
-    if (tval < min)
+    if (tval < fmin)
         return min;
 
     return @as(R, @intFromFloat(tval));

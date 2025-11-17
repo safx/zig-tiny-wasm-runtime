@@ -1,5 +1,5 @@
 const std = @import("std");
-const types = @import("wasm-core");
+const types = @import("wasm-core").types;
 
 pub fn sectionFromNum(section_id: u8) ?std.wasm.Section {
     return if (0 <= section_id and section_id <= 12) @enumFromInt(section_id) else null;

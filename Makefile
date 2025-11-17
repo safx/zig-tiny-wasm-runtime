@@ -8,7 +8,7 @@ build-spec-test:
 	zig build spec_test
 
 setup-spectec:
-	# Clone spectec repository for WebAssembly 2.0 test suite
+	# Clone spectec repository (WebAssembly 3.0 branch test suite)
 	@if [ ! -d "spectec" ]; then \
 		echo "Cloning spectec repository..."; \
 		git clone https://github.com/Wasm-DSL/spectec.git; \
@@ -20,9 +20,9 @@ setup-spectec:
 setup-tests: setup-spectec
 	# Create test directory
 	mkdir -p wasm_tests
-	# Copy WebAssembly 2.0 core test files (keeping .wast format for our new test runner)
-	# Include all WebAssembly 2.0 features including reference types, relaxed-simd, multi-memory, tail calls, exception handling, memory64
-	# Only exclude garbage collection which requires advanced runtime support
+	# Copy WebAssembly test files (keeping .wast format for our test runner)
+	# Excludes GC tests which require advanced runtime support not yet implemented
+	# Note: Passing tests indicates successful parsing, not full feature execution
 	find spectec/test/core -name '*.wast' -type f \
 		-not -path '*/gc/*' \
 		-exec cp {} wasm_tests/ \;
@@ -40,9 +40,9 @@ help:
 	@echo "Available targets:"
 	@echo "  build           - Build the WebAssembly interpreter"
 	@echo "  build-spec-test - Build the spec test runner"
-	@echo "  setup-spectec   - Clone/update spectec repository"
-	@echo "  setup-tests     - Setup WebAssembly 2.0 test files"
-	@echo "  test            - Run WebAssembly spec tests"
+	@echo "  setup-spectec   - Clone/update spectec repository (wasm-3.0 branch)"
+	@echo "  setup-tests     - Setup WebAssembly test files (excludes GC tests)"
+	@echo "  test            - Run WebAssembly spec tests (validates parsing)"
 	@echo "  clean           - Clean build artifacts and test files"
 	@echo "  clean-tests     - Remove only test files"
 	@echo "  help            - Show this help message"

@@ -1,28 +1,32 @@
 const std = @import("std");
-const types = struct {
-    usingnamespace @import("wasm-runtime");
-    usingnamespace @import("./types.zig");
-};
+const runtime = @import("wasm-runtime");
+const local_types = @import("./types.zig");
 const errors = @import("./errors.zig");
-const Action = types.Action;
-const Command = types.Command;
-const Result = types.Result;
-const Value = types.Value;
 
-pub fn readJsonFromFile(file: std.fs.File, allocator: std.mem.Allocator) ![]const types.Command {
-    const buffer = try file.reader().readAllAlloc(allocator, 10_000_000);
+// Type aliases for convenience
+const Action = local_types.Action;
+const Command = local_types.Command;
+const Result = local_types.Result;
+const Value = runtime.types.Value;
+const ExternAddr = runtime.types.ExternAddr;
+const FuncAddr = runtime.types.FuncAddr;
+const FloatType = local_types.FloatType;
+
+pub fn readJsonFromFile(file: std.fs.File, allocator: std.mem.Allocator) ![]const Command {
+    const buffer = try file.readToEndAlloc(allocator, 10_000_000);
+    defer allocator.free(buffer);
     const value = try std.json.parseFromSliceLeaky(std.json.Value, allocator, buffer, .{});
 
     return try commandArrayFromJson(value, allocator);
 }
 
 fn commandArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]const Command {
-    var array = std.ArrayList(Command).init(allocator);
+    var array: std.ArrayList(Command) = .empty;
     for (json.object.get("commands").?.array.items) |cmd_json| {
         const cmd = try commandFromJson(cmd_json, allocator);
-        try array.append(cmd);
+        try array.append(allocator, cmd);
     }
-    return array.toOwnedSlice();
+    return array.toOwnedSlice(allocator);
 }
 
 fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command {
@@ -78,12 +82,12 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
 }
 
 fn argArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]const Value {
-    var array = std.ArrayList(Value).init(allocator);
+    var array: std.ArrayList(Value) = .empty;
     for (json.array.items) |arg_json| {
         const arg = try argFromJson(arg_json);
-        try array.append(arg);
+        try array.append(allocator, arg);
     }
-    return try array.toOwnedSlice();
+    return try array.toOwnedSlice(allocator);
 }
 
 fn argFromJson(json: std.json.Value) !Value {
@@ -105,14 +109,14 @@ fn argFromJson(json: std.json.Value) !Value {
         const num = try std.fmt.parseInt(u64, value, 10);
         return Value{ .f64 = num };
     } else if (strcmp(type_, "externref")) {
-        var num: ?types.ExternAddr = null;
+        var num: ?ExternAddr = null;
         if (!strcmp(value, "null"))
-            num = try std.fmt.parseInt(types.ExternAddr, value, 10);
+            num = try std.fmt.parseInt(ExternAddr, value, 10);
         return Value{ .extern_ref = num };
     } else if (strcmp(type_, "funcref")) {
-        var num: ?types.ExternAddr = null;
+        var num: ?ExternAddr = null;
         if (!strcmp(value, "null"))
-            num = try std.fmt.parseInt(types.ExternAddr, value, 10);
+            num = try std.fmt.parseInt(ExternAddr, value, 10);
         return Value{ .func_ref = num };
     } else {
         std.debug.print("? Unknown arg {s}\n", .{type_});
@@ -153,12 +157,12 @@ fn vectorArgFromJsonArray(comptime T: type, arr: std.json.Array) !i128 {
 }
 
 fn resultArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]const Result {
-    var array = std.ArrayList(Result).init(allocator);
+    var array: std.ArrayList(Result) = .empty;
     for (json.array.items) |arg_json| {
         const arg = try resultFromJson(arg_json);
-        try array.append(arg);
+        try array.append(allocator, arg);
     }
-    return try array.toOwnedSlice();
+    return try array.toOwnedSlice(allocator);
 }
 
 fn resultFromJson(json: std.json.Value) !Result {
@@ -178,10 +182,10 @@ fn resultFromJson(json: std.json.Value) !Result {
     } else if (strcmp(type_, "f64")) {
         return .{ .f64 = try floatFromJson(u64, value) };
     } else if (strcmp(type_, "externref")) {
-        const num: ?types.ExternAddr = if (strcmp(value, "null")) null else try std.fmt.parseInt(types.ExternAddr, value, 10);
+        const num: ?ExternAddr = if (strcmp(value, "null")) null else try std.fmt.parseInt(ExternAddr, value, 10);
         return .{ .extern_ref = num };
     } else if (strcmp(type_, "funcref")) {
-        const num: ?types.FuncAddr = if (strcmp(value, "null")) null else try std.fmt.parseInt(types.FuncAddr, value, 10);
+        const num: ?FuncAddr = if (strcmp(value, "null")) null else try std.fmt.parseInt(FuncAddr, value, 10);
         return .{ .func_ref = num };
     } else {
         std.debug.print("? Unknown result {s}\n", .{type_});
@@ -211,7 +215,7 @@ fn vectorFromJson(json: std.json.Value) !Result {
 
 fn vectorFloatFromJsonArray(comptime T: type, arr: std.json.Array) !Result {
     const len = 16 / @sizeOf(T);
-    var val: [len]types.FloatType(T) = undefined;
+    var val: [len]FloatType(T) = undefined;
     std.debug.assert(arr.items.len == len);
 
     for (arr.items, 0..) |v, i| {
@@ -233,7 +237,7 @@ fn vectorFloatFromJsonArray(comptime T: type, arr: std.json.Array) !Result {
     };
 }
 
-fn floatFromJson(comptime T: type, value: []const u8) !types.FloatType(T) {
+fn floatFromJson(comptime T: type, value: []const u8) !FloatType(T) {
     if (std.mem.eql(u8, "nan:canonical", value))
         return .nan_canonical;
     if (std.mem.eql(u8, "nan:arithmetic", value))

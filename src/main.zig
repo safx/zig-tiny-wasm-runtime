@@ -1,6 +1,8 @@
 const std = @import("std");
 const runtime = @import("wasm-runtime");
 
+const Value = runtime.types.Value;
+
 pub fn main() !void {
     var verbose: bool = false;
 
@@ -8,9 +10,9 @@ pub fn main() !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var wasm_files = std.ArrayList([]const u8).init(allocator);
+    var wasm_files = std.array_list.Managed([]const u8).init(allocator);
     var func_name: ?[]const u8 = null;
-    var wasm_args = std.ArrayList(runtime.Value).init(allocator);
+    var wasm_args = std.array_list.Managed(Value).init(allocator);
 
     var pos: usize = 1;
     while (pos < std.os.argv.len) : (pos += 1) {
@@ -52,7 +54,7 @@ pub fn main() !void {
     }
 }
 
-fn parseValue(string: []const u8) !runtime.Value {
+fn parseValue(string: []const u8) !runtime.types.Value {
     var parts = std.mem.splitSequence(u8, string, ":");
 
     var ty: []const u8 = "";
@@ -72,17 +74,17 @@ fn parseValue(string: []const u8) !runtime.Value {
     }
 
     if (strcmp(ty, "i32") or strcmp(ty, "")) {
-        return runtime.Value.from(try std.fmt.parseInt(i32, num, 10));
+        return Value.from(try std.fmt.parseInt(i32, num, 10));
     } else if (strcmp(ty, "u32")) {
-        return runtime.Value.from(try std.fmt.parseInt(u32, num, 10));
+        return Value.from(try std.fmt.parseInt(u32, num, 10));
     } else if (strcmp(ty, "i64")) {
-        return runtime.Value.from(try std.fmt.parseInt(i64, num, 10));
+        return Value.from(try std.fmt.parseInt(i64, num, 10));
     } else if (strcmp(ty, "u64")) {
-        return runtime.Value.from(try std.fmt.parseInt(u64, num, 10));
+        return Value.from(try std.fmt.parseInt(u64, num, 10));
     } else if (strcmp(ty, "f32")) {
-        return runtime.Value.from(try std.fmt.parseFloat(f32, num));
+        return Value.from(try std.fmt.parseFloat(f32, num));
     } else if (strcmp(ty, "f64")) {
-        return runtime.Value.from(try std.fmt.parseFloat(f64, num));
+        return Value.from(try std.fmt.parseFloat(f64, num));
     }
 
     @panic("unknown value type");

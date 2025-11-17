@@ -5,7 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a WebAssembly interpreter written in Zig 0.14. It implements comprehensive WebAssembly 2.0 support with 223/223 test cases passing (100% pass rate), including official 2.0 specification features and advanced post-2.0 proposals. This educational project demonstrates understanding of the complete WebAssembly specification ecosystem.
+This is a WebAssembly interpreter written in Zig 0.15. It implements WebAssembly 1.0 core specification with selected 2.0 extensions, primarily SIMD operations. The test suite includes 237 test files from the spectec repository (WebAssembly 3.0 branch) that successfully parse and load. This educational project demonstrates understanding of WebAssembly fundamentals and key extension features.
+
+**Important**: The test runner validates parsing and module loading only, not complete feature execution. Passing tests indicate syntax compatibility rather than full implementation of all features present in test files.
 
 ## Commands
 
@@ -26,10 +28,10 @@ zig build spec_test
 # Run all unit tests
 zig build test
 
-# Setup WebAssembly 2.0 test suite from spectec
+# Setup WebAssembly test suite from spectec (wasm-3.0 branch)
 make setup-tests
 
-# Run all WebAssembly spec tests
+# Run all WebAssembly spec tests (validates parsing/loading)
 make test
 
 # Run specific test file
@@ -70,8 +72,10 @@ Key architectural decisions:
 
 ## Important Notes
 
-- The project uses Zig 0.14.1 and may need updates for newer Zig versions
+- The project uses Zig 0.15.2 and may need updates for newer Zig versions
 - When modifying instruction implementations, ensure both the decode and runtime modules are updated
-- The spectec test suite (223 tests) is the primary way to verify correctness - always run `make test` after changes
+- The test suite (237 test files from spectec wasm-3.0 branch) validates parsing and loading - always run `make test` after changes
+- **Test limitations**: The current test runner only validates that modules can be parsed and loaded, not that all instructions execute correctly
 - Text format (.wast/.wat) files are handled by the spec_test binary, binary format (.wasm) by the main interpreter
 - The project links with libc (uses C allocator) so platform-specific issues may arise
+- Features like tail calls, exception handling, GC, multi-memory, and memory64 are not implemented despite test files being present

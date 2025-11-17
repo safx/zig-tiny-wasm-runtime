@@ -1,11 +1,34 @@
 const std = @import("std");
-const types = struct {
-    usingnamespace @import("wasm-core");
-    usingnamespace @import("./types.zig");
-};
-const TypeStack = types.TypeStack;
+const core = @import("wasm-core");
+const local_types = @import("./types.zig");
 const Context = @import("./context.zig").Context;
 const Error = @import("./errors.zig").Error || error{OutOfMemory};
+
+// Type aliases for convenience
+const Module = core.types.Module;
+const Func = core.types.Func;
+const FuncType = core.types.FuncType;
+const ValueType = core.types.ValueType;
+const RefType = core.types.RefType;
+const Instruction = core.Instruction;
+const TableType = core.types.TableType;
+const MemoryType = core.types.MemoryType;
+const Global = core.types.Global;
+const Element = core.types.Element;
+const Data = core.types.Data;
+const Import = core.types.Import;
+const Export = core.types.Export;
+const Limits = core.types.Limits;
+const InitExpression = core.types.InitExpression;
+const FuncIdx = core.types.FuncIdx;
+const TypeIdx = core.types.TypeIdx;
+const LabelIdx = core.LabelIdx;
+const TableIdx = core.TableIdx;
+const LocalIdx = core.LocalIdx;
+const GlobalIdx = core.GlobalIdx;
+const ElemIdx = core.ElemIdx;
+const DataIdx = core.DataIdx;
+const TypeStack = local_types.TypeStack;
 
 pub const ModuleValidator = struct {
     const Self = @This();
@@ -21,7 +44,7 @@ pub const ModuleValidator = struct {
         };
     }
 
-    pub fn validate(self: *Self, module: types.Module) Error!void {
+    pub fn validate(self: *Self, module: Module) Error!void {
         var arena = std.heap.ArenaAllocator.init(self.baseAllocator);
         self.allocator = arena.allocator();
         defer arena.deinit();
@@ -29,7 +52,7 @@ pub const ModuleValidator = struct {
         try self.validateModule(module);
     }
 
-    fn validateModule(self: Self, module: types.Module) Error!void {
+    fn validateModule(self: Self, module: Module) Error!void {
         { // under the context c
             const c = try Context.new(module, self.allocator);
             for (module.funcs) |func|
@@ -76,14 +99,14 @@ pub const ModuleValidator = struct {
         }
     }
 
-    fn validateFunction(self: Self, c: Context, func: types.Func) Error!void {
+    fn validateFunction(self: Self, c: Context, func: Func) Error!void {
         // std.debug.print("=" ** 40 ++ " {any} \n", .{c.types[func.type]});
         const cp = try Context.cloneWithFunction(c, func, self.allocator);
         const ty = try c.getType(func.type);
         try self.validateFunctionBody(cp, func.body, ty.result_types);
     }
 
-    fn validateFunctionBody(self: Self, c: Context, instrs: []const types.Instruction, expect_types: []const types.ValueType) Error!void {
+    fn validateFunctionBody(self: Self, c: Context, instrs: []const Instruction, expect_types: []const ValueType) Error!void {
         var type_stack = try TypeStack.new(self.allocator);
         try self.loop(c, instrs, 0, @intCast(instrs.len), &type_stack);
 
@@ -92,7 +115,7 @@ pub const ModuleValidator = struct {
             return Error.TypeMismatch;
     }
 
-    fn validateBlock(self: Self, c: Context, instrs: []const types.Instruction, start: u32, end: u32, func_type: types.FuncType) Error!void {
+    fn validateBlock(self: Self, c: Context, instrs: []const Instruction, start: u32, end: u32, func_type: FuncType) Error!void {
         var type_stack = try TypeStack.new(self.allocator);
         try type_stack.appendValueType(func_type.parameter_types);
 
@@ -103,25 +126,25 @@ pub const ModuleValidator = struct {
             return Error.TypeMismatch;
     }
 
-    fn loop(self: Self, c: Context, instrs: []const types.Instruction, start: u32, end: u32, type_stack: *TypeStack) Error!void {
+    fn loop(self: Self, c: Context, instrs: []const Instruction, start: u32, end: u32, type_stack: *TypeStack) Error!void {
         var ip = start;
         while (ip < end)
             ip = try self.validateInstruction(c, instrs, ip, type_stack);
     }
 
-    fn validateBlocktype(self: Self, c: Context, block_type: types.Instruction.BlockType) Error!types.FuncType {
+    fn validateBlocktype(self: Self, c: Context, block_type: Instruction.BlockType) Error!FuncType {
         return switch (block_type) {
             .empty => .{ .parameter_types = &.{}, .result_types = &.{} },
             .type_index => |idx| try c.getType(idx),
             .value_type => blk: {
-                const result_types = try self.allocator.alloc(types.ValueType, 1);
+                const result_types = try self.allocator.alloc(ValueType, 1);
                 result_types[0] = block_type.value_type;
                 break :blk .{ .parameter_types = &.{}, .result_types = result_types };
             },
         };
     }
 
-    fn validateInstruction(self: Self, c: Context, instrs: []const types.Instruction, ip: u32, type_stack: *TypeStack) Error!u32 {
+    fn validateInstruction(self: Self, c: Context, instrs: []const Instruction, ip: u32, type_stack: *TypeStack) Error!u32 {
         assert(ip < instrs.len);
         //std.debug.print("[{}] {any}   label: {any} stack: {any} {s}\n", .{ ip, instrs[ip], c.labels, type_stack.array.items, if (type_stack.polymophic) "polymophic" else "" });
         switch (instrs[ip]) {
@@ -806,7 +829,7 @@ inline fn exp2(n: u32) error{NegativeNumberAlignment}!u32 {
         Error.NegativeNumberAlignment;
 }
 
-inline fn opLoad(comptime T: type, comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+inline fn opLoad(comptime T: type, comptime N: type, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8)
         return Error.NegativeNumberAlignment;
     try c.checkMem(0);
@@ -816,7 +839,7 @@ inline fn opLoad(comptime T: type, comptime N: type, mem_arg: types.Instruction.
     try type_stack.pushValueType(t);
 }
 
-inline fn opV128Load(comptime N: type, comptime M: u8, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+inline fn opV128Load(comptime N: type, comptime M: u8, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8 * M)
         return Error.NegativeNumberAlignment;
     try c.checkMem(0);
@@ -825,7 +848,7 @@ inline fn opV128Load(comptime N: type, comptime M: u8, mem_arg: types.Instructio
     try type_stack.pushValueType(.v128);
 }
 
-inline fn opV128LoadSplat(comptime N: type, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+inline fn opV128LoadSplat(comptime N: type, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8)
         return Error.NegativeNumberAlignment;
     try c.checkMem(0);
@@ -840,7 +863,7 @@ inline fn opVSprat(comptime T: type, type_stack: *TypeStack) Error!void {
     try type_stack.pushValueType(.v128);
 }
 
-inline fn opStore(comptime T: type, comptime bit_size: u32, mem_arg: types.Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+inline fn opStore(comptime T: type, comptime bit_size: u32, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > bit_size / 8)
         return Error.NegativeNumberAlignment;
     try c.checkMem(0);
@@ -968,7 +991,7 @@ const vExtmul = vBinOp;
 const vDot = vBinOp;
 const vExtaddPairwise = vUnOp;
 
-inline fn vLoadLane(comptime N: u8, mem_arg: types.Instruction.MemArgWithLaneIdx, type_stack: *TypeStack) Error!void {
+inline fn vLoadLane(comptime N: u8, mem_arg: Instruction.MemArgWithLaneIdx, type_stack: *TypeStack) Error!void {
     if (try exp2(mem_arg.@"align") > N / 8)
         return Error.NegativeNumberAlignment;
 
@@ -990,7 +1013,7 @@ inline fn vStoreLane(type_stack: *TypeStack) Error!void {
     try type_stack.popWithCheckingValueType(.i32);
 }
 
-fn validateImport(c: Context, imp: types.Import) Error!void {
+fn validateImport(c: Context, imp: Import) Error!void {
     switch (imp.desc) {
         .function => |idx| _ = try c.getType(idx),
         .table => |ty| try validateTableType(ty),
@@ -999,7 +1022,7 @@ fn validateImport(c: Context, imp: types.Import) Error!void {
     }
 }
 
-fn validateExport(c: Context, exp: types.Export) Error!void {
+fn validateExport(c: Context, exp: Export) Error!void {
     switch (exp.desc) {
         .function => |idx| _ = try c.getFunc(idx),
         .table => |idx| _ = try c.getTable(idx),
@@ -1008,11 +1031,11 @@ fn validateExport(c: Context, exp: types.Export) Error!void {
     }
 }
 
-fn validateGlobal(c: Context, global: types.Global) Error!void {
+fn validateGlobal(c: Context, global: Global) Error!void {
     try validateInitExpression(c, global.init, global.type.value_type);
 }
 
-fn validateElement(c: Context, element: types.Element) Error!void {
+fn validateElement(c: Context, element: Element) Error!void {
     for (element.init) |init|
         try validateInitExpression(c, init, valueTypeFromRefType(element.type));
 
@@ -1028,7 +1051,7 @@ fn validateElement(c: Context, element: types.Element) Error!void {
     }
 }
 
-fn validateData(c: Context, data: types.Data) Error!void {
+fn validateData(c: Context, data: Data) Error!void {
     switch (data.mode) {
         .active => |dat| {
             try c.checkMem(dat.mem_idx);
@@ -1038,19 +1061,19 @@ fn validateData(c: Context, data: types.Data) Error!void {
     }
 }
 
-fn validateMemory(c: Context, global: types.Global) Error!void {
+fn validateMemory(c: Context, global: Global) Error!void {
     try validateInitExpression(c, global.init, global.type.value_type);
 }
 
-fn validateTableType(table_type: types.TableType) Error!void {
+fn validateTableType(table_type: TableType) Error!void {
     try validateLimits(std.math.maxInt(u32), table_type.limits);
 }
 
-fn validateMemoryType(memory_type: types.MemoryType) Error!void {
+fn validateMemoryType(memory_type: MemoryType) Error!void {
     try validateLimits(1 << 16, memory_type.limits);
 }
 
-fn validateLimits(comptime limit_max: u32, limits: types.Limits) Error!void {
+fn validateLimits(comptime limit_max: u32, limits: Limits) Error!void {
     if (limits.min > limit_max)
         return Error.MemorySizeExceeded;
 
@@ -1062,13 +1085,13 @@ fn validateLimits(comptime limit_max: u32, limits: types.Limits) Error!void {
     }
 }
 
-fn validateStartFunction(c: Context, func_idx: types.FuncIdx) Error!void {
+fn validateStartFunction(c: Context, func_idx: FuncIdx) Error!void {
     const ft = try c.getFunc(func_idx);
     if (ft.parameter_types.len != 0 or ft.result_types.len != 0)
         return Error.StartFunction;
 }
 
-fn validateInitExpression(c: Context, init_expr: types.InitExpression, expected_type: types.ValueType) Error!void {
+fn validateInitExpression(c: Context, init_expr: InitExpression, expected_type: ValueType) Error!void {
     const ok = switch (init_expr) {
         .i32_const => expected_type == .i32,
         .i64_const => expected_type == .i64,
@@ -1094,7 +1117,7 @@ fn validateInitExpression(c: Context, init_expr: types.InitExpression, expected_
         return Error.TypeMismatch;
 }
 
-fn valueTypeOf(comptime ty: type) types.ValueType {
+fn valueTypeOf(comptime ty: type) ValueType {
     return switch (ty) {
         i32 => .i32,
         u32 => .i32,
@@ -1108,6 +1131,6 @@ fn valueTypeOf(comptime ty: type) types.ValueType {
     };
 }
 
-fn valueTypeFromRefType(ref_type: types.RefType) types.ValueType {
+fn valueTypeFromRefType(ref_type: RefType) ValueType {
     return @enumFromInt(@intFromEnum(ref_type));
 }

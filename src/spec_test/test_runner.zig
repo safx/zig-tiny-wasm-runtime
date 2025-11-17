@@ -1,21 +1,19 @@
 const std = @import("std");
-const types = struct {
-    usingnamespace @import("wasm-core");
-    usingnamespace @import("wasm-runtime");
-    usingnamespace @import("./types.zig");
-};
+const core = @import("wasm-core");
+const runtime = @import("wasm-runtime");
+const spec_types = @import("./types.zig");
 const Error = @import("./errors.zig").RuntimeError;
 const reader = @import("./reader.zig");
 
 pub const SpecTestRunner = struct {
     const Self = @This();
 
-    engine: types.Engine,
+    engine: runtime.Engine,
     allocator: std.mem.Allocator,
     verbose_level: u32,
 
     pub fn new(allocator: std.mem.Allocator, verbose_level: u8) !Self {
-        const engine = types.Engine.new(allocator, verbose_level >= 2);
+        const engine = runtime.Engine.new(allocator, verbose_level >= 2);
         return .{ .engine = engine, .allocator = allocator, .verbose_level = verbose_level };
     }
 
@@ -27,8 +25,8 @@ pub const SpecTestRunner = struct {
         try self.execSpecTests(commands);
     }
 
-    fn execSpecTests(self: *Self, commands: []const types.Command) !void {
-        var current_module: *types.ModuleInst = try self.engine.loadModuleFromPath("spectest.wasm", "spectest");
+    fn execSpecTests(self: *Self, commands: []const spec_types.Command) !void {
+        var current_module: *runtime.types.ModuleInst = try self.engine.loadModuleFromPath("spectest.wasm", "spectest");
 
         for (commands) |cmd| {
             if (self.verbose_level >= 1) {
@@ -77,7 +75,7 @@ pub const SpecTestRunner = struct {
         }
     }
 
-    fn doAction(self: *Self, action: types.Action, current_module: *types.ModuleInst) ![]const types.Value {
+    fn doAction(self: *Self, action: spec_types.Action, current_module: *runtime.types.ModuleInst) ![]const runtime.types.Value {
         switch (action) {
             .invoke => |arg| {
                 const mod = if (arg.module) |name| self.engine.getModuleInstByName(name) orelse current_module else current_module;
@@ -87,7 +85,7 @@ pub const SpecTestRunner = struct {
             .get => |arg| {
                 const mod = if (arg.module) |name| self.engine.getModuleInstByName(name) orelse current_module else current_module;
                 const gval = self.engine.getValueFromGlobal(mod, arg.field).?;
-                const array = try self.allocator.alloc(types.Value, 1);
+                const array = try self.allocator.alloc(runtime.types.Value, 1);
                 array[0] = gval;
                 return array;
             },
@@ -103,7 +101,7 @@ pub const SpecTestRunner = struct {
         @panic("Test failed.");
     }
 
-    fn validateResult(self: Self, expected_value: []const types.Result, actual_result: []const types.Value, line: u32) void {
+    fn validateResult(self: Self, expected_value: []const spec_types.Result, actual_result: []const runtime.types.Value, line: u32) void {
         if (actual_result.len != expected_value.len) {
             @panic("Test failed (length not match).");
         }
@@ -144,7 +142,7 @@ pub const SpecTestRunner = struct {
 };
 
 /// Returns function name by searching from the latest instaitiated modules.
-fn getFunctionByName(module: *types.ModuleInst, func_name: []const u8) error{ExportItemNotFound}!types.ExportInst {
+fn getFunctionByName(module: *runtime.types.ModuleInst, func_name: []const u8) error{ExportItemNotFound}!runtime.types.ExportInst {
     for (module.exports) |exp| {
         if (std.mem.eql(u8, exp.name, func_name)) {
             return exp;
@@ -154,7 +152,7 @@ fn getFunctionByName(module: *types.ModuleInst, func_name: []const u8) error{Exp
     return Error.ExportItemNotFound;
 }
 
-fn checkReturnValue(expected: types.Result, result: types.Value) bool {
+fn checkReturnValue(expected: spec_types.Result, result: runtime.types.Value) bool {
     return switch (expected) {
         .i32 => |val| val == result.i32,
         .i64 => |val| val == result.i64,
@@ -202,8 +200,8 @@ fn checkReturnValue(expected: types.Result, result: types.Value) bool {
     };
 }
 
-fn valueEquals(expected: types.Value, result: types.Value) bool {
-    const Tag = @typeInfo(types.Value).Union.tag_type.?;
+fn valueEquals(expected: runtime.types.Value, result: runtime.types.Value) bool {
+    const Tag = @typeInfo(runtime.types.Value).Union.tag_type.?;
     inline for (@typeInfo(Tag).Enum.fields) |field| {
         if (field.value == @intFromEnum(expected) and field.value == @intFromEnum(result)) {
             return @field(expected, field.name) == @field(result, field.name);

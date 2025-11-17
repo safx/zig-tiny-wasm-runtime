@@ -1,11 +1,11 @@
 # Zig WebAssembly Interpreter
 
-A tiny WebAssembly interpreter written in Zig. The interpreter supports WebAssembly Core Specification 2.0 draft including SIMD operations.
+A tiny WebAssembly interpreter written in Zig. This interpreter implements WebAssembly 1.0 core features with selected 2.0 extensions, primarily focusing on SIMD operations.
 This project is intended for personal understanding of the WebAssembly specification. Do not use in production environment.
 
 ## Requirements
 
-- Zig 0.14.1
+- Zig 0.15.2
 - Python 3.x (for test runner)
 - Git (for fetching test suite)
 
@@ -42,20 +42,22 @@ make build-spec-test
 ./zig-out/bin/spec_test test.wast -v
 ```
 
-## WebAssembly 2.0 Test Suite
+## WebAssembly Test Suite
 
-This project now supports the new WebAssembly 2.0 test suite from [spectec](https://github.com/Wasm-DSL/spectec).
+This project uses test files from the [spectec](https://github.com/Wasm-DSL/spectec) repository (WebAssembly 3.0 branch).
+
+**Important Note**: The current test runner validates that .wast files can be successfully parsed and loaded, but does not execute full test assertions. Therefore, passing all tests indicates syntax compatibility rather than complete feature implementation.
 
 ### Setup Test Suite
 
 ```bash
-# Download and setup WebAssembly 2.0 test files
+# Download and setup WebAssembly test files
 make setup-tests
 
 # This will:
-# - Clone the spectec repository
-# - Copy compatible .wast test files to wasm_tests/
-# - Filter out unsupported advanced features
+# - Clone the spectec repository (wasm-3.0 branch)
+# - Copy .wast test files to wasm_tests/
+# - Exclude GC-related tests that require advanced runtime support
 ```
 
 ### Run Tests
@@ -106,81 +108,81 @@ zig fmt src/           # Format source code
 
 ## Supported Features
 
-This interpreter provides **comprehensive WebAssembly 2.0 support** with **223/223 test cases passing** (100% pass rate):
+This interpreter implements **WebAssembly 1.0 core specification** with **selected 2.0 extensions**. The test suite shows **237/237 test files successfully parsed**, though full feature execution is limited to implemented instructions.
 
-### ✅ **WebAssembly 2.0 Official Specification Features**
+### ✅ **Fully Implemented Features**
 
-1. **Vector/SIMD Instructions** 
-   - All 236 new SIMD instructions
-   - Standard SIMD operations (i8x16, i16x8, i32x4, f32x4, etc.)
+#### **WebAssembly 1.0 Core**
+- All basic numeric instructions (i32, i64, f32, f64)
+- Control flow (block, loop, if, br, br_if, br_table, call, call_indirect)
+- Memory operations (load, store with various sizes)
+- Local and global variables
+- Function calls and returns
 
-2. **Bulk Memory Instructions**
-   - Fast memory and table copying/initialization
-   - `memory.copy`, `memory.fill`, `memory.init`, `data.drop`
+#### **WebAssembly 2.0 Extensions**
 
-3. **Multi-Value Results**
-   - Functions and blocks can return multiple values
-   - Block instructions with inputs
+1. **Vector/SIMD Instructions (Fixed-Width 128-bit)**
+   - All standard SIMD operations (i8x16, i16x8, i32x4, i64x2, f32x4, f64x2)
+   - Vector load/store operations with lane access
+   - SIMD arithmetic, comparison, and bitwise operations
+   - Approximately 236 SIMD instructions fully implemented
 
-4. **Reference Types**
-   - First-class references to functions (`funcref`)
-   - External object pointers (`externref`)
-   - Multiple tables of different types
-   - `ref.null`, `ref.func`, `ref.is_null`, `ref.as_non_null`
-   - Reference-based branching (`br_on_null`, `br_on_non_null`)
+2. **Relaxed SIMD Instructions**
+   - Non-deterministic SIMD operations for performance
+   - Relaxed min/max, madd/nmadd operations
+   - Relaxed lane selection and truncation
+   - 18 relaxed SIMD instructions implemented
 
-5. **Non-Trapping Conversions**
-   - Safe float-to-integer conversions
+3. **Bulk Memory Operations**
+   - `memory.copy` - Fast memory-to-memory copying
+   - `memory.fill` - Memory initialization with byte values
+   - `memory.init` - Initialize memory from passive data segments
+   - `data.drop` - Drop passive data segments
+
+4. **Reference Types (Basic)**
+   - `funcref` and `externref` types
+   - `ref.null`, `ref.func`, `ref.is_null` instructions
+   - Multiple tables with reference types
+   - Table operations: `table.get`, `table.set`, `table.init`, `table.copy`, `table.grow`, `table.size`, `table.fill`
+
+5. **Non-Trapping Float-to-Int Conversions**
+   - `i32.trunc_sat_f32_s/u`, `i32.trunc_sat_f64_s/u`
+   - `i64.trunc_sat_f32_s/u`, `i64.trunc_sat_f64_s/u`
 
 6. **Sign Extension Instructions**
-   - Direct width extension for signed integer values
+   - `i32.extend8_s`, `i32.extend16_s`
+   - `i64.extend8_s`, `i64.extend16_s`, `i64.extend32_s`
 
-### 🚀 **Additional Advanced Features (Post-2.0 Proposals)**
+7. **Multi-Value Support**
+   - Functions and blocks can return multiple values
+   - Multi-value block types
 
-1. **Relaxed SIMD Extensions**
-   - Enhanced SIMD operations (relaxed_min_max, relaxed_dot_product, etc.)
-   - Performance-optimized vector operations
-
-2. **Multi-Memory Support**
-   - Multiple memory instances in a single module
-   - Memory-indexed operations
-
-3. **Tail Calls**
-   - `return_call` - direct tail calls
-   - `return_call_indirect` - indirect tail calls  
-   - `return_call_ref` - reference-based tail calls
-
-4. **Advanced Type System**
-   - Type equivalence and canonicalization
-   - Recursive types
-   - Function reference types
-
-5. **Exception Handling**
-   - `throw` and `throw_ref` instructions
-   - Exception tags and type system
-   - `try_table` structured exception handling
-
-6. **Memory64**
-   - 64-bit memory addressing support
-   - Extended memory operations
-
-### 🔧 **Additional Features**
-- Text format (.wast/.wat) parsing and execution
-- Binary format (.wasm) execution
-- Complete validation according to WebAssembly spec
+### 🔧 **Additional Capabilities**
+- Text format (.wast/.wat) parsing (syntax only, not full execution)
+- Binary format (.wasm) decoding and execution
+- Module validation
 - Import/export system
-- Memory operations and bounds checking
+- Memory bounds checking
 
-## Test Coverage
+## Test Suite Status
 
-- **223 WebAssembly 2.0 test cases** from the official [spectec](https://github.com/Wasm-DSL/spectec) test suite
-- **100% pass rate** across all supported features
-- Continuous testing against the latest WebAssembly specifications
+- **237/237 test files** from [spectec](https://github.com/Wasm-DSL/spectec) successfully parse and load
+- Test files cover WebAssembly 1.0, 2.0, and some 3.0 features
+- **Note**: Current test runner validates parsing/loading only, not complete feature execution
 
-## Limitations
+## Known Limitations
 
-Only one advanced WebAssembly feature is not yet supported:
-- **Garbage Collection (GC)** - Requires advanced runtime support with custom heap management
+The following WebAssembly 3.0 features are **not implemented**:
+
+- ❌ **Tail Calls** (`return_call`, `return_call_indirect`, `return_call_ref`)
+- ❌ **Exception Handling** (`throw`, `throw_ref`, `try_table`, exception tags)
+- ❌ **Garbage Collection** (struct, array, i31ref, and related GC instructions)
+- ❌ **Multi-Memory** (multiple memory instances per module)
+- ❌ **Memory64** (64-bit memory addressing)
+- ❌ **Extended Reference Types** (`br_on_null`, `br_on_non_null`, `call_ref`, `ref.as_non_null`)
+- ❌ **Extended Constant Expressions** (arithmetic in constant expressions)
+
+These features can be parsed from .wast files but their instructions are not executed.
 
 ## Contributing
 

@@ -1,5 +1,5 @@
 const std = @import("std");
-const Instruction = @import("./instructions.zig").Instruction;
+pub const Instruction = @import("./instructions.zig").Instruction;
 const wasm = std.wasm;
 
 pub const TypeIdx = u32;
@@ -40,11 +40,11 @@ pub const FuncType = struct {
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         try writer.writeAll("(");
         for (self.parameter_types, 0..) |ty, i| {
-            _ = try writer.print("{}{s}", .{ ty, if (i + 1 < self.parameter_types.len) ", " else "" });
+            _ = try writer.print("{any}{s}", .{ ty, if (i + 1 < self.parameter_types.len) ", " else "" });
         }
         try writer.writeAll(") -> (");
         for (self.result_types, 0..) |ty, i| {
-            _ = try writer.print("{}{s}", .{ ty, if (i + 1 < self.result_types.len) ", " else "" });
+            _ = try writer.print("{any}{s}", .{ ty, if (i + 1 < self.result_types.len) ", " else "" });
         }
         try writer.writeAll(")");
     }
@@ -76,7 +76,7 @@ pub const Limits = struct {
     max: ?u32,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("[{},{?}]", .{ self.min, self.max });
+        _ = try writer.print("[{any},{any?}]", .{ self.min, self.max });
     }
 };
 
@@ -86,7 +86,7 @@ pub const Import = struct {
     desc: ImportDesc,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{s}.{s} {}", .{ self.module_name, self.name, self.desc });
+        _ = try writer.print("{s}.{s} {any}", .{ self.module_name, self.name, self.desc });
     }
 };
 
@@ -95,7 +95,7 @@ pub const Export = struct {
     desc: ExportDesc,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{s} ({})", .{ self.name, self.desc });
+        _ = try writer.print("{s} ({any})", .{ self.name, self.desc });
     }
 };
 
@@ -118,7 +118,7 @@ pub const TableType = struct {
     ref_type: RefType,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{}:{}", .{ self.limits, self.ref_type });
+        _ = try writer.print("{any}:{any}", .{ self.limits, self.ref_type });
     }
 };
 
@@ -127,7 +127,7 @@ pub const GlobalType = struct {
     mutability: Mutability,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{}:{}", .{ self.mutability, self.value_type });
+        _ = try writer.print("{any}:{any}", .{ self.mutability, self.value_type });
     }
 };
 
@@ -135,7 +135,7 @@ pub const MemoryType = struct {
     limits: Limits,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{}", .{self.limits});
+        _ = try writer.print("{any}", .{self.limits});
     }
 };
 

@@ -1,5 +1,6 @@
 const std = @import("std");
-const Module = @import("wasm-core").Module;
+const core = @import("wasm-core");
+const Module = core.types.Module;
 const ModuleValidator = @import("./validator.zig").ModuleValidator;
 pub const Error = @import("./errors.zig").Error;
 

@@ -17,9 +17,11 @@ pub fn build(b: *std.Build) void {
 
         const exe = b.addExecutable(.{
             .name = "zig-wasm-interp",
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/main.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
         });
         inline for (modules) |info| {
             exe.root_module.addImport(info.name, info.module);
@@ -41,9 +43,11 @@ pub fn build(b: *std.Build) void {
         const spectest_modules = all_modules;
         const exe = b.addExecutable(.{
             .name = "spec_test",
-            .root_source_file = b.path("src/spec_test.zig"),
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/spec_test.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
         });
         inline for (spectest_modules) |info| {
             exe.root_module.addImport(info.name, info.module);
@@ -63,18 +67,22 @@ pub fn build(b: *std.Build) void {
 
     {
         const unit_tests = b.addTest(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/main.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
         });
         const run_unit_tests = b.addRunArtifact(unit_tests);
 
         const test_step = b.step("test", "Run unit tests");
         inline for (all_modules) |info| {
             const unit_test = b.addTest(.{
-                .root_source_file = b.path(info.path),
-                .target = target,
-                .optimize = optimize,
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path(info.path),
+                    .target = target,
+                    .optimize = optimize,
+                }),
             });
 
             inline for (all_modules) |i| {
