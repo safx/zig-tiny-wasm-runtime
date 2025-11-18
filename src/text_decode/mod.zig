@@ -413,18 +413,138 @@ pub const Parser = struct {
     }
 
     fn parseFunction(self: *Parser, builder: *ModuleBuilder) !void {
-        // Simplified function parsing - just skip for now
-        var depth: u32 = 0;
-        while (self.current_token != .eof) {
-            if (self.current_token == .left_paren) {
-                depth += 1;
-            } else if (self.current_token == .right_paren) {
-                if (depth == 0) break;
-                depth -= 1;
+        // Parse function: (func [name] [(export "name")] [(param ...)] [(result ...)] [...body])
+
+        var func_name: ?[]const u8 = null;
+        var export_name: ?[]const u8 = null;
+        var params: std.ArrayList(wasm_core.types.ValueType) = .{};
+        defer params.deinit(self.allocator);
+        var results: std.ArrayList(wasm_core.types.ValueType) = .{};
+        defer results.deinit(self.allocator);
+        var locals: std.ArrayList(wasm_core.types.ValueType) = .{};
+        defer locals.deinit(self.allocator);
+        var instructions: std.ArrayList(wasm_core.types.Instruction) = .{};
+        defer instructions.deinit(self.allocator);
+
+        // Check for function name ($name)
+        if (self.current_token == .identifier) {
+            const id = self.current_token.identifier;
+            if (id.len > 0 and id[0] == '$') {
+                func_name = id;
+                try self.advance();
             }
-            try self.advance();
         }
-        _ = builder;
+
+        // Parse function attributes (export, param, result, local)
+        while (self.current_token == .left_paren) {
+            try self.advance(); // consume '('
+
+            if (self.current_token != .identifier) break;
+
+            const keyword = self.current_token.identifier;
+
+            if (std.mem.eql(u8, keyword, "export")) {
+                try self.advance(); // consume 'export'
+                if (self.current_token == .string) {
+                    export_name = self.current_token.string;
+                    try self.advance();
+                }
+                try self.expectRightParen();
+            } else if (std.mem.eql(u8, keyword, "param")) {
+                try self.advance(); // consume 'param'
+                // Parse parameter types
+                while (self.current_token != .right_paren and self.current_token != .eof) {
+                    if (self.current_token == .identifier) {
+                        const type_name = self.current_token.identifier;
+                        // Skip parameter names ($x)
+                        if (type_name.len > 0 and type_name[0] == '$') {
+                            try self.advance();
+                            continue;
+                        }
+                        // Parse type
+                        if (try self.parseValueType()) |vtype| {
+                            try params.append(self.allocator, vtype);
+                        }
+                    } else {
+                        try self.advance();
+                    }
+                }
+                try self.expectRightParen();
+            } else if (std.mem.eql(u8, keyword, "result")) {
+                try self.advance(); // consume 'result'
+                // Parse result types
+                while (self.current_token != .right_paren and self.current_token != .eof) {
+                    if (try self.parseValueType()) |vtype| {
+                        try results.append(self.allocator, vtype);
+                    }
+                }
+                try self.expectRightParen();
+            } else if (std.mem.eql(u8, keyword, "local")) {
+                try self.advance(); // consume 'local'
+                // Parse local variable types
+                while (self.current_token != .right_paren and self.current_token != .eof) {
+                    if (self.current_token == .identifier) {
+                        const type_name = self.current_token.identifier;
+                        // Skip local names ($x)
+                        if (type_name.len > 0 and type_name[0] == '$') {
+                            try self.advance();
+                            continue;
+                        }
+                        // Parse type
+                        if (try self.parseValueType()) |vtype| {
+                            try locals.append(self.allocator, vtype);
+                        }
+                    } else {
+                        try self.advance();
+                    }
+                }
+                try self.expectRightParen();
+            } else {
+                // It's an instruction - parse it and continue
+                if (try self.parseInstruction()) |instr| {
+                    try instructions.append(self.allocator, instr);
+                }
+                try self.expectRightParen();
+            }
+        }
+
+        // Parse remaining function body (instructions) - any instructions after attributes
+        try self.parseInstructions(&instructions);
+
+        // Add implicit 'end' instruction at the end of function body
+        try instructions.append(self.allocator, .end);
+
+        // Create function type
+        const func_type_idx = builder.types.items.len;
+        const func_type = wasm_core.types.FuncType{
+            .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, params.items),
+            .result_types = try self.allocator.dupe(wasm_core.types.ValueType, results.items),
+        };
+        try builder.types.append(self.allocator, func_type);
+
+        // Create function
+        const func = wasm_core.types.Func{
+            .type = @intCast(func_type_idx),
+            .locals = try self.allocator.dupe(wasm_core.types.ValueType, locals.items),
+            .body = try self.allocator.dupe(wasm_core.types.Instruction, instructions.items),
+        };
+        try builder.funcs.append(self.allocator, func);
+
+        // Add export if present
+        if (export_name) |name| {
+            const func_idx: u32 = @intCast(builder.funcs.items.len - 1);
+            const exp = wasm_core.types.Export{
+                .name = name,
+                .desc = .{ .function = func_idx },
+            };
+            try builder.exports.append(self.allocator, exp);
+        }
+
+        // TODO: handle named functions (func_name)
+        // Named functions would be stored in a map for later reference
+        if (func_name) |_| {
+            // For now, just ignore the function name
+        }
     }
 
     fn parseExport(self: *Parser, builder: *ModuleBuilder) !void {
@@ -433,6 +553,184 @@ pub const Parser = struct {
             try self.advance();
         }
         _ = builder;
+    }
+
+    /// Parse a value type (i32, i64, f32, f64, v128, funcref, externref)
+    fn parseValueType(self: *Parser) !?wasm_core.types.ValueType {
+        if (self.current_token != .identifier) return null;
+
+        const type_name = self.current_token.identifier;
+        const vtype: wasm_core.types.ValueType = if (std.mem.eql(u8, type_name, "i32"))
+            .i32
+        else if (std.mem.eql(u8, type_name, "i64"))
+            .i64
+        else if (std.mem.eql(u8, type_name, "f32"))
+            .f32
+        else if (std.mem.eql(u8, type_name, "f64"))
+            .f64
+        else if (std.mem.eql(u8, type_name, "v128"))
+            .v128
+        else if (std.mem.eql(u8, type_name, "funcref"))
+            .func_ref
+        else if (std.mem.eql(u8, type_name, "externref"))
+            .extern_ref
+        else
+            return null;
+
+        try self.advance();
+        return vtype;
+    }
+
+    /// Expect and consume a right paren
+    fn expectRightParen(self: *Parser) !void {
+        if (self.current_token != .right_paren) {
+            return TextDecodeError.UnexpectedToken;
+        }
+        try self.advance();
+    }
+
+    /// Parse instructions in function body
+    fn parseInstructions(self: *Parser, instructions: *std.ArrayList(wasm_core.types.Instruction)) !void {
+        while (self.current_token != .eof and self.current_token != .right_paren) {
+            if (self.current_token == .left_paren) {
+                // S-expression instruction like (i32.add)
+                try self.advance(); // consume '('
+
+                if (self.current_token == .identifier) {
+                    if (try self.parseInstruction()) |instr| {
+                        try instructions.append(self.allocator, instr);
+                    }
+                }
+
+                try self.expectRightParen();
+            } else if (self.current_token == .identifier) {
+                // Bare instruction like nop or i32.add
+                if (try self.parseInstruction()) |instr| {
+                    try instructions.append(self.allocator, instr);
+                }
+            } else {
+                // Skip unknown tokens
+                try self.advance();
+            }
+        }
+    }
+
+    /// Parse a single instruction
+    fn parseInstruction(self: *Parser) !?wasm_core.types.Instruction {
+        if (self.current_token != .identifier) return null;
+
+        const instr_name = self.current_token.identifier;
+        try self.advance();
+
+        // Control instructions
+        if (std.mem.eql(u8, instr_name, "nop")) {
+            return .nop;
+        } else if (std.mem.eql(u8, instr_name, "unreachable")) {
+            return .@"unreachable";
+        } else if (std.mem.eql(u8, instr_name, "return")) {
+            return .@"return";
+        } else if (std.mem.eql(u8, instr_name, "drop")) {
+            return .drop;
+        }
+
+        // Variable instructions
+        else if (std.mem.eql(u8, instr_name, "local.get")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .local_get = idx };
+        } else if (std.mem.eql(u8, instr_name, "local.set")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .local_set = idx };
+        } else if (std.mem.eql(u8, instr_name, "local.tee")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .local_tee = idx };
+        } else if (std.mem.eql(u8, instr_name, "global.get")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .global_get = idx };
+        } else if (std.mem.eql(u8, instr_name, "global.set")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .global_set = idx };
+        }
+
+        // Numeric const instructions
+        else if (std.mem.eql(u8, instr_name, "i32.const")) {
+            const val = try self.parseInt(i32);
+            return .{ .i32_const = val };
+        } else if (std.mem.eql(u8, instr_name, "i64.const")) {
+            const val = try self.parseInt(i64);
+            return .{ .i64_const = val };
+        } else if (std.mem.eql(u8, instr_name, "f32.const")) {
+            const val = try self.parseFloat(f32);
+            return .{ .f32_const = val };
+        } else if (std.mem.eql(u8, instr_name, "f64.const")) {
+            const val = try self.parseFloat(f64);
+            return .{ .f64_const = val };
+        }
+
+        // i32 arithmetic
+        else if (std.mem.eql(u8, instr_name, "i32.add")) {
+            return .i32_add;
+        } else if (std.mem.eql(u8, instr_name, "i32.sub")) {
+            return .i32_sub;
+        } else if (std.mem.eql(u8, instr_name, "i32.mul")) {
+            return .i32_mul;
+        } else if (std.mem.eql(u8, instr_name, "i32.div_s")) {
+            return .i32_div_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.div_u")) {
+            return .i32_div_u;
+        }
+
+        // i64 arithmetic
+        else if (std.mem.eql(u8, instr_name, "i64.add")) {
+            return .i64_add;
+        } else if (std.mem.eql(u8, instr_name, "i64.sub")) {
+            return .i64_sub;
+        } else if (std.mem.eql(u8, instr_name, "i64.mul")) {
+            return .i64_mul;
+        }
+
+        // Call instructions
+        else if (std.mem.eql(u8, instr_name, "call")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .call = idx };
+        }
+
+        // Unknown instruction - skip it
+        return null;
+    }
+
+    /// Parse u32 or identifier (for indices)
+    fn parseU32OrIdentifier(self: *Parser) !u32 {
+        if (self.current_token == .number) {
+            const num = try std.fmt.parseInt(u32, self.current_token.number, 10);
+            try self.advance();
+            return num;
+        } else if (self.current_token == .identifier) {
+            // For now, just skip identifiers (like $x) and return 0
+            // TODO: resolve named indices
+            try self.advance();
+            return 0;
+        }
+        return TextDecodeError.UnexpectedToken;
+    }
+
+    /// Parse integer
+    fn parseInt(self: *Parser, comptime T: type) !T {
+        if (self.current_token != .number) {
+            return TextDecodeError.InvalidNumber;
+        }
+        const val = try std.fmt.parseInt(T, self.current_token.number, 10);
+        try self.advance();
+        return val;
+    }
+
+    /// Parse float
+    fn parseFloat(self: *Parser, comptime T: type) !T {
+        if (self.current_token != .number) {
+            return TextDecodeError.InvalidNumber;
+        }
+        const val = try std.fmt.parseFloat(T, self.current_token.number);
+        try self.advance();
+        return val;
     }
 
     /// Skip to the closing paren of the current s-expression

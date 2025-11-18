@@ -87,6 +87,9 @@ fn runWastFile(allocator: std.mem.Allocator, file_path: []const u8, verbose: u8)
 /// Test runner for WAST scripts
 const WastRunner = struct {
     allocator: std.mem.Allocator,
+    engine: runtime.Engine,
+    registered_modules: std.StringHashMap(*runtime.types.ModuleInst),
+    current_module: ?*runtime.types.ModuleInst,
     verbose: u8,
     passed: u32,
     failed: u32,
@@ -95,6 +98,9 @@ const WastRunner = struct {
     fn init(allocator: std.mem.Allocator, verbose: u8) WastRunner {
         return .{
             .allocator = allocator,
+            .engine = runtime.Engine.new(allocator, verbose >= 2),
+            .registered_modules = std.StringHashMap(*runtime.types.ModuleInst).init(allocator),
+            .current_module = null,
             .verbose = verbose,
             .passed = 0,
             .failed = 0,
@@ -103,7 +109,8 @@ const WastRunner = struct {
     }
 
     fn deinit(self: *WastRunner) void {
-        _ = self;
+        self.registered_modules.deinit();
+        self.engine.mod_insts.deinit();
     }
 
     fn runScript(self: *WastRunner, script: *text_decode.wast.WastScript) !void {
@@ -118,12 +125,19 @@ const WastRunner = struct {
                 if (self.verbose >= 2) {
                     std.debug.print("Loading module", .{});
                     if (m.name) |name| {
-                        std.debug.print(" {s}", .{name});
+                        std.debug.print(" '{s}'", .{name});
                     }
                     std.debug.print("\n", .{});
                 }
-                // For now, just skip module loading
-                // TODO: Create engine and load module
+
+                const mod_inst = self.engine.loadModule(m.module, m.name orelse "$last") catch |err| {
+                    if (self.verbose >= 1) {
+                        std.debug.print("✗ Failed to load module: {}\n", .{err});
+                    }
+                    return err;
+                };
+
+                self.current_module = mod_inst;
             },
             .assert_return => |*a| {
                 self.total += 1;
@@ -136,6 +150,10 @@ const WastRunner = struct {
                     self.failed += 1;
                     if (self.verbose >= 1) {
                         std.debug.print("✗ assert_return failed: {}\n", .{err});
+                        // Print more details if very verbose
+                        if (self.verbose >= 2) {
+                            std.debug.print("  Action: {any}\n", .{a.action});
+                        }
                     }
                 }
             },
@@ -144,42 +162,229 @@ const WastRunner = struct {
                 if (self.runAssertTrap(a)) |_| {
                     self.passed += 1;
                     if (self.verbose >= 2) {
-                        std.debug.print("✓ assert_trap passed\n", .{});
+                        std.debug.print("✓ assert_trap passed (expected: {s})\n", .{a.failure});
                     }
                 } else |err| {
                     self.failed += 1;
                     if (self.verbose >= 1) {
                         std.debug.print("✗ assert_trap failed: {}\n", .{err});
+                        std.debug.print("  Expected trap: {s}\n", .{a.failure});
                     }
                 }
             },
-            .assert_invalid => {
+            .assert_invalid => |*a| {
                 self.total += 1;
-                self.passed += 1; // For now, just pass these
-                if (self.verbose >= 2) {
-                    std.debug.print("✓ assert_invalid (skipped)\n", .{});
+                if (self.runAssertInvalid(a)) |_| {
+                    self.passed += 1;
+                    if (self.verbose >= 2) {
+                        std.debug.print("✓ assert_invalid passed (expected: {s})\n", .{a.failure});
+                    }
+                } else |err| {
+                    self.failed += 1;
+                    if (self.verbose >= 1) {
+                        std.debug.print("✗ assert_invalid failed: {}\n", .{err});
+                        std.debug.print("  Expected error: {s}\n", .{a.failure});
+                    }
                 }
             },
-            .register => {
-                // Register commands are not assertions
+            .register => |r| {
                 if (self.verbose >= 2) {
-                    std.debug.print("register (skipped)\n", .{});
+                    std.debug.print("Registering module as '{s}'", .{r.name});
+                    if (r.module_name) |name| {
+                        std.debug.print(" (source: {s})", .{name});
+                    }
+                    std.debug.print("\n", .{});
                 }
+
+                const mod_inst = if (r.module_name) |name|
+                    self.engine.getModuleInstByName(name) orelse return error.ModuleNotFound
+                else
+                    self.current_module orelse return error.NoCurrentModule;
+
+                try self.registered_modules.put(r.name, mod_inst);
             },
         }
     }
 
     fn runAssertReturn(self: *WastRunner, assertion: *const text_decode.wast.AssertReturn) !void {
-        // For now, just succeed - TODO: actually invoke and check
-        _ = self;
-        _ = assertion;
-        return;
+        const results = try self.doAction(&assertion.action);
+        defer self.allocator.free(results);
+
+        // Check result count
+        if (results.len != assertion.expected.len) {
+            if (self.verbose >= 1) {
+                std.debug.print("  Expected {d} results, got {d}\n", .{assertion.expected.len, results.len});
+            }
+            return error.ResultCountMismatch;
+        }
+
+        // Check each result value
+        for (results, assertion.expected) |result, expected| {
+            if (!valuesEqual(result, expected)) {
+                if (self.verbose >= 1) {
+                    std.debug.print("  Expected: {any}, got: {any}\n", .{expected, result});
+                }
+                return error.ValueMismatch;
+            }
+        }
     }
 
     fn runAssertTrap(self: *WastRunner, assertion: *const text_decode.wast.AssertTrap) !void {
-        // For now, just succeed - TODO: actually invoke and check for trap
-        _ = self;
-        _ = assertion;
-        return;
+        const vals = self.doAction(&assertion.action) catch {
+            // Got an error as expected - verify it's a valid trap
+            // For now, accept any error as a trap
+            // TODO: Could be more specific about matching error messages
+            return;
+        };
+
+        // If execution succeeded, that's wrong - we expected a trap
+        self.allocator.free(vals);
+        if (self.verbose >= 1) {
+            std.debug.print("  Expected trap but execution succeeded\n", .{});
+        }
+        return error.ExpectedTrap;
+    }
+
+    fn runAssertInvalid(self: *WastRunner, assertion: *const text_decode.wast.AssertInvalid) !void {
+        // Parse the module text
+        var parser_script = text_decode.parseWastScript(self.allocator, assertion.module_text) catch {
+            // Parse error is acceptable - the module is invalid
+            return;
+        };
+        defer parser_script.deinit();
+
+        // Try to find a module command
+        var module_to_validate: ?*const text_decode.wast.ModuleCommand = null;
+        for (parser_script.commands.items) |*cmd| {
+            if (cmd.* == .module) {
+                module_to_validate = &cmd.module;
+                break;
+            }
+        }
+
+        if (module_to_validate) |mod| {
+            // Try to validate - should fail
+            const validate = @import("wasm-validate");
+            validate.validateModule(mod.module, self.allocator) catch {
+                // Got validation error as expected
+                return;
+            };
+
+            // Validation succeeded - that's wrong, we expected it to fail
+            if (self.verbose >= 1) {
+                std.debug.print("  Expected validation error but module is valid\n", .{});
+            }
+            return error.ExpectedValidationError;
+        } else {
+            // No module found in the parsed script - accept as invalid
+            return;
+        }
+    }
+
+    fn doAction(self: *WastRunner, action: *const text_decode.wast.Action) ![]const runtime.types.Value {
+        switch (action.*) {
+            .invoke => |inv| {
+                const mod_inst = if (inv.module_name) |name|
+                    self.registered_modules.get(name) orelse return error.ModuleNotFound
+                else
+                    self.current_module orelse return error.NoCurrentModule;
+
+                // Find the function by name
+                const func_addr = try self.findFunctionByName(mod_inst, inv.func_name);
+
+                // Convert arguments from wast.Value to runtime.Value
+                const args = try self.allocator.alloc(runtime.types.Value, inv.args.len);
+                defer self.allocator.free(args);
+
+                for (inv.args, 0..) |arg, i| {
+                    args[i] = wastValueToRuntimeValue(arg);
+                }
+
+                // Invoke the function
+                return try self.engine.invokeFunctionByAddr(func_addr, args);
+            },
+            .get => |get| {
+                const mod_inst = if (get.module_name) |name|
+                    self.registered_modules.get(name) orelse return error.ModuleNotFound
+                else
+                    self.current_module orelse return error.NoCurrentModule;
+
+                // Find the global by name
+                const global_val = try self.findGlobalByName(mod_inst, get.global_name);
+
+                // Return as a single-element array
+                const result = try self.allocator.alloc(runtime.types.Value, 1);
+                result[0] = global_val;
+                return result;
+            },
+        }
+    }
+
+    fn findFunctionByName(self: *WastRunner, mod_inst: *runtime.types.ModuleInst, name: []const u8) !runtime.types.FuncAddr {
+        for (mod_inst.exports) |exp| {
+            if (std.mem.eql(u8, exp.name, name)) {
+                if (exp.value == .function) {
+                    return exp.value.function;
+                }
+                return error.ExportIsNotFunction;
+            }
+        }
+        if (self.verbose >= 1) {
+            std.debug.print("  Function '{s}' not found in module exports\n", .{name});
+        }
+        return error.FunctionNotFound;
+    }
+
+    fn findGlobalByName(self: *WastRunner, mod_inst: *runtime.types.ModuleInst, name: []const u8) !runtime.types.Value {
+        for (mod_inst.exports) |exp| {
+            if (std.mem.eql(u8, exp.name, name)) {
+                if (exp.value == .global) {
+                    const global_addr = exp.value.global;
+                    const global_inst = self.engine.instance.store.globals.items[global_addr];
+                    return global_inst.value;
+                }
+                return error.ExportIsNotGlobal;
+            }
+        }
+        if (self.verbose >= 1) {
+            std.debug.print("  Global '{s}' not found in module exports\n", .{name});
+        }
+        return error.GlobalNotFound;
     }
 };
+
+/// Convert wast.Value to runtime.types.Value
+fn wastValueToRuntimeValue(wast_val: text_decode.wast.Value) runtime.types.Value {
+    return switch (wast_val) {
+        .i32 => |v| .{ .i32 = v },
+        .i64 => |v| .{ .i64 = v },
+        .f32 => |v| .{ .f32 = @bitCast(v) },
+        .f64 => |v| .{ .f64 = @bitCast(v) },
+        .v128 => |v| .{ .v128 = v },
+        .ref_null => .{ .func_ref = null },
+        .ref_extern => |v| .{ .extern_ref = v },
+        .ref_func => |v| .{ .func_ref = v },
+    };
+}
+
+/// Compare runtime.Value with wast.Value
+fn valuesEqual(runtime_val: runtime.types.Value, wast_val: text_decode.wast.Value) bool {
+    return switch (wast_val) {
+        .i32 => |expected| runtime_val == .i32 and runtime_val.i32 == expected,
+        .i64 => |expected| runtime_val == .i64 and runtime_val.i64 == expected,
+        .f32 => |expected| blk: {
+            if (runtime_val != .f32) break :blk false;
+            const expected_bits: u32 = @bitCast(expected);
+            break :blk runtime_val.f32 == expected_bits;
+        },
+        .f64 => |expected| blk: {
+            if (runtime_val != .f64) break :blk false;
+            const expected_bits: u64 = @bitCast(expected);
+            break :blk runtime_val.f64 == expected_bits;
+        },
+        .v128 => |expected| runtime_val == .v128 and runtime_val.v128 == expected,
+        .ref_null => runtime_val == .func_ref and runtime_val.func_ref == null,
+        .ref_extern => |expected| runtime_val == .extern_ref and runtime_val.extern_ref != null and runtime_val.extern_ref.? == expected,
+        .ref_func => |expected| runtime_val == .func_ref and runtime_val.func_ref != null and runtime_val.func_ref.? == expected,
+    };
+}
