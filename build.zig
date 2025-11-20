@@ -12,9 +12,12 @@ pub fn build(b: *std.Build) void {
     // Pure type definitions (no runtime dependency)
     const spec_types = ModuleInfo.init(b, "spec-types", "src/spec-types/mod.zig", &.{});
     
+    // Error string mapping (depends on decode, validate, runtime)
+    const spec_test_errors = ModuleInfo.init(b, "spec-test-errors", "src/spec-test-errors/mod.zig", &.{ decode, validate, runtime });
+    
     const text_decode = ModuleInfo.init(b, "wasm-text-decode", "src/text_decode/mod.zig", &.{core});
-    const spec = ModuleInfo.init(b, "wasm-spec-test", "src/spec_test/mod.zig", &.{ core, decode, validate, runtime, spec_types });
-    const all_modules = .{ core, decode, text_decode, validate, runtime, spec_types, spec };
+    const spec = ModuleInfo.init(b, "wasm-spec-test", "src/spec_test/mod.zig", &.{ core, decode, validate, runtime, spec_types, spec_test_errors });
+    const all_modules = .{ core, decode, text_decode, validate, runtime, spec_types, spec_test_errors, spec };
 
     {
         const modules = .{ core, decode, runtime };
