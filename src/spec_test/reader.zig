@@ -104,10 +104,10 @@ fn argFromJson(json: std.json.Value) !Value {
         return Value{ .i64 = @bitCast(num) };
     } else if (strcmp(type_, "f32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
-        return Value{ .f32 = num };
+        return Value{ .f32 = @bitCast(num) };
     } else if (strcmp(type_, "f64")) {
         const num = try std.fmt.parseInt(u64, value, 10);
-        return Value{ .f64 = num };
+        return Value{ .f64 = @bitCast(num) };
     } else if (strcmp(type_, "externref")) {
         var num: ?ExternAddr = null;
         if (!strcmp(value, "null"))
