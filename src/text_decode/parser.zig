@@ -54,7 +54,7 @@ pub const ModuleBuilder = struct {
             .arena = arena,
         };
     }
-    
+
     pub fn deinit(self: *ModuleBuilder) void {
         self.types.deinit(self.allocator);
         self.funcs.deinit(self.allocator);
@@ -78,7 +78,7 @@ pub const Parser = struct {
     pub fn init(allocator: std.mem.Allocator, input: []const u8) !Parser {
         var lexer = Lexer.init(input);
         const current_token = try lexer.nextToken();
-        
+
         return Parser{
             .lexer = lexer,
             .current_token = current_token,
@@ -104,7 +104,7 @@ pub const Parser = struct {
 
     pub fn parseModule(self: *Parser) !wasm_core.types.Module {
         try self.expectToken(.left_paren);
-        
+
         if (self.current_token != .identifier or !std.mem.eql(u8, self.current_token.identifier, "module")) {
             return TextDecodeError.InvalidModule;
         }
@@ -112,25 +112,25 @@ pub const Parser = struct {
 
         var builder = ModuleBuilder.init(self.allocator);
         defer builder.deinit();
-        
+
         while (self.current_token != .right_paren and self.current_token != .eof) {
             try self.parseModuleField(&builder);
         }
-        
+
         try self.expectToken(.right_paren);
         return try builder.build();
     }
 
     fn parseModuleField(self: *Parser, builder: *ModuleBuilder) !void {
         try self.expectToken(.left_paren);
-        
+
         if (self.current_token != .identifier) {
             return TextDecodeError.UnexpectedToken;
         }
-        
+
         const field_name = self.current_token.identifier;
         try self.advance();
-        
+
         if (std.mem.eql(u8, field_name, "memory")) {
             try self.parseMemory(builder);
         } else if (std.mem.eql(u8, field_name, "data")) {
@@ -152,7 +152,7 @@ pub const Parser = struct {
             }
             return;
         }
-        
+
         try self.expectToken(.right_paren);
     }
 
@@ -184,7 +184,8 @@ pub const Parser = struct {
         // Optional memory type (i32 or i64 for memory64)
         if (self.current_token == .identifier and
             (std.mem.eql(u8, self.current_token.identifier, "i32") or
-             std.mem.eql(u8, self.current_token.identifier, "i64"))) {
+                std.mem.eql(u8, self.current_token.identifier, "i64")))
+        {
             try self.advance(); // skip the memory type
         }
 
@@ -236,16 +237,16 @@ pub const Parser = struct {
 
     fn parseData(self: *Parser, builder: *ModuleBuilder) !void {
         // Parse: (data (i32.const offset) "string")
-        
+
         // Parse offset expression
         var offset: wasm_core.types.InitExpression = .{ .i32_const = 0 };
-        
+
         if (self.current_token == .left_paren) {
             try self.advance(); // consume '('
             if (self.current_token == .identifier) {
                 const instr_name = self.current_token.identifier;
                 try self.advance();
-                
+
                 if (std.mem.eql(u8, instr_name, "i32.const")) {
                     if (self.current_token == .number) {
                         const val = try std.fmt.parseInt(i32, self.current_token.number, 10);
@@ -262,14 +263,14 @@ pub const Parser = struct {
             }
             try self.expectRightParen();
         }
-        
+
         // Parse data string
         var data_bytes: []const u8 = "";
         if (self.current_token == .string) {
             data_bytes = self.current_token.string;
             try self.advance();
         }
-        
+
         // Create Data structure
         const data = wasm_core.types.Data{
             .init = data_bytes,
@@ -280,7 +281,7 @@ pub const Parser = struct {
                 },
             },
         };
-        
+
         try builder.datas.append(builder.allocator, data);
     }
 
@@ -325,7 +326,7 @@ pub const Parser = struct {
                 // Not an identifier, so it's the function body
                 break;
             }
-            
+
             try self.advance(); // consume '('
 
             if (self.current_token != .identifier) break;
@@ -432,7 +433,7 @@ pub const Parser = struct {
         if (func_name) |_| {
             // For now, just ignore the function name
         }
-        
+
         // Clear local names for next function
         self.local_names.clearRetainingCapacity();
     }
@@ -511,9 +512,31 @@ pub const Parser = struct {
             return .nop;
         } else if (std.mem.eql(u8, instr_name, "unreachable")) {
             return .@"unreachable";
+        } else if (std.mem.eql(u8, instr_name, "block")) {
+            return .{ .block = .{ .type = .empty, .end = 0 } };
         } else if (std.mem.eql(u8, instr_name, "return")) {
             return .@"return";
-        } else if (std.mem.eql(u8, instr_name, "drop")) {
+        }
+
+        // Branch instructions
+        else if (std.mem.eql(u8, instr_name, "br")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .br = idx };
+        } else if (std.mem.eql(u8, instr_name, "br_if")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .br_if = idx };
+        }
+
+        // Call instructions
+        else if (std.mem.eql(u8, instr_name, "call")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .call = idx };
+        }
+
+        // reference instructions
+
+        // parametric instructions
+        else if (std.mem.eql(u8, instr_name, "drop")) {
             return .drop;
         }
 
@@ -534,46 +557,7 @@ pub const Parser = struct {
             const idx = try self.parseU32OrIdentifier();
             return .{ .global_set = idx };
         }
-
-        // Numeric const instructions
-        else if (std.mem.eql(u8, instr_name, "i32.const")) {
-            const val = try self.parseInt(i32);
-            return .{ .i32_const = val };
-        } else if (std.mem.eql(u8, instr_name, "i64.const")) {
-            const val = try self.parseInt(i64);
-            return .{ .i64_const = val };
-        } else if (std.mem.eql(u8, instr_name, "f32.const")) {
-            const val = try self.parseFloat(f32);
-            return .{ .f32_const = val };
-        } else if (std.mem.eql(u8, instr_name, "f64.const")) {
-            const val = try self.parseFloat(f64);
-            return .{ .f64_const = val };
-        } else if (std.mem.eql(u8, instr_name, "v128.const")) {
-            const val = try self.parseInt(i128);
-            return .{ .v128_const = val };
-        }
-
-        // i32 arithmetic
-        else if (std.mem.eql(u8, instr_name, "i32.add")) {
-            return .i32_add;
-        } else if (std.mem.eql(u8, instr_name, "i32.sub")) {
-            return .i32_sub;
-        } else if (std.mem.eql(u8, instr_name, "i32.mul")) {
-            return .i32_mul;
-        } else if (std.mem.eql(u8, instr_name, "i32.div_s")) {
-            return .i32_div_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.div_u")) {
-            return .i32_div_u;
-        }
-
-        // i64 arithmetic
-        else if (std.mem.eql(u8, instr_name, "i64.add")) {
-            return .i64_add;
-        } else if (std.mem.eql(u8, instr_name, "i64.sub")) {
-            return .i64_sub;
-        } else if (std.mem.eql(u8, instr_name, "i64.mul")) {
-            return .i64_mul;
-        }
+        // table instructions
 
         // Memory instructions
         else if (std.mem.eql(u8, instr_name, "i32.load")) {
@@ -647,28 +631,314 @@ pub const Parser = struct {
             return .{ .i64_store32 = memarg };
         }
 
-        // Call instructions
-        else if (std.mem.eql(u8, instr_name, "call")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .call = idx };
+        // Numeric const instructions
+        else if (std.mem.eql(u8, instr_name, "i32.const")) {
+            const val = try self.parseInt(i32);
+            return .{ .i32_const = val };
+        } else if (std.mem.eql(u8, instr_name, "i64.const")) {
+            const val = try self.parseInt(i64);
+            return .{ .i64_const = val };
+        } else if (std.mem.eql(u8, instr_name, "f32.const")) {
+            const val = try self.parseFloat(f32);
+            return .{ .f32_const = val };
+        } else if (std.mem.eql(u8, instr_name, "f64.const")) {
+            const val = try self.parseFloat(f64);
+            return .{ .f64_const = val };
+        } else if (std.mem.eql(u8, instr_name, "v128.const")) {
+            const val = try self.parseInt(i128);
+            return .{ .v128_const = val };
         }
 
-        // Unknown instruction - skip it
-        return null;
+        // i32 comparison
+        else if (std.mem.eql(u8, instr_name, "i32.eqz")) {
+            return .i32_eqz;
+        } else if (std.mem.eql(u8, instr_name, "i32.eq")) {
+            return .i32_eq;
+        } else if (std.mem.eql(u8, instr_name, "i32.ne")) {
+            return .i32_ne;
+        } else if (std.mem.eql(u8, instr_name, "i32.lt_s")) {
+            return .i32_lt_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.lt_u")) {
+            return .i32_lt_u;
+        } else if (std.mem.eql(u8, instr_name, "i32.gt_s")) {
+            return .i32_gt_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.gt_u")) {
+            return .i32_gt_u;
+        } else if (std.mem.eql(u8, instr_name, "i32.le_s")) {
+            return .i32_le_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.le_u")) {
+            return .i32_le_u;
+        } else if (std.mem.eql(u8, instr_name, "i32.ge_s")) {
+            return .i32_ge_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.ge_u")) {
+            return .i32_ge_u;
+        }
+
+        // i64 comparison
+        else if (std.mem.eql(u8, instr_name, "i64.eqz")) {
+            return .i64_eqz;
+        } else if (std.mem.eql(u8, instr_name, "i64.eq")) {
+            return .i64_eq;
+        } else if (std.mem.eql(u8, instr_name, "i64.ne")) {
+            return .i64_ne;
+        } else if (std.mem.eql(u8, instr_name, "i64.lt_s")) {
+            return .i64_lt_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.lt_u")) {
+            return .i64_lt_u;
+        } else if (std.mem.eql(u8, instr_name, "i64.gt_s")) {
+            return .i64_gt_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.gt_u")) {
+            return .i64_gt_u;
+        } else if (std.mem.eql(u8, instr_name, "i64.le_s")) {
+            return .i64_le_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.le_u")) {
+            return .i64_le_u;
+        } else if (std.mem.eql(u8, instr_name, "i64.ge_s")) {
+            return .i64_ge_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.ge_u")) {
+            return .i64_ge_u;
+        }
+
+        // f32 comparison
+        else if (std.mem.eql(u8, instr_name, "f32.eq")) {
+            return .f32_eq;
+        } else if (std.mem.eql(u8, instr_name, "f32.ne")) {
+            return .f32_ne;
+        } else if (std.mem.eql(u8, instr_name, "f32.lt")) {
+            return .f32_lt;
+        } else if (std.mem.eql(u8, instr_name, "f32.gt")) {
+            return .f32_gt;
+        } else if (std.mem.eql(u8, instr_name, "f32.le")) {
+            return .f32_le;
+        } else if (std.mem.eql(u8, instr_name, "f32.ge")) {
+            return .f32_ge;
+        }
+
+        // f64 comparison
+        else if (std.mem.eql(u8, instr_name, "f64.eq")) {
+            return .f64_eq;
+        } else if (std.mem.eql(u8, instr_name, "f64.ne")) {
+            return .f64_ne;
+        } else if (std.mem.eql(u8, instr_name, "f64.lt")) {
+            return .f64_lt;
+        } else if (std.mem.eql(u8, instr_name, "f64.gt")) {
+            return .f64_gt;
+        } else if (std.mem.eql(u8, instr_name, "f64.le")) {
+            return .f64_le;
+        } else if (std.mem.eql(u8, instr_name, "f64.ge")) {
+            return .f64_ge;
+        }
+
+        // i32 arithmetic
+        else if (std.mem.eql(u8, instr_name, "i32.clz")) {
+            return .i32_clz;
+        } else if (std.mem.eql(u8, instr_name, "i32.ctz")) {
+            return .i32_ctz;
+        } else if (std.mem.eql(u8, instr_name, "i32.popcnt")) {
+            return .i32_popcnt;
+        } else if (std.mem.eql(u8, instr_name, "i32.add")) {
+            return .i32_add;
+        } else if (std.mem.eql(u8, instr_name, "i32.sub")) {
+            return .i32_sub;
+        } else if (std.mem.eql(u8, instr_name, "i32.mul")) {
+            return .i32_mul;
+        } else if (std.mem.eql(u8, instr_name, "i32.div_s")) {
+            return .i32_div_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.div_u")) {
+            return .i32_div_u;
+        } else if (std.mem.eql(u8, instr_name, "i32.rem_s")) {
+            return .i32_rem_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.rem_u")) {
+            return .i32_rem_u;
+        } else if (std.mem.eql(u8, instr_name, "i32.and")) {
+            return .i32_and;
+        } else if (std.mem.eql(u8, instr_name, "i32.or")) {
+            return .i32_or;
+        } else if (std.mem.eql(u8, instr_name, "i32.xor")) {
+            return .i32_xor;
+        } else if (std.mem.eql(u8, instr_name, "i32.shl")) {
+            return .i32_shl;
+        } else if (std.mem.eql(u8, instr_name, "i32.shr_s")) {
+            return .i32_shr_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.shr_u")) {
+            return .i32_shr_u;
+        } else if (std.mem.eql(u8, instr_name, "i32.rotl")) {
+            return .i32_rotl;
+        } else if (std.mem.eql(u8, instr_name, "i32.rotr")) {
+            return .i32_rotr;
+        }
+
+        // i64 arithmetic
+        else if (std.mem.eql(u8, instr_name, "i64.clz")) {
+            return .i64_clz;
+        } else if (std.mem.eql(u8, instr_name, "i64.ctz")) {
+            return .i64_ctz;
+        } else if (std.mem.eql(u8, instr_name, "i64.popcnt")) {
+            return .i64_popcnt;
+        } else if (std.mem.eql(u8, instr_name, "i64.add")) {
+            return .i64_add;
+        } else if (std.mem.eql(u8, instr_name, "i64.sub")) {
+            return .i64_sub;
+        } else if (std.mem.eql(u8, instr_name, "i64.mul")) {
+            return .i64_mul;
+        } else if (std.mem.eql(u8, instr_name, "i64.div_s")) {
+            return .i64_div_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.div_u")) {
+            return .i64_div_u;
+        } else if (std.mem.eql(u8, instr_name, "i64.rem_s")) {
+            return .i64_rem_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.rem_u")) {
+            return .i64_rem_u;
+        } else if (std.mem.eql(u8, instr_name, "i64.and")) {
+            return .i64_and;
+        } else if (std.mem.eql(u8, instr_name, "i64.or")) {
+            return .i64_or;
+        } else if (std.mem.eql(u8, instr_name, "i64.xor")) {
+            return .i64_xor;
+        } else if (std.mem.eql(u8, instr_name, "i64.shl")) {
+            return .i64_shl;
+        } else if (std.mem.eql(u8, instr_name, "i64.shr_s")) {
+            return .i64_shr_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.shr_u")) {
+            return .i64_shr_u;
+        } else if (std.mem.eql(u8, instr_name, "i64.rotl")) {
+            return .i64_rotl;
+        } else if (std.mem.eql(u8, instr_name, "i64.rotr")) {
+            return .i64_rotr;
+        }
+
+        // f32 arithmetic
+        else if (std.mem.eql(u8, instr_name, "f32.abs")) {
+            return .f32_abs;
+        } else if (std.mem.eql(u8, instr_name, "f32.neg")) {
+            return .f32_neg;
+        } else if (std.mem.eql(u8, instr_name, "f32.ceil")) {
+            return .f32_ceil;
+        } else if (std.mem.eql(u8, instr_name, "f32.floor")) {
+            return .f32_floor;
+        } else if (std.mem.eql(u8, instr_name, "f32.trunc")) {
+            return .f32_trunc;
+        } else if (std.mem.eql(u8, instr_name, "f32.nearest")) {
+            return .f32_nearest;
+        } else if (std.mem.eql(u8, instr_name, "f32.sqrt")) {
+            return .f32_sqrt;
+        } else if (std.mem.eql(u8, instr_name, "f32.add")) {
+            return .f32_add;
+        } else if (std.mem.eql(u8, instr_name, "f32.sub")) {
+            return .f32_sub;
+        } else if (std.mem.eql(u8, instr_name, "f32.mul")) {
+            return .f32_mul;
+        } else if (std.mem.eql(u8, instr_name, "f32.div")) {
+            return .f32_div;
+        } else if (std.mem.eql(u8, instr_name, "f32.min")) {
+            return .f32_min;
+        } else if (std.mem.eql(u8, instr_name, "f32.max")) {
+            return .f32_max;
+        } else if (std.mem.eql(u8, instr_name, "f32.copysign")) {
+            return .f32_copy_sign;
+        }
+
+        // f64 arithmetic
+        else if (std.mem.eql(u8, instr_name, "f64.abs")) {
+            return .f64_abs;
+        } else if (std.mem.eql(u8, instr_name, "f64.neg")) {
+            return .f64_neg;
+        } else if (std.mem.eql(u8, instr_name, "f64.ceil")) {
+            return .f64_ceil;
+        } else if (std.mem.eql(u8, instr_name, "f64.floor")) {
+            return .f64_floor;
+        } else if (std.mem.eql(u8, instr_name, "f64.trunc")) {
+            return .f64_trunc;
+        } else if (std.mem.eql(u8, instr_name, "f64.nearest")) {
+            return .f64_nearest;
+        } else if (std.mem.eql(u8, instr_name, "f64.sqrt")) {
+            return .f64_sqrt;
+        } else if (std.mem.eql(u8, instr_name, "f64.add")) {
+            return .f64_add;
+        } else if (std.mem.eql(u8, instr_name, "f64.sub")) {
+            return .f64_sub;
+        } else if (std.mem.eql(u8, instr_name, "f64.mul")) {
+            return .f64_mul;
+        } else if (std.mem.eql(u8, instr_name, "f64.div")) {
+            return .f64_div;
+        } else if (std.mem.eql(u8, instr_name, "f64.min")) {
+            return .f64_min;
+        } else if (std.mem.eql(u8, instr_name, "f64.max")) {
+            return .f64_max;
+        } else if (std.mem.eql(u8, instr_name, "f64.copysign")) {
+            return .f64_copy_sign;
+        }
+
+        // Numeric conversion
+        else if (std.mem.eql(u8, instr_name, "i32.wrap_i64")) {
+            return .i32_wrap_i64;
+        } else if (std.mem.eql(u8, instr_name, "i32.trunc_f32_s")) {
+            return .i32_trunc_f32_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.trunc_f32_u")) {
+            return .i32_trunc_f32_u;
+        } else if (std.mem.eql(u8, instr_name, "i32.trunc_f64_s")) {
+            return .i32_trunc_f64_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.trunc_f64_u")) {
+            return .i32_trunc_f64_u;
+        } else if (std.mem.eql(u8, instr_name, "i64.extend_i32_s")) {
+            return .i64_extend_i32_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.extend_i32_u")) {
+            return .i64_extend_i32_u;
+        } else if (std.mem.eql(u8, instr_name, "i64.trunc_f32_s")) {
+            return .i64_trunc_f32_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.trunc_f32_u")) {
+            return .i64_trunc_f32_u;
+        } else if (std.mem.eql(u8, instr_name, "i64.trunc_f64_s")) {
+            return .i64_trunc_f64_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.trunc_f64_u")) {
+            return .i64_trunc_f64_u;
+        } else if (std.mem.eql(u8, instr_name, "f32.convert_i32_s")) {
+            return .f32_convert_i32_s;
+        } else if (std.mem.eql(u8, instr_name, "f32.convert_i32_u")) {
+            return .f32_convert_i32_u;
+        } else if (std.mem.eql(u8, instr_name, "f32.convert_i64_s")) {
+            return .f32_convert_i64_s;
+        } else if (std.mem.eql(u8, instr_name, "f32.convert_i64_u")) {
+            return .f32_convert_i64_u;
+        } else if (std.mem.eql(u8, instr_name, "f32.demote_f64")) {
+            return .f32_demote_f64;
+        } else if (std.mem.eql(u8, instr_name, "f64.convert_i32_s")) {
+            return .f64_convert_i32_s;
+        } else if (std.mem.eql(u8, instr_name, "f64.convert_i32_u")) {
+            return .f64_convert_i32_u;
+        } else if (std.mem.eql(u8, instr_name, "f64.convert_i64_s")) {
+            return .f64_convert_i64_s;
+        } else if (std.mem.eql(u8, instr_name, "f64.convert_i64_u")) {
+            return .f64_convert_i64_u;
+        } else if (std.mem.eql(u8, instr_name, "f64.promote_f32")) {
+            return .f64_promote_f32;
+        } else if (std.mem.eql(u8, instr_name, "i32.reinterpret_f32")) {
+            return .i32_reinterpret_f32;
+        } else if (std.mem.eql(u8, instr_name, "i64.reinterpret_f64")) {
+            return .i64_reinterpret_f64;
+        } else if (std.mem.eql(u8, instr_name, "f32.reinterpret_i32")) {
+            return .f32_reinterpret_i32;
+        } else if (std.mem.eql(u8, instr_name, "f64.reinterpret_i64")) {
+            return .f64_reinterpret_i64;
+        }
+
+        // Unknown instruction
+        std.debug.print("Unknown instruction: {s}\n", .{instr_name});
+        unreachable;
     }
 
     /// Parse S-expression recursively: (instr arg1 arg2 ...)
     fn parseSExpression(self: *Parser, instructions: *std.ArrayList(wasm_core.types.Instruction)) !void {
         // Parse the instruction
         const instr = try self.parseInstruction() orelse return;
-        
+
         // Recursively parse child expressions (operands)
         while (self.current_token == .left_paren) {
             try self.advance(); // consume '('
             try self.parseSExpression(instructions); // recursive call
             try self.expectRightParen();
         }
-        
+
         // Add parent instruction last (children are already added, so order is correct)
         try instructions.append(self.allocator, instr);
     }
@@ -771,16 +1041,16 @@ pub const Parser = struct {
             const id = self.current_token.identifier;
             // Check if it's NOT a known field name (and not "binary", "quote", or "instance")
             const is_field = std.mem.eql(u8, id, "func") or
-                           std.mem.eql(u8, id, "table") or
-                           std.mem.eql(u8, id, "memory") or
-                           std.mem.eql(u8, id, "data") or
-                           std.mem.eql(u8, id, "export") or
-                           std.mem.eql(u8, id, "type") or
-                           std.mem.eql(u8, id, "import") or
-                           std.mem.eql(u8, id, "global") or
-                           std.mem.eql(u8, id, "binary") or
-                           std.mem.eql(u8, id, "quote") or
-                           std.mem.eql(u8, id, "instance");
+                std.mem.eql(u8, id, "table") or
+                std.mem.eql(u8, id, "memory") or
+                std.mem.eql(u8, id, "data") or
+                std.mem.eql(u8, id, "export") or
+                std.mem.eql(u8, id, "type") or
+                std.mem.eql(u8, id, "import") or
+                std.mem.eql(u8, id, "global") or
+                std.mem.eql(u8, id, "binary") or
+                std.mem.eql(u8, id, "quote") or
+                std.mem.eql(u8, id, "instance");
             if (!is_field) {
                 name = try self.allocator.dupe(u8, self.current_token.identifier);
                 try self.advance();
@@ -941,7 +1211,7 @@ pub const Parser = struct {
                 .module_name = null,
                 .func_name = "",
                 .args = &[_]wast.Value{},
-            }},
+            } },
             .failure = failure,
         };
     }
@@ -981,7 +1251,7 @@ pub const Parser = struct {
         try self.expectToken(.right_paren);
 
         return wast.AssertInvalid{
-            .module_text = "",  // We don't need to store the module text for now
+            .module_text = "", // We don't need to store the module text for now
             .failure = failure,
         };
     }
