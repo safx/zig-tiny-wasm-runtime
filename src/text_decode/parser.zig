@@ -472,6 +472,56 @@ pub const Parser = struct {
         return vtype;
     }
 
+    /// Parse block type: checks for (result ...) and returns appropriate BlockType
+    fn parseBlockType(self: *Parser) !wasm_core.types.Instruction.BlockType {
+        // Check if next token is '(' followed by 'result'
+        if (self.current_token != .left_paren) {
+            return .empty;
+        }
+
+        // Save lexer state for potential backtrack
+        const saved_lexer_pos = self.lexer.pos;
+        const saved_lexer_char = self.lexer.current_char;
+        const saved_token = self.current_token;
+
+        try self.advance(); // consume '('
+
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "result")) {
+            try self.advance(); // consume 'result'
+
+            // Parse the result type(s)
+            var result_types = std.ArrayList(wasm_core.types.ValueType){};
+            defer result_types.deinit(self.allocator);
+
+            while (self.current_token != .right_paren) {
+                if (try self.parseValueType()) |vtype| {
+                    try result_types.append(self.allocator, vtype);
+                } else {
+                    break;
+                }
+            }
+
+            try self.expectRightParen(); // consume ')'
+
+            // Return appropriate BlockType based on result count
+            if (result_types.items.len == 0) {
+                return .empty;
+            } else if (result_types.items.len == 1) {
+                return .{ .value_type = result_types.items[0] };
+            } else {
+                // Multiple results - would need type_index, but for now return first type
+                // TODO: properly handle multiple result types with type indices
+                return .{ .value_type = result_types.items[0] };
+            }
+        } else {
+            // Not a (result ...), restore lexer state
+            self.lexer.pos = saved_lexer_pos;
+            self.lexer.current_char = saved_lexer_char;
+            self.current_token = saved_token;
+            return .empty;
+        }
+    }
+
     /// Expect and consume a right paren
     fn expectRightParen(self: *Parser) !void {
         if (self.current_token != .right_paren) {
@@ -507,13 +557,33 @@ pub const Parser = struct {
         const instr_name = self.current_token.identifier;
         try self.advance();
 
+        // Special keywords (not instructions)
+        if (std.mem.eql(u8, instr_name, "result")) {
+            // 'result' is a type declaration, not an instruction - skip it
+            return null;
+        } else if (std.mem.eql(u8, instr_name, "then")) {
+            // 'then' is part of if structure, not a standalone instruction - skip it
+            return null;
+        }
+
         // Control instructions
         if (std.mem.eql(u8, instr_name, "nop")) {
             return .nop;
         } else if (std.mem.eql(u8, instr_name, "unreachable")) {
             return .@"unreachable";
         } else if (std.mem.eql(u8, instr_name, "block")) {
-            return .{ .block = .{ .type = .empty, .end = 0 } };
+            const block_type = try self.parseBlockType();
+            return .{ .block = .{ .type = block_type, .end = 0 } };
+        } else if (std.mem.eql(u8, instr_name, "loop")) {
+            const block_type = try self.parseBlockType();
+            return .{ .loop = .{ .type = block_type, .end = 0 } };
+        } else if (std.mem.eql(u8, instr_name, "if")) {
+            const block_type = try self.parseBlockType();
+            return .{ .@"if" = .{ .type = block_type, .@"else" = null, .end = 0 } };
+        } else if (std.mem.eql(u8, instr_name, "else")) {
+            return .@"else";
+        } else if (std.mem.eql(u8, instr_name, "end")) {
+            return .end;
         } else if (std.mem.eql(u8, instr_name, "return")) {
             return .@"return";
         }
@@ -525,12 +595,87 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, instr_name, "br_if")) {
             const idx = try self.parseU32OrIdentifier();
             return .{ .br_if = idx };
+        } else if (std.mem.eql(u8, instr_name, "br_table")) {
+            // Parse br_table: (br_table label1 label2 ... default)
+            var label_idxs = std.ArrayList(u32){};
+            defer label_idxs.deinit(self.allocator);
+
+            // Parse all label indices (last one is the default)
+            while (self.current_token == .number or self.current_token == .identifier) {
+                const idx = try self.parseU32OrIdentifier();
+                try label_idxs.append(self.allocator, idx);
+            }
+
+            // Last label is the default, others are the table
+            if (label_idxs.items.len == 0) {
+                return TextDecodeError.InvalidFormat;
+            }
+
+            const default_label = label_idxs.items[label_idxs.items.len - 1];
+            const table_labels = if (label_idxs.items.len > 1)
+                try self.allocator.dupe(u32, label_idxs.items[0 .. label_idxs.items.len - 1])
+            else
+                &[_]u32{};
+
+            return .{ .br_table = .{
+                .label_idxs = table_labels,
+                .default_label_idx = default_label,
+            } };
+        }
+
+        // Parametric instructions
+        else if (std.mem.eql(u8, instr_name, "drop")) {
+            return .drop;
+        } else if (std.mem.eql(u8, instr_name, "select")) {
+            return .select;
         }
 
         // Call instructions
         else if (std.mem.eql(u8, instr_name, "call")) {
             const idx = try self.parseU32OrIdentifier();
             return .{ .call = idx };
+        } else if (std.mem.eql(u8, instr_name, "call_indirect")) {
+            // Parse (type idx) and optional (table idx)
+            var type_idx: u32 = 0;
+            var table_idx: u32 = 0;
+
+            // Expect (type idx)
+            if (self.current_token == .left_paren) {
+                try self.advance(); // consume '('
+                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
+                    try self.advance(); // consume 'type'
+                    type_idx = try self.parseU32OrIdentifier();
+                    try self.expectRightParen();
+                } else {
+                    return TextDecodeError.UnexpectedToken;
+                }
+            } else {
+                return TextDecodeError.UnexpectedToken;
+            }
+
+            // Optional (table idx)
+            if (self.current_token == .left_paren) {
+                const saved_lexer_pos = self.lexer.pos;
+                const saved_lexer_char = self.lexer.current_char;
+                const saved_token = self.current_token;
+
+                try self.advance(); // consume '('
+                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "table")) {
+                    try self.advance(); // consume 'table'
+                    table_idx = try self.parseU32OrIdentifier();
+                    try self.expectRightParen();
+                } else {
+                    // Not a table declaration, restore state
+                    self.lexer.pos = saved_lexer_pos;
+                    self.lexer.current_char = saved_lexer_char;
+                    self.current_token = saved_token;
+                }
+            }
+
+            return .{ .call_indirect = .{
+                .type_idx = type_idx,
+                .table_idx = table_idx,
+            } };
         }
 
         // reference instructions
@@ -629,6 +774,17 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, instr_name, "i64.store32")) {
             const memarg = try self.parseMemArg();
             return .{ .i64_store32 = memarg };
+        } else if (std.mem.eql(u8, instr_name, "memory.size")) {
+            return .memory_size;
+        } else if (std.mem.eql(u8, instr_name, "memory.grow")) {
+            return .memory_grow;
+        } else if (std.mem.eql(u8, instr_name, "memory.init")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .memory_init = idx };
+        } else if (std.mem.eql(u8, instr_name, "memory.copy")) {
+            return .memory_copy;
+        } else if (std.mem.eql(u8, instr_name, "memory.fill")) {
+            return .memory_fill;
         }
 
         // Numeric const instructions
@@ -931,6 +1087,132 @@ pub const Parser = struct {
     fn parseSExpression(self: *Parser, instructions: *std.ArrayList(wasm_core.types.Instruction)) !void {
         // Parse the instruction
         const instr = try self.parseInstruction() orelse return;
+
+        // Special handling for 'block' instruction with folded form: (block (result) ...)
+        if (std.meta.activeTag(instr) == .block) {
+            // Add 'block' instruction first
+            try instructions.append(self.allocator, instr);
+
+            // Parse instructions in block body (inline to avoid circular dependency)
+            while (self.current_token != .eof and self.current_token != .right_paren) {
+                if (self.current_token == .left_paren) {
+                    try self.advance(); // consume '('
+                    try self.parseSExpression(instructions);
+                    try self.expectRightParen();
+                } else if (self.current_token == .identifier) {
+                    if (try self.parseInstruction()) |instr_block| {
+                        try instructions.append(self.allocator, instr_block);
+                    }
+                } else {
+                    try self.advance();
+                }
+            }
+
+            // Add 'end' instruction
+            try instructions.append(self.allocator, .end);
+            return;
+        }
+
+        // Special handling for 'loop' instruction with folded form: (loop (result) ...)
+        if (std.meta.activeTag(instr) == .loop) {
+            // Add 'loop' instruction first
+            try instructions.append(self.allocator, instr);
+
+            // Parse instructions in loop body (inline to avoid circular dependency)
+            while (self.current_token != .eof and self.current_token != .right_paren) {
+                if (self.current_token == .left_paren) {
+                    try self.advance(); // consume '('
+                    try self.parseSExpression(instructions);
+                    try self.expectRightParen();
+                } else if (self.current_token == .identifier) {
+                    if (try self.parseInstruction()) |instr_loop| {
+                        try instructions.append(self.allocator, instr_loop);
+                    }
+                } else {
+                    try self.advance();
+                }
+            }
+
+            // Add 'end' instruction
+            try instructions.append(self.allocator, .end);
+            return;
+        }
+
+        // Special handling for 'if' instruction with folded form: (if (result) (cond) (then ...) (else ...))
+        if (std.meta.activeTag(instr) == .@"if") {
+            // Parse condition expression
+            if (self.current_token == .left_paren) {
+                try self.advance(); // consume '('
+                try self.parseSExpression(instructions);
+                try self.expectRightParen();
+            }
+
+            // Add 'if' instruction
+            try instructions.append(self.allocator, instr);
+
+            // Parse (then ...) block
+            if (self.current_token == .left_paren) {
+                try self.advance(); // consume '('
+                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "then")) {
+                    try self.advance(); // consume 'then'
+                    // Parse instructions in then block (inline parseInstructions to avoid circular dependency)
+                    while (self.current_token != .eof and self.current_token != .right_paren) {
+                        if (self.current_token == .left_paren) {
+                            try self.advance(); // consume '('
+                            try self.parseSExpression(instructions);
+                            try self.expectRightParen();
+                        } else if (self.current_token == .identifier) {
+                            if (try self.parseInstruction()) |instr_then| {
+                                try instructions.append(self.allocator, instr_then);
+                            }
+                        } else {
+                            try self.advance();
+                        }
+                    }
+                    try self.expectRightParen();
+                } else {
+                    return TextDecodeError.UnexpectedToken;
+                }
+            }
+
+            // Parse optional (else ...) block
+            if (self.current_token == .left_paren) {
+                const saved_lexer_pos = self.lexer.pos;
+                const saved_lexer_char = self.lexer.current_char;
+                const saved_token = self.current_token;
+
+                try self.advance(); // consume '('
+                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "else")) {
+                    try self.advance(); // consume 'else'
+                    // Add 'else' instruction
+                    try instructions.append(self.allocator, .@"else");
+                    // Parse instructions in else block (inline parseInstructions to avoid circular dependency)
+                    while (self.current_token != .eof and self.current_token != .right_paren) {
+                        if (self.current_token == .left_paren) {
+                            try self.advance(); // consume '('
+                            try self.parseSExpression(instructions);
+                            try self.expectRightParen();
+                        } else if (self.current_token == .identifier) {
+                            if (try self.parseInstruction()) |instr_else| {
+                                try instructions.append(self.allocator, instr_else);
+                            }
+                        } else {
+                            try self.advance();
+                        }
+                    }
+                    try self.expectRightParen();
+                } else {
+                    // Not an else block, restore state
+                    self.lexer.pos = saved_lexer_pos;
+                    self.lexer.current_char = saved_lexer_char;
+                    self.current_token = saved_token;
+                }
+            }
+
+            // Add 'end' instruction
+            try instructions.append(self.allocator, .end);
+            return;
+        }
 
         // Recursively parse child expressions (operands)
         while (self.current_token == .left_paren) {

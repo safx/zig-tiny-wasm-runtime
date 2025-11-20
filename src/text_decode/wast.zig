@@ -63,6 +63,21 @@ pub const AssertReturn = struct {
         self.action.deinit(allocator);
         allocator.free(self.expected);
     }
+
+    pub fn format(self: @This(), writer: anytype) !void {
+        try writer.writeAll("assert_return (");
+        try self.action.format(writer);
+        if (self.expected.len > 0) {
+            try writer.writeAll(") => (");
+            for (self.expected, 0..) |exp, i| {
+                if (i > 0) try writer.writeAll(", ");
+                try exp.format(writer);
+            }
+            try writer.writeAll(")");
+        } else {
+            try writer.writeAll(")");
+        }
+    }
 };
 
 /// assert_trap assertion
@@ -111,6 +126,13 @@ pub const Action = union(enum) {
             .get => |*g| g.deinit(allocator),
         }
     }
+
+    pub fn format(self: @This(), writer: anytype) !void {
+        switch (self) {
+            .invoke => |inv| try inv.format(writer),
+            .get => |g| try g.format(writer),
+        }
+    }
 };
 
 /// invoke action
@@ -126,6 +148,22 @@ pub const Invoke = struct {
         allocator.free(self.func_name);
         allocator.free(self.args);
     }
+
+    pub fn format(self: @This(), writer: anytype) !void {
+        try writer.writeAll("invoke");
+        if (self.module_name) |module| {
+            try writer.print(" ${s}", .{module});
+        }
+        try writer.print(" \"{s}\"", .{self.func_name});
+        if (self.args.len > 0) {
+            try writer.writeAll(" (");
+            for (self.args, 0..) |arg, i| {
+                if (i > 0) try writer.writeAll(", ");
+                try arg.format(writer);
+            }
+            try writer.writeAll(")");
+        }
+    }
 };
 
 /// get action
@@ -138,6 +176,14 @@ pub const Get = struct {
             allocator.free(name);
         }
         allocator.free(self.global_name);
+    }
+
+    pub fn format(self: @This(), writer: anytype) !void {
+        try writer.writeAll("get");
+        if (self.module_name) |module| {
+            try writer.print(" ${s}", .{module});
+        }
+        try writer.print(" \"{s}\"", .{self.global_name});
     }
 };
 
@@ -152,7 +198,7 @@ pub const Value = union(enum) {
     ref_extern: u32,
     ref_func: u32,
 
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: @This(), writer: anytype) !void {
         switch (self) {
             .i32 => |v| try writer.print("i32.const {d}", .{v}),
             .i64 => |v| try writer.print("i64.const {d}", .{v}),

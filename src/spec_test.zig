@@ -72,7 +72,7 @@ fn runWastFile(allocator: std.mem.Allocator, file_path: []const u8, verbose: u8)
 
     // Print results
     if (verbose >= 1) {
-        std.debug.print("Test Results: {d}/{d} assertions passed\n", .{runner.passed, runner.total});
+        std.debug.print("Test Results: {d}/{d} assertions passed\n", .{ runner.passed, runner.total });
         if (runner.failed > 0) {
             std.debug.print("  Failed: {d}\n", .{runner.failed});
         }
@@ -150,10 +150,7 @@ const WastRunner = struct {
                     self.failed += 1;
                     if (self.verbose >= 1) {
                         std.debug.print("✗ assert_return failed: {}\n", .{err});
-                        // Print more details if very verbose
-                        if (self.verbose >= 2) {
-                            std.debug.print("  Action: {any}\n", .{a.action});
-                        }
+                        std.debug.print("  Action: {f}\n", .{a.action});
                     }
                 }
             },
@@ -213,7 +210,7 @@ const WastRunner = struct {
         // Check result count
         if (results.len != assertion.expected.len) {
             if (self.verbose >= 1) {
-                std.debug.print("  Expected {d} results, got {d}\n", .{assertion.expected.len, results.len});
+                std.debug.print("  Expected {d} results, got {d}\n", .{ assertion.expected.len, results.len });
             }
             return error.ResultCountMismatch;
         }
@@ -222,7 +219,7 @@ const WastRunner = struct {
         for (results, assertion.expected) |result, expected| {
             if (!valuesEqual(result, expected)) {
                 if (self.verbose >= 1) {
-                    std.debug.print("  Expected: {any}, got: {any}\n", .{expected, result});
+                    std.debug.print("  Expected: {any}, got: {any}\n", .{ expected, result });
                 }
                 return error.ValueMismatch;
             }
