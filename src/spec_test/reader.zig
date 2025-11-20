@@ -1,5 +1,4 @@
 const std = @import("std");
-const runtime = @import("wasm-runtime");
 const local_types = @import("./types.zig");
 const errors = @import("./errors.zig");
 
@@ -7,9 +6,9 @@ const errors = @import("./errors.zig");
 const Action = local_types.Action;
 const Command = local_types.Command;
 const Result = local_types.Result;
-const Value = runtime.types.Value;
-const ExternAddr = runtime.types.ExternAddr;
-const FuncAddr = runtime.types.FuncAddr;
+const Value = local_types.Value;
+const ExternAddr = local_types.ExternAddr;
+const FuncAddr = local_types.FuncAddr;
 const FloatType = local_types.FloatType;
 
 pub fn readJsonFromFile(file: std.fs.File, allocator: std.mem.Allocator) ![]const Command {
@@ -104,10 +103,10 @@ fn argFromJson(json: std.json.Value) !Value {
         return Value{ .i64 = @bitCast(num) };
     } else if (strcmp(type_, "f32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
-        return Value{ .f32 = @bitCast(num) };
+        return Value{ .f32 = num };  // Store as bit pattern
     } else if (strcmp(type_, "f64")) {
         const num = try std.fmt.parseInt(u64, value, 10);
-        return Value{ .f64 = @bitCast(num) };
+        return Value{ .f64 = num };  // Store as bit pattern
     } else if (strcmp(type_, "externref")) {
         var num: ?ExternAddr = null;
         if (!strcmp(value, "null"))

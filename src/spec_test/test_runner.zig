@@ -4,6 +4,7 @@ const runtime = @import("wasm-runtime");
 const spec_types = @import("./types.zig");
 const Error = @import("./errors.zig").RuntimeError;
 const reader = @import("./reader.zig");
+const value_convert = @import("./executor/value_convert.zig");
 
 pub const SpecTestRunner = struct {
     const Self = @This();
@@ -80,7 +81,15 @@ pub const SpecTestRunner = struct {
             .invoke => |arg| {
                 const mod = if (arg.module) |name| self.engine.getModuleInstByName(name) orelse current_module else current_module;
                 const func_addr = try getFunctionByName(mod, arg.field);
-                return try self.engine.invokeFunctionByAddr(func_addr.value.function, arg.args);
+                
+                // Convert spec_types.Value → runtime.types.Value
+                const runtime_args = try self.allocator.alloc(runtime.types.Value, arg.args.len);
+                defer self.allocator.free(runtime_args);
+                for (arg.args, 0..) |spec_arg, i| {
+                    runtime_args[i] = value_convert.toRuntimeValue(spec_arg);
+                }
+                
+                return try self.engine.invokeFunctionByAddr(func_addr.value.function, runtime_args);
             },
             .get => |arg| {
                 const mod = if (arg.module) |name| self.engine.getModuleInstByName(name) orelse current_module else current_module;

@@ -1,7 +1,10 @@
 const std = @import("std");
 const decode = @import("wasm-decode");
-const runtime = @import("wasm-runtime");
 const errors = @import("./errors.zig");
+
+// Address types independent of runtime
+pub const FuncAddr = u32;
+pub const ExternAddr = u32;
 
 // https://github.com/WebAssembly/spec/tree/master/interpreter#scripts
 
@@ -47,6 +50,29 @@ pub const Action = union(enum) {
     }
 };
 
+// Value type independent of runtime
+pub const Value = union(enum) {
+    i32: i32,
+    i64: i64,
+    f32: u32, // bit pattern
+    f64: u64, // bit pattern
+    v128: i128,
+    func_ref: ?FuncAddr,
+    extern_ref: ?ExternAddr,
+
+    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        switch (self) {
+            .i32 => |v| try writer.print("i32:{}", .{v}),
+            .i64 => |v| try writer.print("i64:{}", .{v}),
+            .f32 => |v| try writer.print("f32:0x{x}", .{v}),
+            .f64 => |v| try writer.print("f64:0x{x}", .{v}),
+            .v128 => |v| try writer.print("v128:0x{x}", .{v}),
+            .func_ref => |v| try writer.print("func_ref:{?}", .{v}),
+            .extern_ref => |v| try writer.print("extern_ref:{?}", .{v}),
+        }
+    }
+};
+
 pub const Result = union(enum) {
     const Self = @This();
     i32: i32,
@@ -54,8 +80,8 @@ pub const Result = union(enum) {
     f32: FloatType(u32),
     f64: FloatType(u64),
 
-    func_ref: ?runtime.types.FuncAddr,
-    extern_ref: ?runtime.types.ExternAddr,
+    func_ref: ?FuncAddr,
+    extern_ref: ?ExternAddr,
 
     v128: i128, // normal vector
 
@@ -184,9 +210,10 @@ pub const AssertUninstantiableCommandArg = struct {
     }
 };
 
+// Independent of runtime.types.Value
 pub const InvokeCommandArg = struct {
     field: []const u8,
-    args: []const runtime.types.Value,
+    args: []const Value, // Use spec_test.types.Value
     module: ?[]const u8,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
