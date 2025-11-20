@@ -1,6 +1,4 @@
 const std = @import("std");
-const decode = @import("wasm-decode");
-const errors = @import("./errors.zig");
 
 // Address types independent of runtime
 pub const FuncAddr = u32;
@@ -153,60 +151,60 @@ pub const AssertReturnCommandArg = struct {
 pub const AssertTrapCommandArg = struct {
     line: u32,
     action: Action,
-    trap: errors.RuntimeError,
+    error_text: []const u8,  // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{any} (-> {any}) (line:{any})", .{ self.action, self.trap, self.line });
+        _ = try writer.print("{any} (-> \"{s}\") (line:{any})", .{ self.action, self.error_text, self.line });
     }
 };
 
 pub const AssertExhaustionCommandArg = struct {
     line: u32,
     action: Action,
-    trap: errors.RuntimeError,
+    error_text: []const u8,  // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{any} (-> {any}) (line:{any})", .{ self.action, self.trap, self.line });
+        _ = try writer.print("{any} (-> \"{s}\") (line:{any})", .{ self.action, self.error_text, self.line });
     }
 };
 
 pub const AssertMalformedCommandArg = struct {
     line: u32,
     file_name: []const u8,
-    trap: errors.DecodeError,
+    error_text: []const u8,  // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{s} (-> {any}) (line:{any})", .{ self.file_name, self.trap, self.line });
+        _ = try writer.print("{s} (-> \"{s}\") (line:{any})", .{ self.file_name, self.error_text, self.line });
     }
 };
 
 pub const AssertInvalidCommandArg = struct {
     line: u32,
     file_name: []const u8,
-    trap: errors.ValidationError,
+    error_text: []const u8,  // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{s} (-> {any}) (line:{any})", .{ self.file_name, self.trap, self.line });
+        _ = try writer.print("{s} (-> \"{s}\") (line:{any})", .{ self.file_name, self.error_text, self.line });
     }
 };
 
 pub const AssertUnlinkableCommandArg = struct {
     line: u32,
     file_name: []const u8,
-    trap: errors.RuntimeError,
+    error_text: []const u8,  // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{s} (-> {any}) (line:{any})", .{ self.file_name, self.trap, self.line });
+        _ = try writer.print("{s} (-> \"{s}\") (line:{any})", .{ self.file_name, self.error_text, self.line });
     }
 };
 
 pub const AssertUninstantiableCommandArg = struct {
     line: u32,
     file_name: []const u8,
-    trap: errors.RuntimeError,
+    error_text: []const u8,  // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = try writer.print("{s} (-> {any}) (line:{any})", .{ self.file_name, self.trap, self.line });
+        _ = try writer.print("{s} (-> \"{s}\") (line:{any})", .{ self.file_name, self.error_text, self.line });
     }
 };
 

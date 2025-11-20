@@ -2,7 +2,8 @@ const std = @import("std");
 const core = @import("wasm-core");
 const runtime = @import("wasm-runtime");
 const spec_types = @import("./types.zig");
-const Error = @import("./errors.zig").RuntimeError;
+const errors = @import("./errors.zig");
+const Error = errors.RuntimeError;
 const reader = @import("./reader.zig");
 const value_convert = @import("./executor/value_convert.zig");
 
@@ -23,6 +24,8 @@ pub const SpecTestRunner = struct {
         defer file.close();
 
         const commands = try reader.readJsonFromFile(file, self.allocator);
+        defer self.freeCommands(commands);
+        
         try self.execSpecTests(commands);
     }
 
@@ -40,7 +43,11 @@ pub const SpecTestRunner = struct {
                     current_module = try self.engine.loadModuleFromPath(arg.file_name, arg.name);
                 },
                 .register => |arg| {
-                    try self.engine.registerModule(current_module, arg.as_name);
+                    const mod = if (arg.name) |name|
+                        self.engine.getModuleInstByName(name) orelse current_module
+                    else
+                        current_module;
+                    try self.engine.registerModule(mod, arg.as_name);
                 },
                 .action => |arg| {
                     const ret = try self.doAction(arg.action, current_module);
@@ -52,25 +59,39 @@ pub const SpecTestRunner = struct {
                     self.allocator.free(ret);
                 },
                 .assert_trap => |arg| {
+                    const expected_error = errors.runtimeErrorFromString(arg.error_text);
                     _ = self.doAction(arg.action, current_module) catch |err| {
-                        self.validateCatchedError(arg.trap, err, true, arg.line);
+                        self.validateCatchedError(expected_error, err, true, arg.line);
                         continue;
                     };
-                    self.debugPrint("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
+                    self.debugPrint("failure test NOT FAILED (expected failure: {any})\n", .{expected_error});
                     @panic("Test failed.");
                 },
                 .assert_exhaustion => |arg| {
+                    const expected_error = errors.runtimeErrorFromString(arg.error_text);
                     _ = self.doAction(arg.action, current_module) catch |err| {
-                        self.validateCatchedError(arg.trap, err, true, arg.line);
+                        self.validateCatchedError(expected_error, err, true, arg.line);
                         continue;
                     };
-                    self.debugPrint("failure test NOT FAILED (expected failure: {any})\n", .{arg.trap});
+                    self.debugPrint("failure test NOT FAILED (expected failure: {any})\n", .{expected_error});
                     @panic("Test failed.");
                 },
-                .assert_malformed => |arg| try self.expectErrorWhileloadingModule(arg.file_name, arg.trap, false, arg.line),
-                .assert_invalid => |arg| try self.expectErrorWhileloadingModule(arg.file_name, arg.trap, false, arg.line),
-                .assert_unlinkable => |arg| try self.expectErrorWhileloadingModule(arg.file_name, arg.trap, true, arg.line),
-                .assert_uninstantiable => |arg| try self.expectErrorWhileloadingModule(arg.file_name, arg.trap, true, arg.line),
+                .assert_malformed => |arg| {
+                    const expected_error = errors.decodeErrorFromString(arg.error_text);
+                    try self.expectErrorWhileloadingModule(arg.file_name, expected_error, false, arg.line);
+                },
+                .assert_invalid => |arg| {
+                    const expected_error = errors.validationErrorFromString(arg.error_text);
+                    try self.expectErrorWhileloadingModule(arg.file_name, expected_error, false, arg.line);
+                },
+                .assert_unlinkable => |arg| {
+                    const expected_error = errors.linkErrorFromString(arg.error_text);
+                    try self.expectErrorWhileloadingModule(arg.file_name, expected_error, true, arg.line);
+                },
+                .assert_uninstantiable => |arg| {
+                    const expected_error = errors.runtimeErrorFromString(arg.error_text);
+                    try self.expectErrorWhileloadingModule(arg.file_name, expected_error, true, arg.line);
+                },
                 else => {},
             }
         }
@@ -146,6 +167,66 @@ pub const SpecTestRunner = struct {
     fn debugPrint(self: Self, comptime fmt: []const u8, args: anytype) void {
         if (self.verbose_level >= 1) {
             std.debug.print(fmt, args);
+        }
+    }
+    
+    fn freeCommands(self: *Self, commands: []const spec_types.Command) void {
+        for (commands) |cmd| {
+            switch (cmd) {
+                .module => |arg| {
+                    self.allocator.free(arg.file_name);
+                    if (arg.name) |n| self.allocator.free(n);
+                },
+                .register => |arg| {
+                    self.allocator.free(arg.as_name);
+                    if (arg.name) |n| self.allocator.free(n);
+                },
+                .action => |arg| self.freeAction(arg.action),
+                .assert_return => |arg| {
+                    self.freeAction(arg.action);
+                    self.allocator.free(arg.expected);
+                },
+                .assert_trap => |arg| {
+                    self.freeAction(arg.action);
+                    self.allocator.free(arg.error_text);
+                },
+                .assert_exhaustion => |arg| {
+                    self.freeAction(arg.action);
+                    self.allocator.free(arg.error_text);
+                },
+                .assert_malformed => |arg| {
+                    self.allocator.free(arg.file_name);
+                    self.allocator.free(arg.error_text);
+                },
+                .assert_invalid => |arg| {
+                    self.allocator.free(arg.file_name);
+                    self.allocator.free(arg.error_text);
+                },
+                .assert_unlinkable => |arg| {
+                    self.allocator.free(arg.file_name);
+                    self.allocator.free(arg.error_text);
+                },
+                .assert_uninstantiable => |arg| {
+                    self.allocator.free(arg.file_name);
+                    self.allocator.free(arg.error_text);
+                },
+                .module_quote => {},
+            }
+        }
+        self.allocator.free(commands);
+    }
+    
+    fn freeAction(self: *Self, action: spec_types.Action) void {
+        switch (action) {
+            .invoke => |arg| {
+                self.allocator.free(arg.field);
+                if (arg.module) |m| self.allocator.free(m);
+                self.allocator.free(arg.args);
+            },
+            .get => |arg| {
+                self.allocator.free(arg.field);
+                if (arg.module) |m| self.allocator.free(m);
+            },
         }
     }
 };

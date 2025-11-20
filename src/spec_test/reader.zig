@@ -14,9 +14,11 @@ const FloatType = local_types.FloatType;
 pub fn readJsonFromFile(file: std.fs.File, allocator: std.mem.Allocator) ![]const Command {
     const buffer = try file.readToEndAlloc(allocator, 10_000_000);
     defer allocator.free(buffer);
-    const value = try std.json.parseFromSliceLeaky(std.json.Value, allocator, buffer, .{});
+    
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, buffer, .{});
+    defer parsed.deinit();
 
-    return try commandArrayFromJson(value, allocator);
+    return try commandArrayFromJson(parsed.value, allocator);
 }
 
 fn commandArrayFromJson(json: std.json.Value, allocator: std.mem.Allocator) ![]const Command {
@@ -37,14 +39,14 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
         const action = try actionFromJson(obj.get("action").?, allocator);
         return .{ .action = .{ .line = line, .action = action } };
     } else if (strcmp(cmd_type, "module")) {
-        const file_name = obj.get("filename").?.string;
-        const name = getStringOrNull(json.object, "name");
+        const file_name = try allocator.dupe(u8, obj.get("filename").?.string);
+        const name = if (getStringOrNull(json.object, "name")) |n| try allocator.dupe(u8, n) else null;
         return .{ .module = .{ .line = line, .file_name = file_name, .name = name } };
     } else if (strcmp(cmd_type, "module_quote")) {
         return .module_quote;
     } else if (strcmp(cmd_type, "register")) {
-        const name = getStringOrNull(json.object, "name");
-        const as_name = obj.get("as").?.string;
+        const name = if (getStringOrNull(json.object, "name")) |n| try allocator.dupe(u8, n) else null;
+        const as_name = try allocator.dupe(u8, obj.get("as").?.string);
         return .{ .register = .{ .as_name = as_name, .name = name } };
     } else if (strcmp(cmd_type, "assert_return")) {
         const action = try actionFromJson(obj.get("action").?, allocator);
@@ -52,31 +54,31 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
         return .{ .assert_return = .{ .line = line, .action = action, .expected = expected } };
     } else if (strcmp(cmd_type, "assert_trap")) {
         const action = try actionFromJson(obj.get("action").?, allocator);
-        const text = obj.get("text").?.string;
-        return .{ .assert_trap = .{ .line = line, .action = action, .trap = errors.runtimeErrorFromString(text) } };
+        const text = try allocator.dupe(u8, obj.get("text").?.string);
+        return .{ .assert_trap = .{ .line = line, .action = action, .error_text = text } };
     } else if (strcmp(cmd_type, "assert_exhaustion")) {
         const action = try actionFromJson(obj.get("action").?, allocator);
-        const text = obj.get("text").?.string;
-        return .{ .assert_exhaustion = .{ .line = line, .action = action, .trap = errors.runtimeErrorFromString(text) } };
+        const text = try allocator.dupe(u8, obj.get("text").?.string);
+        return .{ .assert_exhaustion = .{ .line = line, .action = action, .error_text = text } };
     } else if (strcmp(cmd_type, "assert_malformed")) {
-        const file_name = obj.get("filename").?.string;
-        const text = obj.get("text").?.string;
-        return .{ .assert_malformed = .{ .line = line, .file_name = file_name, .trap = errors.decodeErrorFromString(text) } };
+        const file_name = try allocator.dupe(u8, obj.get("filename").?.string);
+        const text = try allocator.dupe(u8, obj.get("text").?.string);
+        return .{ .assert_malformed = .{ .line = line, .file_name = file_name, .error_text = text } };
     } else if (strcmp(cmd_type, "assert_invalid")) {
-        const file_name = obj.get("filename").?.string;
-        const text = obj.get("text").?.string;
-        return .{ .assert_invalid = .{ .line = line, .file_name = file_name, .trap = errors.validationErrorFromString(text) } };
+        const file_name = try allocator.dupe(u8, obj.get("filename").?.string);
+        const text = try allocator.dupe(u8, obj.get("text").?.string);
+        return .{ .assert_invalid = .{ .line = line, .file_name = file_name, .error_text = text } };
     } else if (strcmp(cmd_type, "assert_unlinkable")) {
-        const file_name = obj.get("filename").?.string;
-        const text = obj.get("text").?.string;
-        return .{ .assert_unlinkable = .{ .line = line, .file_name = file_name, .trap = errors.linkErrorFromString(text) } };
+        const file_name = try allocator.dupe(u8, obj.get("filename").?.string);
+        const text = try allocator.dupe(u8, obj.get("text").?.string);
+        return .{ .assert_unlinkable = .{ .line = line, .file_name = file_name, .error_text = text } };
     } else if (strcmp(cmd_type, "assert_uninstantiable")) {
-        const file_name = obj.get("filename").?.string;
-        const text = obj.get("text").?.string;
-        return .{ .assert_uninstantiable = .{ .line = line, .file_name = file_name, .trap = errors.runtimeErrorFromString(text) } };
+        const file_name = try allocator.dupe(u8, obj.get("filename").?.string);
+        const text = try allocator.dupe(u8, obj.get("text").?.string);
+        return .{ .assert_uninstantiable = .{ .line = line, .file_name = file_name, .error_text = text } };
     } else {
         std.debug.print("? Unknown command {s}\n", .{cmd_type});
-        unreachable;
+        return error.UnknownCommand;
     }
 }
 
@@ -119,7 +121,7 @@ fn argFromJson(json: std.json.Value) !Value {
         return Value{ .func_ref = num };
     } else {
         std.debug.print("? Unknown arg {s}\n", .{type_});
-        unreachable;
+        return error.UnknownArgType;
     }
 }
 
@@ -188,7 +190,7 @@ fn resultFromJson(json: std.json.Value) !Result {
         return .{ .func_ref = num };
     } else {
         std.debug.print("? Unknown result {s}\n", .{type_});
-        unreachable;
+        return error.UnknownResultType;
     }
 }
 
@@ -249,17 +251,17 @@ fn actionFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Action {
 
     const cmd_type: []const u8 = obj.get("type").?.string;
     if (strcmp(cmd_type, "invoke")) {
-        const module = getStringOrNull(json.object, "module");
-        const field = obj.get("field").?.string;
+        const module = if (getStringOrNull(json.object, "module")) |m| try allocator.dupe(u8, m) else null;
+        const field = try allocator.dupe(u8, obj.get("field").?.string);
         const args: []const Value = try argArrayFromJson(obj.get("args").?, allocator);
         return .{ .invoke = .{ .field = field, .args = args, .module = module } };
     } else if (strcmp(cmd_type, "get")) {
-        const module = getStringOrNull(json.object, "module");
-        const field = obj.get("field").?.string;
+        const module = if (getStringOrNull(json.object, "module")) |m| try allocator.dupe(u8, m) else null;
+        const field = try allocator.dupe(u8, obj.get("field").?.string);
         return .{ .get = .{ .field = field, .module = module } };
     } else {
-        std.debug.print("? Unknown action type: {s}", .{cmd_type});
-        unreachable;
+        std.debug.print("? Unknown action type: {s}\n", .{cmd_type});
+        return error.UnknownActionType;
     }
 }
 
