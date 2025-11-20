@@ -14,7 +14,7 @@ const FloatType = local_types.FloatType;
 pub fn readJsonFromFile(file: std.fs.File, allocator: std.mem.Allocator) ![]const Command {
     const buffer = try file.readToEndAlloc(allocator, 10_000_000);
     defer allocator.free(buffer);
-    
+
     const parsed = try std.json.parseFromSlice(std.json.Value, allocator, buffer, .{});
     defer parsed.deinit();
 
@@ -105,10 +105,10 @@ fn argFromJson(json: std.json.Value) !Value {
         return Value{ .i64 = @bitCast(num) };
     } else if (strcmp(type_, "f32")) {
         const num = try std.fmt.parseInt(u32, value, 10);
-        return Value{ .f32 = num };  // Store as bit pattern
+        return Value{ .f32 = num }; // Store as bit pattern
     } else if (strcmp(type_, "f64")) {
         const num = try std.fmt.parseInt(u64, value, 10);
-        return Value{ .f64 = num };  // Store as bit pattern
+        return Value{ .f64 = num }; // Store as bit pattern
     } else if (strcmp(type_, "externref")) {
         var num: ?ExternAddr = null;
         if (!strcmp(value, "null"))

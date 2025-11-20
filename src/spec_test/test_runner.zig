@@ -25,7 +25,7 @@ pub const SpecTestRunner = struct {
 
         const commands = try reader.readJsonFromFile(file, self.allocator);
         defer self.freeCommands(commands);
-        
+
         try self.execSpecTests(commands);
     }
 
@@ -102,14 +102,14 @@ pub const SpecTestRunner = struct {
             .invoke => |arg| {
                 const mod = if (arg.module) |name| self.engine.getModuleInstByName(name) orelse current_module else current_module;
                 const func_addr = try getFunctionByName(mod, arg.field);
-                
+
                 // Convert spec_types.Value → runtime.types.Value
                 const runtime_args = try self.allocator.alloc(runtime.types.Value, arg.args.len);
                 defer self.allocator.free(runtime_args);
                 for (arg.args, 0..) |spec_arg, i| {
                     runtime_args[i] = value_convert.toRuntimeValue(spec_arg);
                 }
-                
+
                 return try self.engine.invokeFunctionByAddr(func_addr.value.function, runtime_args);
             },
             .get => |arg| {
@@ -169,7 +169,7 @@ pub const SpecTestRunner = struct {
             std.debug.print(fmt, args);
         }
     }
-    
+
     fn freeCommands(self: *Self, commands: []const spec_types.Command) void {
         for (commands) |cmd| {
             switch (cmd) {
@@ -215,7 +215,7 @@ pub const SpecTestRunner = struct {
         }
         self.allocator.free(commands);
     }
-    
+
     fn freeAction(self: *Self, action: spec_types.Action) void {
         switch (action) {
             .invoke => |arg| {

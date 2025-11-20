@@ -7,7 +7,7 @@ pub fn toRuntimeValue(val: spec_types.Value) runtime.types.Value {
     return switch (val) {
         .i32 => |v| .{ .i32 = v },
         .i64 => |v| .{ .i64 = v },
-        .f32 => |v| .{ .f32 = v },  // Bit pattern as-is
+        .f32 => |v| .{ .f32 = v }, // Bit pattern as-is
         .f64 => |v| .{ .f64 = v },
         .v128 => |v| .{ .v128 = v },
         .func_ref => |v| .{ .func_ref = v },

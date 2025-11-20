@@ -151,7 +151,7 @@ pub const AssertReturnCommandArg = struct {
 pub const AssertTrapCommandArg = struct {
     line: u32,
     action: Action,
-    error_text: []const u8,  // Error string from test file
+    error_text: []const u8, // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         _ = try writer.print("{any} (-> \"{s}\") (line:{any})", .{ self.action, self.error_text, self.line });
@@ -161,7 +161,7 @@ pub const AssertTrapCommandArg = struct {
 pub const AssertExhaustionCommandArg = struct {
     line: u32,
     action: Action,
-    error_text: []const u8,  // Error string from test file
+    error_text: []const u8, // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         _ = try writer.print("{any} (-> \"{s}\") (line:{any})", .{ self.action, self.error_text, self.line });
@@ -171,7 +171,7 @@ pub const AssertExhaustionCommandArg = struct {
 pub const AssertMalformedCommandArg = struct {
     line: u32,
     file_name: []const u8,
-    error_text: []const u8,  // Error string from test file
+    error_text: []const u8, // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         _ = try writer.print("{s} (-> \"{s}\") (line:{any})", .{ self.file_name, self.error_text, self.line });
@@ -181,7 +181,7 @@ pub const AssertMalformedCommandArg = struct {
 pub const AssertInvalidCommandArg = struct {
     line: u32,
     file_name: []const u8,
-    error_text: []const u8,  // Error string from test file
+    error_text: []const u8, // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         _ = try writer.print("{s} (-> \"{s}\") (line:{any})", .{ self.file_name, self.error_text, self.line });
@@ -191,7 +191,7 @@ pub const AssertInvalidCommandArg = struct {
 pub const AssertUnlinkableCommandArg = struct {
     line: u32,
     file_name: []const u8,
-    error_text: []const u8,  // Error string from test file
+    error_text: []const u8, // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         _ = try writer.print("{s} (-> \"{s}\") (line:{any})", .{ self.file_name, self.error_text, self.line });
@@ -201,7 +201,7 @@ pub const AssertUnlinkableCommandArg = struct {
 pub const AssertUninstantiableCommandArg = struct {
     line: u32,
     file_name: []const u8,
-    error_text: []const u8,  // Error string from test file
+    error_text: []const u8, // Error string from test file
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         _ = try writer.print("{s} (-> \"{s}\") (line:{any})", .{ self.file_name, self.error_text, self.line });
