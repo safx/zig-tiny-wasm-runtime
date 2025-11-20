@@ -789,10 +789,56 @@ pub const Parser = struct {
 
         // Numeric const instructions
         else if (std.mem.eql(u8, instr_name, "i32.const")) {
-            const val = try self.parseInt(i32);
+            if (self.current_token != .number) {
+                return TextDecodeError.InvalidNumber;
+            }
+            const number_str = self.current_token.number;
+
+            // Remove underscores
+            var buf: [256]u8 = undefined;
+            var buf_idx: usize = 0;
+            for (number_str) |c| {
+                if (c != '_') {
+                    if (buf_idx >= buf.len) return TextDecodeError.InvalidNumber;
+                    buf[buf_idx] = c;
+                    buf_idx += 1;
+                }
+            }
+            const clean_str = buf[0..buf_idx];
+
+            const val: i32 = if (clean_str.len > 0 and clean_str[0] == '-') blk: {
+                break :blk try std.fmt.parseInt(i32, clean_str, 0);
+            } else blk: {
+                const unsigned_value = try std.fmt.parseInt(u32, clean_str, 0);
+                break :blk @bitCast(unsigned_value);
+            };
+            try self.advance();
             return .{ .i32_const = val };
         } else if (std.mem.eql(u8, instr_name, "i64.const")) {
-            const val = try self.parseInt(i64);
+            if (self.current_token != .number) {
+                return TextDecodeError.InvalidNumber;
+            }
+            const number_str = self.current_token.number;
+
+            // Remove underscores
+            var buf: [256]u8 = undefined;
+            var buf_idx: usize = 0;
+            for (number_str) |c| {
+                if (c != '_') {
+                    if (buf_idx >= buf.len) return TextDecodeError.InvalidNumber;
+                    buf[buf_idx] = c;
+                    buf_idx += 1;
+                }
+            }
+            const clean_str = buf[0..buf_idx];
+
+            const val: i64 = if (clean_str.len > 0 and clean_str[0] == '-') blk: {
+                break :blk try std.fmt.parseInt(i64, clean_str, 0);
+            } else blk: {
+                const unsigned_value = try std.fmt.parseInt(u64, clean_str, 0);
+                break :blk @bitCast(unsigned_value);
+            };
+            try self.advance();
             return .{ .i64_const = val };
         } else if (std.mem.eql(u8, instr_name, "f32.const")) {
             const val = try self.parseFloat(f32);
@@ -1274,17 +1320,75 @@ pub const Parser = struct {
         if (self.current_token != .number) {
             return TextDecodeError.InvalidNumber;
         }
-        const val = try std.fmt.parseInt(T, self.current_token.number, 10);
+
+        // Remove underscores from the number string (WASM allows underscores in numeric literals)
+        var buf: [256]u8 = undefined;
+        var buf_idx: usize = 0;
+        for (self.current_token.number) |c| {
+            if (c != '_') {
+                if (buf_idx >= buf.len) return TextDecodeError.InvalidNumber;
+                buf[buf_idx] = c;
+                buf_idx += 1;
+            }
+        }
+
+        const val = try std.fmt.parseInt(T, buf[0..buf_idx], 0);
         try self.advance();
         return val;
     }
 
     /// Parse float
     fn parseFloat(self: *Parser, comptime T: type) !T {
-        if (self.current_token != .number) {
+        const val: T = if (self.current_token == .identifier) blk: {
+            const id = self.current_token.identifier;
+            if (std.mem.startsWith(u8, id, "nan") or std.mem.startsWith(u8, id, "-nan")) {
+                const is_negative = std.mem.startsWith(u8, id, "-");
+                const nan_start: usize = if (is_negative) 4 else 3;
+
+                if (id.len > nan_start and id[nan_start] == ':') {
+                    const payload_str = id[nan_start + 1 ..];
+                    var buf: [256]u8 = undefined;
+                    var buf_idx: usize = 0;
+                    for (payload_str) |c| {
+                        if (c != '_') {
+                            if (buf_idx >= buf.len) return TextDecodeError.InvalidNumber;
+                            buf[buf_idx] = c;
+                            buf_idx += 1;
+                        }
+                    }
+
+                    if (T == f32) {
+                        const payload = try std.fmt.parseInt(u32, buf[0..buf_idx], 0);
+                        const sign_bit: u32 = if (is_negative) 1 << 31 else 0;
+                        const exponent: u32 = 0xFF << 23;
+                        const mantissa: u32 = payload & 0x7FFFFF;
+                        const bits = sign_bit | exponent | mantissa;
+                        break :blk @bitCast(bits);
+                    } else {
+                        const payload = try std.fmt.parseInt(u64, buf[0..buf_idx], 0);
+                        const sign_bit: u64 = if (is_negative) 1 << 63 else 0;
+                        const exponent: u64 = 0x7FF << 52;
+                        const mantissa: u64 = payload & 0xFFFFFFFFFFFFF;
+                        const bits = sign_bit | exponent | mantissa;
+                        break :blk @bitCast(bits);
+                    }
+                } else {
+                    const sign: T = if (is_negative) -1.0 else 1.0;
+                    break :blk sign * std.math.nan(T);
+                }
+            } else if (std.mem.eql(u8, id, "inf")) {
+                break :blk std.math.inf(T);
+            } else if (std.mem.eql(u8, id, "-inf")) {
+                break :blk -std.math.inf(T);
+            } else {
+                return TextDecodeError.InvalidNumber;
+            }
+        } else if (self.current_token == .number) blk: {
+            break :blk try std.fmt.parseFloat(T, self.current_token.number);
+        } else {
             return TextDecodeError.InvalidNumber;
-        }
-        const val = try std.fmt.parseFloat(T, self.current_token.number);
+        };
+
         try self.advance();
         return val;
     }
@@ -1659,12 +1763,25 @@ pub const Parser = struct {
                 return TextDecodeError.UnexpectedToken;
             }
             const number_str = self.current_token.number;
-            const value: i32 = if (number_str.len > 0 and number_str[0] == '-') blk: {
+
+            // Remove underscores from number string
+            var buf: [256]u8 = undefined;
+            var buf_idx: usize = 0;
+            for (number_str) |c| {
+                if (c != '_') {
+                    if (buf_idx >= buf.len) return TextDecodeError.InvalidNumber;
+                    buf[buf_idx] = c;
+                    buf_idx += 1;
+                }
+            }
+            const clean_str = buf[0..buf_idx];
+
+            const value: i32 = if (clean_str.len > 0 and clean_str[0] == '-') blk: {
                 // Negative number: parse directly as i32
-                break :blk try std.fmt.parseInt(i32, number_str, 0);
+                break :blk try std.fmt.parseInt(i32, clean_str, 0);
             } else blk: {
                 // Positive or hex number: parse as u32 then bitcast
-                const unsigned_value = try std.fmt.parseInt(u32, number_str, 0);
+                const unsigned_value = try std.fmt.parseInt(u32, clean_str, 0);
                 break :blk @bitCast(unsigned_value);
             };
             try self.advance();
@@ -1675,12 +1792,25 @@ pub const Parser = struct {
                 return TextDecodeError.UnexpectedToken;
             }
             const number_str = self.current_token.number;
-            const value: i64 = if (number_str.len > 0 and number_str[0] == '-') blk: {
+
+            // Remove underscores from number string
+            var buf: [256]u8 = undefined;
+            var buf_idx: usize = 0;
+            for (number_str) |c| {
+                if (c != '_') {
+                    if (buf_idx >= buf.len) return TextDecodeError.InvalidNumber;
+                    buf[buf_idx] = c;
+                    buf_idx += 1;
+                }
+            }
+            const clean_str = buf[0..buf_idx];
+
+            const value: i64 = if (clean_str.len > 0 and clean_str[0] == '-') blk: {
                 // Negative number: parse directly as i64
-                break :blk try std.fmt.parseInt(i64, number_str, 0);
+                break :blk try std.fmt.parseInt(i64, clean_str, 0);
             } else blk: {
                 // Positive or hex number: parse as u64 then bitcast
-                const unsigned_value = try std.fmt.parseInt(u64, number_str, 0);
+                const unsigned_value = try std.fmt.parseInt(u64, clean_str, 0);
                 break :blk @bitCast(unsigned_value);
             };
             try self.advance();
@@ -1691,8 +1821,35 @@ pub const Parser = struct {
                 const id = self.current_token.identifier;
                 if (std.mem.startsWith(u8, id, "nan") or std.mem.startsWith(u8, id, "-nan")) {
                     // NaN (with optional bit pattern and optional sign)
-                    const sign: f32 = if (std.mem.startsWith(u8, id, "-")) -1.0 else 1.0;
-                    break :blk sign * std.math.nan(f32);
+                    const is_negative = std.mem.startsWith(u8, id, "-");
+                    const nan_start: usize = if (is_negative) 4 else 3; // Skip "-nan" or "nan"
+
+                    // Check for payload: nan:0x<hex>
+                    if (id.len > nan_start and id[nan_start] == ':') {
+                        const payload_str = id[nan_start + 1 ..];
+                        // Remove underscores from payload
+                        var buf: [256]u8 = undefined;
+                        var buf_idx: usize = 0;
+                        for (payload_str) |c| {
+                            if (c != '_') {
+                                if (buf_idx >= buf.len) return TextDecodeError.InvalidNumber;
+                                buf[buf_idx] = c;
+                                buf_idx += 1;
+                            }
+                        }
+                        const payload = try std.fmt.parseInt(u32, buf[0..buf_idx], 0);
+
+                        // Build NaN bit pattern: sign(1) | exponent(8 bits all 1) | mantissa(23 bits with payload)
+                        const sign_bit: u32 = if (is_negative) 1 << 31 else 0;
+                        const exponent: u32 = 0xFF << 23; // All 1s in exponent
+                        const mantissa: u32 = payload & 0x7FFFFF; // 23 bits
+                        const bits = sign_bit | exponent | mantissa;
+                        break :blk @bitCast(bits);
+                    } else {
+                        // Plain nan without payload
+                        const sign: f32 = if (is_negative) -1.0 else 1.0;
+                        break :blk sign * std.math.nan(f32);
+                    }
                 } else if (std.mem.eql(u8, id, "inf")) {
                     break :blk std.math.inf(f32);
                 } else if (std.mem.eql(u8, id, "-inf")) {
@@ -1713,8 +1870,35 @@ pub const Parser = struct {
                 const id = self.current_token.identifier;
                 if (std.mem.startsWith(u8, id, "nan") or std.mem.startsWith(u8, id, "-nan")) {
                     // NaN (with optional bit pattern and optional sign)
-                    const sign: f64 = if (std.mem.startsWith(u8, id, "-")) -1.0 else 1.0;
-                    break :blk sign * std.math.nan(f64);
+                    const is_negative = std.mem.startsWith(u8, id, "-");
+                    const nan_start: usize = if (is_negative) 4 else 3; // Skip "-nan" or "nan"
+
+                    // Check for payload: nan:0x<hex>
+                    if (id.len > nan_start and id[nan_start] == ':') {
+                        const payload_str = id[nan_start + 1 ..];
+                        // Remove underscores from payload
+                        var buf: [256]u8 = undefined;
+                        var buf_idx: usize = 0;
+                        for (payload_str) |c| {
+                            if (c != '_') {
+                                if (buf_idx >= buf.len) return TextDecodeError.InvalidNumber;
+                                buf[buf_idx] = c;
+                                buf_idx += 1;
+                            }
+                        }
+                        const payload = try std.fmt.parseInt(u64, buf[0..buf_idx], 0);
+
+                        // Build NaN bit pattern: sign(1) | exponent(11 bits all 1) | mantissa(52 bits with payload)
+                        const sign_bit: u64 = if (is_negative) 1 << 63 else 0;
+                        const exponent: u64 = 0x7FF << 52; // All 1s in exponent (11 bits)
+                        const mantissa: u64 = payload & 0xFFFFFFFFFFFFF; // 52 bits
+                        const bits = sign_bit | exponent | mantissa;
+                        break :blk @bitCast(bits);
+                    } else {
+                        // Plain nan without payload
+                        const sign: f64 = if (is_negative) -1.0 else 1.0;
+                        break :blk sign * std.math.nan(f64);
+                    }
                 } else if (std.mem.eql(u8, id, "inf")) {
                     break :blk std.math.inf(f64);
                 } else if (std.mem.eql(u8, id, "-inf")) {

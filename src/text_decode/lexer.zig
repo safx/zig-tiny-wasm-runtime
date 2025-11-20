@@ -91,7 +91,8 @@ pub const Lexer = struct {
             }
 
             if (self.current_char == ';' or
-                (self.current_char == '(' and self.pos + 1 < self.input.len and self.input[self.pos + 1] == ';')) {
+                (self.current_char == '(' and self.pos + 1 < self.input.len and self.input[self.pos + 1] == ';'))
+            {
                 self.skipComment();
                 continue;
             }
@@ -122,14 +123,14 @@ pub const Lexer = struct {
         // Save current state
         const saved_pos = self.pos;
         const saved_char = self.current_char;
-        
+
         // Get next token
         const token = try self.nextToken();
-        
+
         // Restore state
         self.pos = saved_pos;
         self.current_char = saved_char;
-        
+
         return token;
     }
 
@@ -139,7 +140,7 @@ pub const Lexer = struct {
 
         while (self.current_char) |char| {
             if (char == '"') {
-                const result = self.input[start + 1..self.pos];
+                const result = self.input[start + 1 .. self.pos];
                 self.advance(); // skip closing quote
                 return Token{ .string = result };
             }
@@ -165,7 +166,8 @@ pub const Lexer = struct {
 
         // Check if it's a number
         if (self.isDigit(text[0]) or
-            (text.len > 1 and (text[0] == '+' or text[0] == '-') and self.isDigit(text[1]))) {
+            (text.len > 1 and (text[0] == '+' or text[0] == '-') and self.isDigit(text[1])))
+        {
             return Token{ .number = text };
         }
 
@@ -175,13 +177,13 @@ pub const Lexer = struct {
     fn isAlphaNumeric(self: *Lexer, char: u8) bool {
         _ = self;
         return (char >= 'a' and char <= 'z') or
-               (char >= 'A' and char <= 'Z') or
-               (char >= '0' and char <= '9') or
-               char == '_' or char == '.' or char == '+' or char == '-' or char == '$' or
-               char == '=' or char == ':' or char == '>' or char == '<' or char == '@' or
-               char == '!' or char == '#' or char == '*' or char == '^' or char == '&' or
-               char == '?' or char == '%' or char == '\'' or char == '`' or
-               char == '|' or char == '/' or char == '\\' or char == '~';
+            (char >= 'A' and char <= 'Z') or
+            (char >= '0' and char <= '9') or
+            char == '_' or char == '.' or char == '+' or char == '-' or char == '$' or
+            char == '=' or char == ':' or char == '>' or char == '<' or char == '@' or
+            char == '!' or char == '#' or char == '*' or char == '^' or char == '&' or
+            char == '?' or char == '%' or char == '\'' or char == '`' or
+            char == '|' or char == '/' or char == '\\' or char == '~';
     }
 
     fn isDigit(self: *Lexer, char: u8) bool {
