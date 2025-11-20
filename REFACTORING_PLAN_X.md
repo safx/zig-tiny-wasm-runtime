@@ -191,7 +191,7 @@ Rollback: tag-based reset.
 
 ## 13. Task Matrix (Checklist)
 (See Phases for detailed boxes)
-- [ ] Phase 0
+- [x] Phase 0
 - [ ] Phase 1
 - [ ] Phase 2
 - [ ] Phase 3
