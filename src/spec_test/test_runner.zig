@@ -182,29 +182,29 @@ fn checkReturnValue(expected: spec_types.Result, result: runtime.types.Value) bo
         .v128 => |val| val == result.v128,
         .vec_f32 => |e_vec| blk: {
             const r_vec = result.asVec(@Vector(4, u32));
-            var ret: bool = true;
             for (e_vec, 0..) |ev, idx| {
                 const rv = r_vec[idx];
-                ret = ret or switch (ev) {
+                const match = switch (ev) {
                     .value => |v| v == rv,
                     .nan_canonical => isCanonicalNanF32(rv),
                     .nan_arithmetic => isArithmeticNanF32(rv),
                 };
+                if (!match) break :blk false;
             }
-            break :blk ret;
+            break :blk true;
         },
         .vec_f64 => |e_vec| blk: {
             const r_vec = result.asVec(@Vector(2, u64));
-            var ret: bool = true;
             for (e_vec, 0..) |ev, idx| {
                 const rv = r_vec[idx];
-                ret = ret or switch (ev) {
+                const match = switch (ev) {
                     .value => |v| v == rv,
                     .nan_canonical => isCanonicalNanF64(rv),
                     .nan_arithmetic => isArithmeticNanF64(rv),
                 };
+                if (!match) break :blk false;
             }
-            break :blk ret;
+            break :blk true;
         },
     };
 }

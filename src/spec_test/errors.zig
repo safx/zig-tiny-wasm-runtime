@@ -64,7 +64,7 @@ pub fn decodeErrorFromString(str: []const u8) DecodeError {
     if (strcmp(str, "alignment must be a power of two")) return E.AlignmentMustBePowerOfTwo;
 
     std.debug.print("? Unknown decode error \"{s}\"\n", .{str});
-    unreachable;
+    return E.OtherError;
 }
 
 pub fn validationErrorFromString(str: []const u8) ValidationError {
@@ -94,7 +94,7 @@ pub fn validationErrorFromString(str: []const u8) ValidationError {
     if (strcmp(str, "invalid lane index")) return E.InvalidLaneIndex;
 
     std.debug.print("? Unknown validation error \"{s}\"\n", .{str});
-    unreachable;
+    return E.OtherError;
 }
 
 pub fn linkErrorFromString(str: []const u8) RuntimeError {
@@ -102,8 +102,8 @@ pub fn linkErrorFromString(str: []const u8) RuntimeError {
     if (strcmp(str, "incompatible import type")) return E.IncompatibleImportType;
     if (strcmp(str, "unknown import")) return E.UnknownImport;
 
-    std.debug.print("? Unknown decode error \"{s}\"\n", .{str});
-    unreachable;
+    std.debug.print("? Unknown link error \"{s}\"\n", .{str});
+    return E.OtherError;
 }
 
 pub fn runtimeErrorFromString(str: []const u8) RuntimeError {
@@ -120,7 +120,7 @@ pub fn runtimeErrorFromString(str: []const u8) RuntimeError {
     if (strcmp(str, "unreachable")) return E.Unreachable;
 
     std.debug.print("? Unknown runtime error \"{s}\"\n", .{str});
-    unreachable;
+    return E.OtherError;
 }
 
 inline fn strcmp(a: []const u8, b: []const u8) bool {

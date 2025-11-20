@@ -20,4 +20,5 @@ pub const Error = error{
     DuplicateExportName,
     ImmutableGlobal,
     InvalidLaneIndex,
+    OtherError,
 };

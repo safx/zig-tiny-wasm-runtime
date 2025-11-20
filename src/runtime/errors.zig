@@ -14,4 +14,5 @@ pub const Error = error{
     IncompatibleImportType,
     UnknownImport,
     CallStackExhausted,
+    OtherError,
 };
