@@ -5,7 +5,7 @@ const spec = @import("wasm-spec-test");
 /// Supports both .wast/.wat text format and .json spec test format
 pub fn main() !void {
     const args = try parseArgs();
-    
+
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();

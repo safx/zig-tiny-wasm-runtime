@@ -46,7 +46,7 @@ make build-spec-test
 
 This project uses test files from the [spectec](https://github.com/Wasm-DSL/spectec) repository (WebAssembly 3.0 branch).
 
-**Important Note**: The current test runner validates that .wast files can be successfully parsed and loaded, but does not execute full test assertions. Therefore, passing all tests indicates syntax compatibility rather than complete feature implementation.
+**Important Note**: The current test runner parses and validates .wast files. Module loading and full test execution are partially implemented. Test results indicate parsing success and basic execution capability.
 
 ### Setup Test Suite
 
@@ -78,13 +78,47 @@ python3 ./run_spectec_tests.py --failfast wasm_tests/
 
 ## Architecture
 
-The codebase is organized into four main modules:
+The codebase is organized into seven main modules:
+
+### Core Modules
 
 1. **wasm-core** (`src/core/`): WebAssembly types, instructions, and basic structures
 2. **wasm-decode** (`src/decode/`): Binary format parsing and module loading
 3. **wasm-text-decode** (`src/text_decode/`): Text format (.wast/.wat) parsing
 4. **wasm-validate** (`src/validate/`): WebAssembly validation rules
 5. **wasm-runtime** (`src/runtime/`): Execution engine and interpreter
+
+### Spec Test Modules
+
+6. **spec-types** (`src/spec-types/`): Pure type definitions for spec test commands and values
+   - No runtime dependencies, only depends on wasm-core
+   - Defines Command, Action, Value, Result types for test specifications
+   - Includes FloatType for NaN handling (canonical/arithmetic)
+
+7. **spec-test-errors** (`src/spec-test-errors/`): Error string mapping for spec tests
+   - Maps error strings from test files to typed error enums
+   - Safe fallback to OtherError for unknown strings (no panics)
+
+8. **wasm-spec-test** (`src/spec_test/`): Test execution framework
+   - Unified test runner for both .wast and .json formats
+   - Executor module with value conversion and comparison logic
+   - JSON and WAST readers for different test formats
+
+### Dependency Graph
+
+```
+core
+  ↓
+spec-types (pure)
+  ↓
+text-decode → spec-test
+  ↓
+(decode, validate, runtime)
+  ↓
+spec-test-errors
+  ↓
+spec-test (executor + runners)
+```
 
 ## Commands Reference
 

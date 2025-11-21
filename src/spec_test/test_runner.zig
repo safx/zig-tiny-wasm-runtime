@@ -38,9 +38,9 @@ pub const SpecTestRunner = struct {
     fn execCommands(self: *Self, commands: []const spec_types.command.Command) !void {
         var registered_modules = std.StringHashMap(*runtime.types.ModuleInst).init(self.allocator);
         defer registered_modules.deinit();
-        
+
         var current_module: ?*runtime.types.ModuleInst = self.engine.loadModuleFromPath("spectest.wasm", "spectest") catch null;
-        
+
         var passed: u32 = 0;
         var failed: u32 = 0;
         var total: u32 = 0;

@@ -5,8 +5,6 @@ const wasm_core = @import("wasm-core");
 const lexer_mod = @import("./lexer.zig");
 const parser_mod = @import("./parser.zig");
 
-pub const wast = @import("./wast.zig");
-
 // Re-export lexer types
 pub const TextDecodeError = lexer_mod.TextDecodeError;
 pub const Token = lexer_mod.Token;
