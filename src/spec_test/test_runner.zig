@@ -4,7 +4,8 @@ const runtime = @import("wasm-runtime");
 const spec_types = @import("spec-types");
 const spec_test_errors = @import("spec-test-errors");
 const Error = spec_test_errors.RuntimeError;
-const reader = @import("./reader.zig");
+const json_reader = @import("./json_reader.zig");
+const wast_reader = @import("./wast_reader.zig");
 const value_convert = @import("./executor/value_convert.zig");
 
 pub const SpecTestRunner = struct {
@@ -20,13 +21,26 @@ pub const SpecTestRunner = struct {
     }
 
     pub fn execFromFile(self: *Self, file_name: []const u8) !void {
-        const file = try std.fs.cwd().openFile(file_name, .{ .mode = .read_only });
-        defer file.close();
+        if (std.mem.endsWith(u8, file_name, ".wast") or std.mem.endsWith(u8, file_name, ".wat")) {
+            const commands = try wast_reader.readWastFromFile(file_name, self.allocator);
+            defer wast_reader.freeCommands(commands, self.allocator);
+            try self.execWastTests(commands);
+        } else {
+            const file = try std.fs.cwd().openFile(file_name, .{ .mode = .read_only });
+            defer file.close();
+            const commands = try json_reader.readJsonFromFile(file, self.allocator);
+            defer self.freeCommands(commands);
+            try self.execSpecTests(commands);
+        }
+    }
 
-        const commands = try reader.readJsonFromFile(file, self.allocator);
-        defer self.freeCommands(commands);
-
-        try self.execSpecTests(commands);
+    fn execWastTests(self: *Self, commands: []const spec_types.command.Command) !void {
+        for (commands) |_| {
+            if (self.verbose_level >= 1) {
+                self.debugPrint("-" ** 75 ++ "\n", .{});
+            }
+            // TODO: Implement WAST command execution
+        }
     }
 
     fn execSpecTests(self: *Self, commands: []const spec_types.command.Command) !void {
