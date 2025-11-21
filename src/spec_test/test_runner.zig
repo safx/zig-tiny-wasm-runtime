@@ -25,24 +25,21 @@ pub const SpecTestRunner = struct {
         if (std.mem.endsWith(u8, file_name, ".wast") or std.mem.endsWith(u8, file_name, ".wat")) {
             const commands = try wast_reader.readWastFromFile(file_name, self.allocator);
             defer wast_reader.freeCommands(commands, self.allocator);
-            try self.execCommands(commands, false);
+            try self.execCommands(commands);
         } else {
             const file = try std.fs.cwd().openFile(file_name, .{ .mode = .read_only });
             defer file.close();
             const commands = try json_reader.readJsonFromFile(file, self.allocator);
             defer self.freeCommands(commands);
-            try self.execCommands(commands, true);
+            try self.execCommands(commands);
         }
     }
 
-    fn execCommands(self: *Self, commands: []const spec_types.command.Command, load_spectest: bool) !void {
+    fn execCommands(self: *Self, commands: []const spec_types.command.Command) !void {
         var registered_modules = std.StringHashMap(*runtime.types.ModuleInst).init(self.allocator);
         defer registered_modules.deinit();
         
-        var current_module: ?*runtime.types.ModuleInst = if (load_spectest)
-            self.engine.loadModuleFromPath("spectest.wasm", "spectest") catch null
-        else
-            null;
+        var current_module: ?*runtime.types.ModuleInst = self.engine.loadModuleFromPath("spectest.wasm", "spectest") catch null;
         
         var passed: u32 = 0;
         var failed: u32 = 0;
@@ -56,18 +53,12 @@ pub const SpecTestRunner = struct {
 
             switch (cmd) {
                 .module => |arg| {
-                    if (load_spectest) {
-                        current_module = self.engine.loadModuleFromPath(arg.file_name, arg.name) catch |err| {
-                            if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ Failed to load module: {}\n", .{err});
-                            }
-                            continue;
-                        };
-                    } else {
-                        if (self.verbose_level >= 2) {
-                            self.debugPrint("Loading module (skipped)\n", .{});
+                    current_module = self.engine.loadModuleFromPath(arg.file_name, arg.name) catch |err| {
+                        if (self.verbose_level >= 1) {
+                            self.debugPrint("✗ Failed to load module: {}\n", .{err});
                         }
-                    }
+                        continue;
+                    };
                 },
                 .module_quote => {
                     if (self.verbose_level >= 2) {
