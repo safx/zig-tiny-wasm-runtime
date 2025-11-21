@@ -142,18 +142,32 @@ const WastRunner = struct {
                     std.debug.print("Action (skipped)\n", .{});
                 }
             },
-            .assert_return => {
+            .assert_return => |*a| {
                 self.total += 1;
-                self.passed += 1;
-                if (self.verbose >= 2) {
-                    std.debug.print("✓ assert_return (skipped)\n", .{});
+                if (self.runAssertReturn(a)) |_| {
+                    self.passed += 1;
+                    if (self.verbose >= 2) {
+                        std.debug.print("✓ assert_return passed\n", .{});
+                    }
+                } else |err| {
+                    self.failed += 1;
+                    if (self.verbose >= 1) {
+                        std.debug.print("✗ assert_return failed: {}\n", .{err});
+                    }
                 }
             },
-            .assert_trap => {
+            .assert_trap => |*a| {
                 self.total += 1;
-                self.passed += 1;
-                if (self.verbose >= 2) {
-                    std.debug.print("✓ assert_trap (skipped)\n", .{});
+                if (self.runAssertTrap(a)) |_| {
+                    self.passed += 1;
+                    if (self.verbose >= 2) {
+                        std.debug.print("✓ assert_trap passed\n", .{});
+                    }
+                } else |err| {
+                    self.failed += 1;
+                    if (self.verbose >= 1) {
+                        std.debug.print("✗ assert_trap failed: {}\n", .{err});
+                    }
                 }
             },
             .assert_invalid => {
@@ -199,11 +213,10 @@ const WastRunner = struct {
         }
     }
 
-    fn runAssertReturn(self: *WastRunner, assertion: *const text_decode.wast.AssertReturn) !void {
+    fn runAssertReturn(self: *WastRunner, assertion: *const spec_types.command.AssertReturnCommandArg) !void {
         const results = try self.doAction(&assertion.action);
         defer self.allocator.free(results);
 
-        // Check result count
         if (results.len != assertion.expected.len) {
             if (self.verbose >= 1) {
                 std.debug.print("  Expected {d} results, got {d}\n", .{ assertion.expected.len, results.len });
@@ -211,9 +224,8 @@ const WastRunner = struct {
             return error.ResultCountMismatch;
         }
 
-        // Check each result value
         for (results, assertion.expected) |result, expected| {
-            if (!valuesEqual(result, expected)) {
+            if (!resultEquals(result, expected)) {
                 if (self.verbose >= 1) {
                     std.debug.print("  Expected: {any}, got: {any}\n", .{ expected, result });
                 }
@@ -222,15 +234,11 @@ const WastRunner = struct {
         }
     }
 
-    fn runAssertTrap(self: *WastRunner, assertion: *const text_decode.wast.AssertTrap) !void {
+    fn runAssertTrap(self: *WastRunner, assertion: *const spec_types.command.AssertTrapCommandArg) !void {
         const vals = self.doAction(&assertion.action) catch {
-            // Got an error as expected - verify it's a valid trap
-            // For now, accept any error as a trap
-            // TODO: Could be more specific about matching error messages
             return;
         };
 
-        // If execution succeeded, that's wrong - we expected a trap
         self.allocator.free(vals);
         if (self.verbose >= 1) {
             std.debug.print("  Expected trap but execution succeeded\n", .{});
@@ -238,74 +246,33 @@ const WastRunner = struct {
         return error.ExpectedTrap;
     }
 
-    fn runAssertInvalid(self: *WastRunner, assertion: *const text_decode.wast.AssertInvalid) !void {
-        // Parse the module text
-        var parser_script = text_decode.parseWastScript(self.allocator, assertion.module_text) catch {
-            // Parse error is acceptable - the module is invalid
-            return;
-        };
-        defer parser_script.deinit();
-
-        // Try to find a module command
-        var module_to_validate: ?*const text_decode.wast.ModuleCommand = null;
-        for (parser_script.commands.items) |*cmd| {
-            if (cmd.* == .module) {
-                module_to_validate = &cmd.module;
-                break;
-            }
-        }
-
-        if (module_to_validate) |mod| {
-            // Try to validate - should fail
-            const validate = @import("wasm-validate");
-            validate.validateModule(mod.module, self.allocator) catch {
-                // Got validation error as expected
-                return;
-            };
-
-            // Validation succeeded - that's wrong, we expected it to fail
-            if (self.verbose >= 1) {
-                std.debug.print("  Expected validation error but module is valid\n", .{});
-            }
-            return error.ExpectedValidationError;
-        } else {
-            // No module found in the parsed script - accept as invalid
-            return;
-        }
-    }
-
-    fn doAction(self: *WastRunner, action: *const text_decode.wast.Action) ![]const runtime.types.Value {
+    fn doAction(self: *WastRunner, action: *const spec_types.command.Action) ![]const runtime.types.Value {
         switch (action.*) {
             .invoke => |inv| {
-                const mod_inst = if (inv.module_name) |name|
+                const mod_inst = if (inv.module) |name|
                     self.registered_modules.get(name) orelse return error.ModuleNotFound
                 else
                     self.current_module orelse return error.NoCurrentModule;
 
-                // Find the function by name
-                const func_addr = try self.findFunctionByName(mod_inst, inv.func_name);
+                const func_addr = try self.findFunctionByName(mod_inst, inv.field);
 
-                // Convert arguments from wast.Value to runtime.Value
                 const args = try self.allocator.alloc(runtime.types.Value, inv.args.len);
                 defer self.allocator.free(args);
 
                 for (inv.args, 0..) |arg, i| {
-                    args[i] = wastValueToRuntimeValue(arg);
+                    args[i] = specValueToRuntimeValue(arg);
                 }
 
-                // Invoke the function
                 return try self.engine.invokeFunctionByAddr(func_addr, args);
             },
             .get => |get| {
-                const mod_inst = if (get.module_name) |name|
+                const mod_inst = if (get.module) |name|
                     self.registered_modules.get(name) orelse return error.ModuleNotFound
                 else
                     self.current_module orelse return error.NoCurrentModule;
 
-                // Find the global by name
-                const global_val = try self.findGlobalByName(mod_inst, get.global_name);
+                const global_val = try self.findGlobalByName(mod_inst, get.field);
 
-                // Return as a single-element array
                 const result = try self.allocator.alloc(runtime.types.Value, 1);
                 result[0] = global_val;
                 return result;
@@ -346,38 +313,62 @@ const WastRunner = struct {
     }
 };
 
-/// Convert wast.Value to runtime.types.Value
-fn wastValueToRuntimeValue(wast_val: text_decode.wast.Value) runtime.types.Value {
-    return switch (wast_val) {
+fn specValueToRuntimeValue(spec_val: spec_types.command.Value) runtime.types.Value {
+    return switch (spec_val) {
         .i32 => |v| .{ .i32 = v },
         .i64 => |v| .{ .i64 = v },
-        .f32 => |v| .{ .f32 = @bitCast(v) },
-        .f64 => |v| .{ .f64 = @bitCast(v) },
+        .f32 => |v| .{ .f32 = v },
+        .f64 => |v| .{ .f64 = v },
         .v128 => |v| .{ .v128 = v },
-        .ref_null => .{ .func_ref = null },
-        .ref_extern => |v| .{ .extern_ref = v },
-        .ref_func => |v| .{ .func_ref = v },
+        .func_ref => |v| .{ .func_ref = v },
+        .extern_ref => |v| .{ .extern_ref = v },
     };
 }
 
-/// Compare runtime.Value with wast.Value
-fn valuesEqual(runtime_val: runtime.types.Value, wast_val: text_decode.wast.Value) bool {
-    return switch (wast_val) {
-        .i32 => |expected| runtime_val == .i32 and runtime_val.i32 == expected,
-        .i64 => |expected| runtime_val == .i64 and runtime_val.i64 == expected,
-        .f32 => |expected| blk: {
+fn resultEquals(runtime_val: runtime.types.Value, expected: spec_types.command.Result) bool {
+    return switch (expected) {
+        .i32 => |exp| runtime_val == .i32 and runtime_val.i32 == exp,
+        .i64 => |exp| runtime_val == .i64 and runtime_val.i64 == exp,
+        .f32 => |exp| blk: {
             if (runtime_val != .f32) break :blk false;
-            const expected_bits: u32 = @bitCast(expected);
-            break :blk runtime_val.f32 == expected_bits;
+            switch (exp) {
+                .value => |bits| break :blk runtime_val.f32 == bits,
+                .nan_canonical => break :blk isCanonicalNanF32(runtime_val.f32),
+                .nan_arithmetic => break :blk isArithmeticNanF32(runtime_val.f32),
+            }
         },
-        .f64 => |expected| blk: {
+        .f64 => |exp| blk: {
             if (runtime_val != .f64) break :blk false;
-            const expected_bits: u64 = @bitCast(expected);
-            break :blk runtime_val.f64 == expected_bits;
+            switch (exp) {
+                .value => |bits| break :blk runtime_val.f64 == bits,
+                .nan_canonical => break :blk isCanonicalNanF64(runtime_val.f64),
+                .nan_arithmetic => break :blk isArithmeticNanF64(runtime_val.f64),
+            }
         },
-        .v128 => |expected| runtime_val == .v128 and runtime_val.v128 == expected,
-        .ref_null => runtime_val == .func_ref and runtime_val.func_ref == null,
-        .ref_extern => |expected| runtime_val == .extern_ref and runtime_val.extern_ref != null and runtime_val.extern_ref.? == expected,
-        .ref_func => |expected| runtime_val == .func_ref and runtime_val.func_ref != null and runtime_val.func_ref.? == expected,
+        .v128 => |exp| runtime_val == .v128 and runtime_val.v128 == exp,
+        .vec_f32 => |_| false, // TODO: Implement vector float comparison
+        .vec_f64 => |_| false, // TODO: Implement vector float comparison
+        .func_ref => |exp| runtime_val == .func_ref and runtime_val.func_ref == exp,
+        .extern_ref => |exp| runtime_val == .extern_ref and runtime_val.extern_ref == exp,
     };
+}
+
+fn isCanonicalNanF32(bits: u32) bool {
+    return bits == 0x7fc00000 or bits == 0xffc00000;
+}
+
+fn isArithmeticNanF32(bits: u32) bool {
+    const exp = (bits >> 23) & 0xff;
+    const mantissa = bits & 0x7fffff;
+    return exp == 0xff and mantissa != 0;
+}
+
+fn isCanonicalNanF64(bits: u64) bool {
+    return bits == 0x7ff8000000000000 or bits == 0xfff8000000000000;
+}
+
+fn isArithmeticNanF64(bits: u64) bool {
+    const exp = (bits >> 52) & 0x7ff;
+    const mantissa = bits & 0xfffffffffffff;
+    return exp == 0x7ff and mantissa != 0;
 }
