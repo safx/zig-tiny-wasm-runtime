@@ -39,7 +39,7 @@ pub const SpecTestRunner = struct {
             \\  (func (export "print_f64_f64") (param f64 f64))
             \\)
         ;
-        
+
         const text_decode = @import("wasm-text-decode");
         const module = text_decode.parseWastModule(self.allocator, spectest_wat) catch |err| {
             if (self.verbose_level >= 1) {
@@ -47,7 +47,7 @@ pub const SpecTestRunner = struct {
             }
             return error.SpectestLoadFailed;
         };
-        
+
         return try self.engine.loadModule(module, "spectest");
     }
 
@@ -83,12 +83,28 @@ pub const SpecTestRunner = struct {
 
             switch (cmd) {
                 .module => |arg| {
-                    current_module = self.engine.loadModuleFromPath(arg.file_name, arg.name) catch |err| {
-                        if (self.verbose_level >= 1) {
-                            self.debugPrint("✗ Failed to load module: {}\n", .{err});
-                        }
-                        continue;
-                    };
+                    if (arg.module_data) |data| {
+                        const text_decode = @import("wasm-text-decode");
+                        const module = text_decode.parseWastModule(self.allocator, data) catch |err| {
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ Failed to parse inline module: {}\n", .{err});
+                            }
+                            continue;
+                        };
+                        current_module = self.engine.loadModule(module, arg.name orelse "") catch |err| {
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ Failed to load inline module: {}\n", .{err});
+                            }
+                            continue;
+                        };
+                    } else if (arg.file_name.len > 0) {
+                        current_module = self.engine.loadModuleFromPath(arg.file_name, arg.name) catch |err| {
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ Failed to load module from path: {}\n", .{err});
+                            }
+                            continue;
+                        };
+                    }
                 },
                 .module_quote => {
                     if (self.verbose_level >= 2) {
@@ -105,14 +121,17 @@ pub const SpecTestRunner = struct {
                     if (self.doAction(&a.action, current_module, &registered_modules)) |results| {
                         defer self.allocator.free(results);
                         if (results.len == a.expected.len) {
-                            var all_match = true;
+                            var error_str: ?[]const u8 = null;
+                            defer if (error_str) |s| self.allocator.free(s);
                             for (results, a.expected) |result, expected| {
                                 if (!compare.resultEquals(result, expected)) {
-                                    all_match = false;
+                                    if (self.verbose_level >= 1) {
+                                        error_str = try std.fmt.allocPrint(self.allocator, "\nexpected: {any}\n  actual: {any}\n", .{ expected, result });
+                                    }
                                     break;
                                 }
                             }
-                            if (all_match) {
+                            if (error_str == null) {
                                 passed += 1;
                                 if (self.verbose_level >= 2) {
                                     self.debugPrint("✓ assert_return passed\n", .{});
@@ -120,7 +139,7 @@ pub const SpecTestRunner = struct {
                             } else {
                                 failed += 1;
                                 if (self.verbose_level >= 1) {
-                                    self.debugPrint("✗ assert_return failed: value mismatch\n", .{});
+                                    self.debugPrint("✗ assert_return failed: value mismatch.{s}", .{error_str.?});
                                 }
                             }
                         } else {

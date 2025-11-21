@@ -115,6 +115,7 @@ pub const ModuleCommandArg = struct {
     line: u32,
     file_name: []const u8,
     name: ?[]const u8,
+    module_data: ?[]const u8, // WAT source text
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         if (self.name) |n| {

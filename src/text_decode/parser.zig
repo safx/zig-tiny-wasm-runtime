@@ -73,6 +73,7 @@ pub const Parser = struct {
     lexer: Lexer,
     current_token: Token,
     allocator: std.mem.Allocator,
+    input: []const u8,
     // Name resolution for current function
     local_names: std.StringHashMap(u32),
 
@@ -84,6 +85,7 @@ pub const Parser = struct {
             .lexer = lexer,
             .current_token = current_token,
             .allocator = allocator,
+            .input = input,
             .local_names = std.StringHashMap(u32).init(allocator),
         };
     }
@@ -1317,6 +1319,8 @@ pub const Parser = struct {
     /// Parse module command: (module ...)
     fn parseModuleCommand(self: *Parser) !spec_types.command.Command {
         // current token is "module"
+        // Need to include the '(' before "module"
+        const module_start_pos = self.lexer.pos - "module".len - 1;
         try self.advance();
 
         // Skip optional "definition" keyword
@@ -1367,6 +1371,7 @@ pub const Parser = struct {
                         .line = 0,
                         .file_name = try self.allocator.dupe(u8, ""),
                         .name = name,
+                        .module_data = null,
                     },
                 };
             }
@@ -1381,15 +1386,19 @@ pub const Parser = struct {
         }
 
         try self.expectToken(.right_paren);
+        const module_end_pos = self.lexer.pos;
 
-        const module = try builder.build();
-        _ = module;
+        _ = try builder.build();
+
+        const module_text = self.input[module_start_pos..module_end_pos];
+        const module_data = try self.allocator.dupe(u8, module_text);
 
         return spec_types.command.Command{
             .module = .{
                 .line = 0,
                 .file_name = try self.allocator.dupe(u8, ""),
                 .name = name,
+                .module_data = module_data,
             },
         };
     }
@@ -1832,6 +1841,9 @@ pub fn freeCommand(allocator: std.mem.Allocator, cmd: *spec_types.command.Comman
         .module => |m| {
             if (m.name) |n| allocator.free(n);
             allocator.free(m.file_name);
+            if (m.module_data) |data| {
+                allocator.free(data);
+            }
         },
         .register => |r| {
             allocator.free(r.as_name);

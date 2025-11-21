@@ -41,7 +41,7 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
     } else if (strcmp(cmd_type, "module")) {
         const file_name = try allocator.dupe(u8, obj.get("filename").?.string);
         const name = if (getStringOrNull(json.object, "name")) |n| try allocator.dupe(u8, n) else null;
-        return .{ .module = .{ .line = line, .file_name = file_name, .name = name } };
+        return .{ .module = .{ .line = line, .file_name = file_name, .name = name, .module_data = null } };
     } else if (strcmp(cmd_type, "module_quote")) {
         return .module_quote;
     } else if (strcmp(cmd_type, "register")) {
