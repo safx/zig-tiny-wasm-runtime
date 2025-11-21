@@ -194,7 +194,7 @@ Rollback: tag-based reset.
 - [x] Phase 0
 - [x] Phase 1
 - [x] Phase 2
-- [ ] Phase 3
+- [x] Phase 3
 - [ ] Phase 4
 - [ ] Phase 5
 - [ ] Phase 6
