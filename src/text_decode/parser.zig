@@ -1,7 +1,7 @@
 const std = @import("std");
 const wasm_core = @import("wasm-core");
 const lexer_mod = @import("./lexer.zig");
-pub const wast = @import("./wast.zig");
+const spec_types = @import("spec-types");
 const numeric_parser = @import("./numeric_parser.zig");
 
 pub const Lexer = lexer_mod.Lexer;
@@ -1315,7 +1315,7 @@ pub const Parser = struct {
     }
 
     /// Parse module command: (module ...)
-    fn parseModuleCommand(self: *Parser) !wast.ModuleCommand {
+    fn parseModuleCommand(self: *Parser) !spec_types.command.Command {
         // current token is "module"
         try self.advance();
 
@@ -1324,11 +1324,10 @@ pub const Parser = struct {
             try self.advance();
         }
 
-        // Check for optional module name (can be $name or just name)
+        // Check for optional module name
         var name: ?[]const u8 = null;
         if (self.current_token == .identifier) {
             const id = self.current_token.identifier;
-            // Check if it's NOT a known field name (and not "binary", "quote", or "instance")
             const is_field = std.mem.eql(u8, id, "func") or
                 std.mem.eql(u8, id, "table") or
                 std.mem.eql(u8, id, "memory") or
@@ -1346,62 +1345,34 @@ pub const Parser = struct {
             }
         }
 
-        // Check for binary format: (module binary "...")
-        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "binary")) {
-            try self.advance(); // consume "binary"
-            // Skip all following string literals
-            while (self.current_token == .string) {
+        // Check for binary/quote/instance format
+        if (self.current_token == .identifier) {
+            const format_type = self.current_token.identifier;
+            if (std.mem.eql(u8, format_type, "binary") or
+                std.mem.eql(u8, format_type, "quote") or
+                std.mem.eql(u8, format_type, "instance"))
+            {
                 try self.advance();
+                while (self.current_token == .string or self.current_token == .identifier) {
+                    try self.advance();
+                }
+                try self.expectToken(.right_paren);
+
+                if (std.mem.eql(u8, format_type, "quote")) {
+                    return spec_types.command.Command{ .module_quote = {} };
+                }
+
+                return spec_types.command.Command{
+                    .module = .{
+                        .line = 0,
+                        .file_name = try self.allocator.dupe(u8, ""),
+                        .name = name,
+                    },
+                };
             }
-            try self.expectToken(.right_paren);
-            // Return a placeholder module for binary format
-            var builder = ModuleBuilder.init(self.allocator);
-            defer builder.deinit();
-            return wast.ModuleCommand{
-                .name = name,
-                .module = try builder.build(),
-            };
         }
 
-        // Check for quote format: (module quote "..." "..." ...)
-        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "quote")) {
-            try self.advance(); // consume "quote"
-            // Skip all following string literals
-            while (self.current_token == .string) {
-                try self.advance();
-            }
-            try self.expectToken(.right_paren);
-            // Return a placeholder module for quote format
-            var builder = ModuleBuilder.init(self.allocator);
-            defer builder.deinit();
-            return wast.ModuleCommand{
-                .name = name,
-                .module = try builder.build(),
-            };
-        }
-
-        // Check for instance format: (module instance $instance_name $module_name)
-        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "instance")) {
-            try self.advance(); // consume "instance"
-            // Skip instance name (e.g., $I1)
-            if (self.current_token == .identifier) {
-                try self.advance();
-            }
-            // Skip module name (e.g., $M)
-            if (self.current_token == .identifier) {
-                try self.advance();
-            }
-            try self.expectToken(.right_paren);
-            // Return a placeholder module for instance
-            var builder = ModuleBuilder.init(self.allocator);
-            defer builder.deinit();
-            return wast.ModuleCommand{
-                .name = name,
-                .module = try builder.build(),
-            };
-        }
-
-        // Parse the module itself (text format)
+        // Parse text format module
         var builder = ModuleBuilder.init(self.allocator);
         defer builder.deinit();
 
@@ -1411,14 +1382,20 @@ pub const Parser = struct {
 
         try self.expectToken(.right_paren);
 
-        return wast.ModuleCommand{
-            .name = name,
-            .module = try builder.build(),
+        const module = try builder.build();
+        _ = module;
+
+        return spec_types.command.Command{
+            .module = .{
+                .line = 0,
+                .file_name = try self.allocator.dupe(u8, ""),
+                .name = name,
+            },
         };
     }
 
     /// Parse assert_return: (assert_return (invoke "func" ...) (result...))
-    fn parseAssertReturn(self: *Parser) !wast.AssertReturn {
+    fn parseAssertReturn(self: *Parser) !spec_types.command.Command {
         // current token is "assert_return"
         try self.advance();
 
@@ -1426,34 +1403,39 @@ pub const Parser = struct {
         const action = try self.parseAction();
 
         // Parse expected results
-        var expected: std.ArrayList(wast.Value) = .{};
+        var expected: std.ArrayList(spec_types.command.Result) = .{};
         defer expected.deinit(self.allocator);
 
         while (self.current_token != .right_paren and self.current_token != .eof) {
-            const value = try self.parseValue();
-            try expected.append(self.allocator, value);
+            const result = try self.parseResult();
+            try expected.append(self.allocator, result);
         }
 
         try self.expectToken(.right_paren);
 
-        return wast.AssertReturn{
-            .action = action,
-            .expected = try expected.toOwnedSlice(self.allocator),
+        return spec_types.command.Command{
+            .assert_return = .{
+                .line = 0,
+                .action = action,
+                .expected = try expected.toOwnedSlice(self.allocator),
+            },
         };
     }
 
     /// Parse assert_trap: (assert_trap (invoke ...) "message") or (assert_trap (module ...) "message")
-    fn parseAssertTrap(self: *Parser) !wast.AssertTrap {
+    fn parseAssertTrap(self: *Parser) !spec_types.command.Command {
         // current token is "assert_trap"
         try self.advance();
 
-        // Peek to see if it's a module or an action
         try self.expectToken(.left_paren);
 
+        var action: spec_types.command.Action = undefined;
+        var has_action = false;
+
         if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "module")) {
-            // It's an inline module - skip the entire module
-            var depth: u32 = 1; // Already consumed '('
-            try self.advance(); // consume "module"
+            // Skip module
+            var depth: u32 = 1;
+            try self.advance();
             while (depth > 0 and self.current_token != .eof) {
                 if (self.current_token == .left_paren) {
                     depth += 1;
@@ -1465,24 +1447,13 @@ pub const Parser = struct {
                 }
             }
             if (self.current_token == .right_paren) {
-                try self.advance(); // consume closing ')'
+                try self.advance();
             }
         } else {
-            // It's an action - skip it by counting parentheses
-            var depth: u32 = 1; // Already consumed '('
-            while (depth > 0 and self.current_token != .eof) {
-                if (self.current_token == .left_paren) {
-                    depth += 1;
-                } else if (self.current_token == .right_paren) {
-                    depth -= 1;
-                }
-                if (depth > 0) {
-                    try self.advance();
-                }
-            }
-            if (self.current_token == .right_paren) {
-                try self.advance(); // consume closing ')'
-            }
+            // Parse action
+            action = try self.parseActionInner();
+            has_action = true;
+            try self.expectToken(.right_paren);
         }
 
         // Parse failure message
@@ -1494,19 +1465,27 @@ pub const Parser = struct {
 
         try self.expectToken(.right_paren);
 
-        // Return a placeholder action
-        return wast.AssertTrap{
-            .action = wast.Action{ .invoke = wast.Invoke{
-                .module_name = null,
-                .func_name = "",
-                .args = &[_]wast.Value{},
-            } },
-            .failure = failure,
+        if (!has_action) {
+            action = spec_types.command.Action{
+                .invoke = .{
+                    .field = try self.allocator.dupe(u8, ""),
+                    .args = &[_]spec_types.command.Value{},
+                    .module = null,
+                },
+            };
+        }
+
+        return spec_types.command.Command{
+            .assert_trap = .{
+                .line = 0,
+                .action = action,
+                .error_text = failure,
+            },
         };
     }
 
     /// Parse assert_invalid: (assert_invalid (module ...) "message")
-    fn parseAssertInvalid(self: *Parser) !wast.AssertInvalid {
+    fn parseAssertInvalid(self: *Parser) !spec_types.command.Command {
         // current token is "assert_invalid"
         try self.advance();
 
@@ -1517,9 +1496,9 @@ pub const Parser = struct {
             return TextDecodeError.UnexpectedToken;
         }
 
-        // Skip the module section by counting nested parentheses
-        var depth: u32 = 1; // We're already inside (module
-        try self.advance(); // consume "module"
+        // Skip the module section
+        var depth: u32 = 1;
+        try self.advance();
 
         while (depth > 0 and self.current_token != .eof) {
             if (self.current_token == .left_paren) {
@@ -1539,14 +1518,17 @@ pub const Parser = struct {
 
         try self.expectToken(.right_paren);
 
-        return wast.AssertInvalid{
-            .module_text = "", // We don't need to store the module text for now
-            .failure = failure,
+        return spec_types.command.Command{
+            .assert_invalid = .{
+                .line = 0,
+                .file_name = try self.allocator.dupe(u8, ""),
+                .error_text = failure,
+            },
         };
     }
 
     /// Parse register: (register "name" $module)
-    fn parseRegister(self: *Parser) !wast.Register {
+    fn parseRegister(self: *Parser) !spec_types.command.Command {
         // current token is "register"
         try self.advance();
 
@@ -1566,16 +1548,23 @@ pub const Parser = struct {
 
         try self.expectToken(.right_paren);
 
-        return wast.Register{
-            .name = name,
-            .module_name = module_name,
+        return spec_types.command.Command{
+            .register = .{
+                .as_name = name,
+                .name = module_name,
+            },
         };
     }
 
     /// Parse an action (invoke or get)
-    fn parseAction(self: *Parser) !wast.Action {
+    fn parseAction(self: *Parser) !spec_types.command.Action {
         try self.expectToken(.left_paren);
+        const action = try self.parseActionInner();
+        try self.expectToken(.right_paren);
+        return action;
+    }
 
+    fn parseActionInner(self: *Parser) !spec_types.command.Action {
         if (self.current_token != .identifier) {
             return TextDecodeError.UnexpectedToken;
         }
@@ -1584,16 +1573,16 @@ pub const Parser = struct {
         try self.advance();
 
         if (std.mem.eql(u8, action_name, "invoke")) {
-            return wast.Action{ .invoke = try self.parseInvoke() };
+            return spec_types.command.Action{ .invoke = try self.parseInvoke() };
         } else if (std.mem.eql(u8, action_name, "get")) {
-            return wast.Action{ .get = try self.parseGet() };
+            return spec_types.command.Action{ .get = try self.parseGet() };
         } else {
             return TextDecodeError.UnexpectedToken;
         }
     }
 
     /// Parse invoke: (invoke "func" args...)
-    fn parseInvoke(self: *Parser) !wast.Invoke {
+    fn parseInvoke(self: *Parser) !spec_types.command.InvokeCommandArg {
         // Optional module name
         var module_name: ?[]const u8 = null;
         if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
@@ -1609,7 +1598,7 @@ pub const Parser = struct {
         try self.advance();
 
         // Parse arguments
-        var args: std.ArrayList(wast.Value) = .{};
+        var args: std.ArrayList(spec_types.command.Value) = .{};
         defer args.deinit(self.allocator);
 
         while (self.current_token != .right_paren and self.current_token != .eof) {
@@ -1617,17 +1606,15 @@ pub const Parser = struct {
             try args.append(self.allocator, value);
         }
 
-        try self.expectToken(.right_paren);
-
-        return wast.Invoke{
-            .module_name = module_name,
-            .func_name = func_name,
+        return spec_types.command.InvokeCommandArg{
+            .field = func_name,
             .args = try args.toOwnedSlice(self.allocator),
+            .module = module_name,
         };
     }
 
     /// Parse get: (get "global")
-    fn parseGet(self: *Parser) !wast.Get {
+    fn parseGet(self: *Parser) !spec_types.command.GetCommandArg {
         // Optional module name
         var module_name: ?[]const u8 = null;
         if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
@@ -1642,16 +1629,14 @@ pub const Parser = struct {
         const global_name = try self.allocator.dupe(u8, self.current_token.string);
         try self.advance();
 
-        try self.expectToken(.right_paren);
-
-        return wast.Get{
-            .module_name = module_name,
-            .global_name = global_name,
+        return spec_types.command.GetCommandArg{
+            .field = global_name,
+            .module = module_name,
         };
     }
 
     /// Parse a value: (i32.const 42), (f64.const 3.14), etc.
-    fn parseValue(self: *Parser) !wast.Value {
+    fn parseValue(self: *Parser) !spec_types.command.Value {
         try self.expectToken(.left_paren);
 
         if (self.current_token != .identifier) {
@@ -1668,7 +1653,7 @@ pub const Parser = struct {
             const value = try numeric_parser.parseInteger(i32, self.current_token.number);
             try self.advance();
             try self.expectToken(.right_paren);
-            return wast.Value{ .i32 = value };
+            return spec_types.command.Value{ .i32 = value };
         } else if (std.mem.eql(u8, type_name, "i64.const")) {
             if (self.current_token != .number) {
                 return TextDecodeError.UnexpectedToken;
@@ -1676,7 +1661,7 @@ pub const Parser = struct {
             const value = try numeric_parser.parseInteger(i64, self.current_token.number);
             try self.advance();
             try self.expectToken(.right_paren);
-            return wast.Value{ .i64 = value };
+            return spec_types.command.Value{ .i64 = value };
         } else if (std.mem.eql(u8, type_name, "f32.const")) {
             const input = if (self.current_token == .identifier)
                 self.current_token.identifier
@@ -1688,7 +1673,7 @@ pub const Parser = struct {
             const value = try numeric_parser.parseFloat(f32, input);
             try self.advance();
             try self.expectToken(.right_paren);
-            return wast.Value{ .f32 = value };
+            return spec_types.command.Value{ .f32 = @bitCast(value) };
         } else if (std.mem.eql(u8, type_name, "f64.const")) {
             const input = if (self.current_token == .identifier)
                 self.current_token.identifier
@@ -1700,11 +1685,87 @@ pub const Parser = struct {
             const value = try numeric_parser.parseFloat(f64, input);
             try self.advance();
             try self.expectToken(.right_paren);
-            return wast.Value{ .f64 = value };
+            return spec_types.command.Value{ .f64 = @bitCast(value) };
         } else {
-            // For now, skip unknown value types
             try self.skipToClosingParen();
-            return wast.Value{ .i32 = 0 }; // placeholder
+            return spec_types.command.Value{ .i32 = 0 };
+        }
+    }
+
+    /// Parse a result: (i32.const 42), (f32.const nan:canonical), etc.
+    fn parseResult(self: *Parser) !spec_types.command.Result {
+        try self.expectToken(.left_paren);
+
+        if (self.current_token != .identifier) {
+            return TextDecodeError.UnexpectedToken;
+        }
+
+        const type_name = self.current_token.identifier;
+        try self.advance();
+
+        if (std.mem.eql(u8, type_name, "i32.const")) {
+            if (self.current_token != .number) {
+                return TextDecodeError.UnexpectedToken;
+            }
+            const value = try numeric_parser.parseInteger(i32, self.current_token.number);
+            try self.advance();
+            try self.expectToken(.right_paren);
+            return spec_types.command.Result{ .i32 = value };
+        } else if (std.mem.eql(u8, type_name, "i64.const")) {
+            if (self.current_token != .number) {
+                return TextDecodeError.UnexpectedToken;
+            }
+            const value = try numeric_parser.parseInteger(i64, self.current_token.number);
+            try self.advance();
+            try self.expectToken(.right_paren);
+            return spec_types.command.Result{ .i64 = value };
+        } else if (std.mem.eql(u8, type_name, "f32.const")) {
+            const input = if (self.current_token == .identifier)
+                self.current_token.identifier
+            else if (self.current_token == .number)
+                self.current_token.number
+            else
+                return TextDecodeError.UnexpectedToken;
+
+            if (std.mem.eql(u8, input, "nan:canonical")) {
+                try self.advance();
+                try self.expectToken(.right_paren);
+                return spec_types.command.Result{ .f32 = .nan_canonical };
+            } else if (std.mem.eql(u8, input, "nan:arithmetic")) {
+                try self.advance();
+                try self.expectToken(.right_paren);
+                return spec_types.command.Result{ .f32 = .nan_arithmetic };
+            }
+
+            const value = try numeric_parser.parseFloat(f32, input);
+            try self.advance();
+            try self.expectToken(.right_paren);
+            return spec_types.command.Result{ .f32 = .{ .value = @bitCast(value) } };
+        } else if (std.mem.eql(u8, type_name, "f64.const")) {
+            const input = if (self.current_token == .identifier)
+                self.current_token.identifier
+            else if (self.current_token == .number)
+                self.current_token.number
+            else
+                return TextDecodeError.UnexpectedToken;
+
+            if (std.mem.eql(u8, input, "nan:canonical")) {
+                try self.advance();
+                try self.expectToken(.right_paren);
+                return spec_types.command.Result{ .f64 = .nan_canonical };
+            } else if (std.mem.eql(u8, input, "nan:arithmetic")) {
+                try self.advance();
+                try self.expectToken(.right_paren);
+                return spec_types.command.Result{ .f64 = .nan_arithmetic };
+            }
+
+            const value = try numeric_parser.parseFloat(f64, input);
+            try self.advance();
+            try self.expectToken(.right_paren);
+            return spec_types.command.Result{ .f64 = .{ .value = @bitCast(value) } };
+        } else {
+            try self.skipToClosingParen();
+            return spec_types.command.Result{ .i32 = 0 };
         }
     }
 };
@@ -1715,17 +1776,20 @@ pub fn parseWastModule(allocator: std.mem.Allocator, input: []const u8) !wasm_co
 }
 
 /// Parse a complete .wast script file
-pub fn parseWastScript(allocator: std.mem.Allocator, input: []const u8) !wast.WastScript {
-    var script = wast.WastScript.init(allocator);
-    errdefer script.deinit();
+pub fn parseWastScript(allocator: std.mem.Allocator, input: []const u8) ![]spec_types.command.Command {
+    var commands: std.ArrayList(spec_types.command.Command) = .{};
+    errdefer {
+        for (commands.items) |*cmd| {
+            freeCommand(allocator, cmd);
+        }
+        commands.deinit(allocator);
+    }
 
     var parser = try Parser.init(allocator, input);
 
     while (parser.current_token != .eof) {
-        // Skip any whitespace or comments
         if (parser.current_token == .eof) break;
 
-        // Expect left paren for each command
         if (parser.current_token != .left_paren) {
             try parser.advance();
             continue;
@@ -1734,7 +1798,6 @@ pub fn parseWastScript(allocator: std.mem.Allocator, input: []const u8) !wast.Wa
         try parser.advance(); // consume '('
 
         if (parser.current_token != .identifier) {
-            // Skip malformed commands
             try parser.skipToClosingParen();
             continue;
         }
@@ -1742,27 +1805,73 @@ pub fn parseWastScript(allocator: std.mem.Allocator, input: []const u8) !wast.Wa
         const cmd_name = parser.current_token.identifier;
 
         if (std.mem.eql(u8, cmd_name, "module")) {
-            const module_cmd = try parser.parseModuleCommand();
-            try script.addCommand(.{ .module = module_cmd });
+            const cmd = try parser.parseModuleCommand();
+            try commands.append(allocator, cmd);
         } else if (std.mem.eql(u8, cmd_name, "assert_return")) {
-            const assert_cmd = try parser.parseAssertReturn();
-            try script.addCommand(.{ .assert_return = assert_cmd });
+            const cmd = try parser.parseAssertReturn();
+            try commands.append(allocator, cmd);
         } else if (std.mem.eql(u8, cmd_name, "assert_trap")) {
-            const assert_cmd = try parser.parseAssertTrap();
-            try script.addCommand(.{ .assert_trap = assert_cmd });
+            const cmd = try parser.parseAssertTrap();
+            try commands.append(allocator, cmd);
         } else if (std.mem.eql(u8, cmd_name, "assert_invalid")) {
-            const assert_cmd = try parser.parseAssertInvalid();
-            try script.addCommand(.{ .assert_invalid = assert_cmd });
+            const cmd = try parser.parseAssertInvalid();
+            try commands.append(allocator, cmd);
         } else if (std.mem.eql(u8, cmd_name, "register")) {
-            const reg_cmd = try parser.parseRegister();
-            try script.addCommand(.{ .register = reg_cmd });
+            const cmd = try parser.parseRegister();
+            try commands.append(allocator, cmd);
         } else {
-            // Unknown command, skip it
             try parser.skipToClosingParen();
         }
     }
 
-    return script;
+    return commands.toOwnedSlice(allocator);
+}
+
+pub fn freeCommand(allocator: std.mem.Allocator, cmd: *spec_types.command.Command) void {
+    switch (cmd.*) {
+        .module => |m| {
+            if (m.name) |n| allocator.free(n);
+            allocator.free(m.file_name);
+        },
+        .register => |r| {
+            allocator.free(r.as_name);
+            if (r.name) |n| allocator.free(n);
+        },
+        .assert_return => |ar| {
+            freeAction(allocator, @constCast(&ar.action));
+            for (ar.expected) |*exp| {
+                freeResult(allocator, exp);
+            }
+            allocator.free(ar.expected);
+        },
+        .assert_trap => |at| {
+            freeAction(allocator, @constCast(&at.action));
+            allocator.free(at.error_text);
+        },
+        .assert_invalid => |ai| {
+            allocator.free(ai.file_name);
+            allocator.free(ai.error_text);
+        },
+        else => {},
+    }
+}
+
+fn freeAction(allocator: std.mem.Allocator, action: *spec_types.command.Action) void {
+    switch (action.*) {
+        .invoke => |inv| {
+            allocator.free(inv.field);
+            if (inv.module) |m| allocator.free(m);
+            allocator.free(inv.args);
+        },
+        .get => |g| {
+            allocator.free(g.field);
+            if (g.module) |m| allocator.free(m);
+        },
+    }
+}
+
+fn freeResult(_: std.mem.Allocator, _: *const spec_types.command.Result) void {
+    // Results don't own any memory
 }
 
 // Test function

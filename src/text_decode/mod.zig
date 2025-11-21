@@ -19,3 +19,4 @@ pub const Parser = parser_mod.Parser;
 // Re-export parser functions
 pub const parseWastModule = parser_mod.parseWastModule;
 pub const parseWastScript = parser_mod.parseWastScript;
+pub const freeCommand = parser_mod.freeCommand;
