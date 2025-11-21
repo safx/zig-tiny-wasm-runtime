@@ -21,6 +21,36 @@ pub const SpecTestRunner = struct {
         return .{ .engine = engine, .allocator = allocator, .verbose_level = verbose_level };
     }
 
+    fn loadSpectestHostModule(self: *Self) !*runtime.types.ModuleInst {
+        const spectest_wat =
+            \\(module
+            \\  (global (export "global_i32") i32 (i32.const 666))
+            \\  (global (export "global_i64") i64 (i64.const 666))
+            \\  (global (export "global_f32") f32 (f32.const 666.6))
+            \\  (global (export "global_f64") f64 (f64.const 666.6))
+            \\  (table (export "table") 10 20 funcref)
+            \\  (memory (export "memory") 1 2)
+            \\  (func (export "print"))
+            \\  (func (export "print_i32") (param i32))
+            \\  (func (export "print_i64") (param i64))
+            \\  (func (export "print_f32") (param f32))
+            \\  (func (export "print_f64") (param f64))
+            \\  (func (export "print_i32_f32") (param i32 f32))
+            \\  (func (export "print_f64_f64") (param f64 f64))
+            \\)
+        ;
+        
+        const text_decode = @import("wasm-text-decode");
+        const module = text_decode.parseWastModule(self.allocator, spectest_wat) catch |err| {
+            if (self.verbose_level >= 1) {
+                self.debugPrint("Warning: Failed to load spectest module: {}\n", .{err});
+            }
+            return error.SpectestLoadFailed;
+        };
+        
+        return try self.engine.loadModule(module, "spectest");
+    }
+
     pub fn execFromFile(self: *Self, file_name: []const u8) !void {
         if (std.mem.endsWith(u8, file_name, ".wast") or std.mem.endsWith(u8, file_name, ".wat")) {
             const commands = try wast_reader.readWastFromFile(file_name, self.allocator);
@@ -39,7 +69,7 @@ pub const SpecTestRunner = struct {
         var registered_modules = std.StringHashMap(*runtime.types.ModuleInst).init(self.allocator);
         defer registered_modules.deinit();
 
-        var current_module: ?*runtime.types.ModuleInst = self.engine.loadModuleFromPath("spectest.wasm", "spectest") catch null;
+        var current_module: ?*runtime.types.ModuleInst = self.loadSpectestHostModule() catch null;
 
         var passed: u32 = 0;
         var failed: u32 = 0;
