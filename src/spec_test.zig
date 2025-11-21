@@ -4,6 +4,8 @@ const spec_types = @import("spec-types");
 const text_decode = @import("wasm-text-decode");
 const runtime = @import("wasm-runtime");
 
+const executor = spec.executor;
+
 pub fn main() !void {
     var verbose: u8 = 1;
     var file_name: ?[]const u8 = null;
@@ -225,7 +227,7 @@ const WastRunner = struct {
         }
 
         for (results, assertion.expected) |result, expected| {
-            if (!resultEquals(result, expected)) {
+            if (!executor.compare.resultEquals(result, expected)) {
                 if (self.verbose >= 1) {
                     std.debug.print("  Expected: {any}, got: {any}\n", .{ expected, result });
                 }
@@ -260,7 +262,7 @@ const WastRunner = struct {
                 defer self.allocator.free(args);
 
                 for (inv.args, 0..) |arg, i| {
-                    args[i] = specValueToRuntimeValue(arg);
+                    args[i] = executor.value_convert.toRuntimeValue(arg);
                 }
 
                 return try self.engine.invokeFunctionByAddr(func_addr, args);
@@ -312,63 +314,3 @@ const WastRunner = struct {
         return error.GlobalNotFound;
     }
 };
-
-fn specValueToRuntimeValue(spec_val: spec_types.command.Value) runtime.types.Value {
-    return switch (spec_val) {
-        .i32 => |v| .{ .i32 = v },
-        .i64 => |v| .{ .i64 = v },
-        .f32 => |v| .{ .f32 = v },
-        .f64 => |v| .{ .f64 = v },
-        .v128 => |v| .{ .v128 = v },
-        .func_ref => |v| .{ .func_ref = v },
-        .extern_ref => |v| .{ .extern_ref = v },
-    };
-}
-
-fn resultEquals(runtime_val: runtime.types.Value, expected: spec_types.command.Result) bool {
-    return switch (expected) {
-        .i32 => |exp| runtime_val == .i32 and runtime_val.i32 == exp,
-        .i64 => |exp| runtime_val == .i64 and runtime_val.i64 == exp,
-        .f32 => |exp| blk: {
-            if (runtime_val != .f32) break :blk false;
-            switch (exp) {
-                .value => |bits| break :blk runtime_val.f32 == bits,
-                .nan_canonical => break :blk isCanonicalNanF32(runtime_val.f32),
-                .nan_arithmetic => break :blk isArithmeticNanF32(runtime_val.f32),
-            }
-        },
-        .f64 => |exp| blk: {
-            if (runtime_val != .f64) break :blk false;
-            switch (exp) {
-                .value => |bits| break :blk runtime_val.f64 == bits,
-                .nan_canonical => break :blk isCanonicalNanF64(runtime_val.f64),
-                .nan_arithmetic => break :blk isArithmeticNanF64(runtime_val.f64),
-            }
-        },
-        .v128 => |exp| runtime_val == .v128 and runtime_val.v128 == exp,
-        .vec_f32 => |_| false, // TODO: Implement vector float comparison
-        .vec_f64 => |_| false, // TODO: Implement vector float comparison
-        .func_ref => |exp| runtime_val == .func_ref and runtime_val.func_ref == exp,
-        .extern_ref => |exp| runtime_val == .extern_ref and runtime_val.extern_ref == exp,
-    };
-}
-
-fn isCanonicalNanF32(bits: u32) bool {
-    return bits == 0x7fc00000 or bits == 0xffc00000;
-}
-
-fn isArithmeticNanF32(bits: u32) bool {
-    const exp = (bits >> 23) & 0xff;
-    const mantissa = bits & 0x7fffff;
-    return exp == 0xff and mantissa != 0;
-}
-
-fn isCanonicalNanF64(bits: u64) bool {
-    return bits == 0x7ff8000000000000 or bits == 0xfff8000000000000;
-}
-
-fn isArithmeticNanF64(bits: u64) bool {
-    const exp = (bits >> 52) & 0x7ff;
-    const mantissa = bits & 0xfffffffffffff;
-    return exp == 0x7ff and mantissa != 0;
-}
