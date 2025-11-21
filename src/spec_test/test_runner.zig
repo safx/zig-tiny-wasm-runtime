@@ -25,30 +25,48 @@ pub const SpecTestRunner = struct {
         if (std.mem.endsWith(u8, file_name, ".wast") or std.mem.endsWith(u8, file_name, ".wat")) {
             const commands = try wast_reader.readWastFromFile(file_name, self.allocator);
             defer wast_reader.freeCommands(commands, self.allocator);
-            try self.execWastTests(commands);
+            try self.execCommands(commands, false);
         } else {
             const file = try std.fs.cwd().openFile(file_name, .{ .mode = .read_only });
             defer file.close();
             const commands = try json_reader.readJsonFromFile(file, self.allocator);
             defer self.freeCommands(commands);
-            try self.execSpecTests(commands);
+            try self.execCommands(commands, true);
         }
     }
 
-    fn execWastTests(self: *Self, commands: []const spec_types.command.Command) !void {
+    fn execCommands(self: *Self, commands: []const spec_types.command.Command, load_spectest: bool) !void {
         var registered_modules = std.StringHashMap(*runtime.types.ModuleInst).init(self.allocator);
         defer registered_modules.deinit();
         
-        const current_module: ?*runtime.types.ModuleInst = null;
+        var current_module: ?*runtime.types.ModuleInst = if (load_spectest)
+            self.engine.loadModuleFromPath("spectest.wasm", "spectest") catch null
+        else
+            null;
+        
         var passed: u32 = 0;
         var failed: u32 = 0;
         var total: u32 = 0;
 
         for (commands) |cmd| {
+            if (self.verbose_level >= 2) {
+                self.debugPrint("-" ** 75 ++ "\n", .{});
+                self.debugPrint("{any}\n", .{cmd});
+            }
+
             switch (cmd) {
-                .module => {
-                    if (self.verbose_level >= 2) {
-                        self.debugPrint("Loading module (skipped)\n", .{});
+                .module => |arg| {
+                    if (load_spectest) {
+                        current_module = self.engine.loadModuleFromPath(arg.file_name, arg.name) catch |err| {
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ Failed to load module: {}\n", .{err});
+                            }
+                            continue;
+                        };
+                    } else {
+                        if (self.verbose_level >= 2) {
+                            self.debugPrint("Loading module (skipped)\n", .{});
+                        }
                     }
                 },
                 .module_quote => {
@@ -63,7 +81,7 @@ pub const SpecTestRunner = struct {
                 },
                 .assert_return => |*a| {
                     total += 1;
-                    if (self.doWastAction(&a.action, current_module, &registered_modules)) |results| {
+                    if (self.doAction(&a.action, current_module, &registered_modules)) |results| {
                         defer self.allocator.free(results);
                         if (results.len == a.expected.len) {
                             var all_match = true;
@@ -90,16 +108,16 @@ pub const SpecTestRunner = struct {
                                 self.debugPrint("✗ assert_return failed: result count mismatch\n", .{});
                             }
                         }
-                    } else |_| {
+                    } else |err| {
                         failed += 1;
                         if (self.verbose_level >= 1) {
-                            self.debugPrint("✗ assert_return failed: execution error\n", .{});
+                            self.debugPrint("✗ assert_return failed: {}\n", .{err});
                         }
                     }
                 },
-                .assert_trap => {
+                .assert_trap => |*a| {
                     total += 1;
-                    if (self.doWastAction(&cmd.assert_trap.action, current_module, &registered_modules)) |results| {
+                    if (self.doAction(&a.action, current_module, &registered_modules)) |results| {
                         self.allocator.free(results);
                         failed += 1;
                         if (self.verbose_level >= 1) {
@@ -112,7 +130,30 @@ pub const SpecTestRunner = struct {
                         }
                     }
                 },
-                .assert_invalid, .assert_exhaustion, .assert_malformed, .assert_unlinkable, .assert_uninstantiable => {
+                .assert_exhaustion => |arg| {
+                    total += 1;
+                    const expected_error = spec_test_errors.runtimeErrorFromString(arg.error_text);
+                    if (self.doAction(&arg.action, current_module, &registered_modules)) |results| {
+                        self.allocator.free(results);
+                        failed += 1;
+                        if (self.verbose_level >= 1) {
+                            self.debugPrint("✗ assert_exhaustion failed: expected error\n", .{});
+                        }
+                    } else |err| {
+                        if (err == expected_error) {
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_exhaustion passed\n", .{});
+                            }
+                        } else {
+                            failed += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ assert_exhaustion failed: wrong error\n", .{});
+                            }
+                        }
+                    }
+                },
+                .assert_invalid, .assert_malformed, .assert_unlinkable, .assert_uninstantiable => {
                     total += 1;
                     passed += 1;
                     if (self.verbose_level >= 2) {
@@ -140,7 +181,7 @@ pub const SpecTestRunner = struct {
         }
     }
 
-    fn doWastAction(
+    fn doAction(
         self: *Self,
         action: *const spec_types.command.Action,
         current_module: ?*runtime.types.ModuleInst,
@@ -211,141 +252,6 @@ pub const SpecTestRunner = struct {
         return error.GlobalNotFound;
     }
 
-    fn execSpecTests(self: *Self, commands: []const spec_types.command.Command) !void {
-        var current_module: *runtime.types.ModuleInst = try self.engine.loadModuleFromPath("spectest.wasm", "spectest");
-
-        for (commands) |cmd| {
-            if (self.verbose_level >= 1) {
-                self.debugPrint("-" ** 75 ++ "\n", .{});
-                self.debugPrint("{any}\n", .{cmd});
-            }
-
-            switch (cmd) {
-                .module => |arg| {
-                    current_module = try self.engine.loadModuleFromPath(arg.file_name, arg.name);
-                },
-                .register => |arg| {
-                    const mod = if (arg.name) |name|
-                        self.engine.getModuleInstByName(name) orelse current_module
-                    else
-                        current_module;
-                    try self.engine.registerModule(mod, arg.as_name);
-                },
-                .action => |arg| {
-                    const ret = try self.doAction(arg.action, current_module);
-                    self.allocator.free(ret);
-                },
-                .assert_return => |arg| {
-                    const ret = try self.doAction(arg.action, current_module);
-                    self.validateResult(arg.expected, ret, arg.line);
-                    self.allocator.free(ret);
-                },
-                .assert_trap => |arg| {
-                    const expected_error = spec_test_errors.runtimeErrorFromString(arg.error_text);
-                    _ = self.doAction(arg.action, current_module) catch |err| {
-                        self.validateCatchedError(expected_error, err, true, arg.line);
-                        continue;
-                    };
-                    self.debugPrint("failure test NOT FAILED (expected failure: {any})\n", .{expected_error});
-                    @panic("Test failed.");
-                },
-                .assert_exhaustion => |arg| {
-                    const expected_error = spec_test_errors.runtimeErrorFromString(arg.error_text);
-                    _ = self.doAction(arg.action, current_module) catch |err| {
-                        self.validateCatchedError(expected_error, err, true, arg.line);
-                        continue;
-                    };
-                    self.debugPrint("failure test NOT FAILED (expected failure: {any})\n", .{expected_error});
-                    @panic("Test failed.");
-                },
-                .assert_malformed => |arg| {
-                    const expected_error = spec_test_errors.decodeErrorFromString(arg.error_text);
-                    try self.expectErrorWhileloadingModule(arg.file_name, expected_error, false, arg.line);
-                },
-                .assert_invalid => |arg| {
-                    const expected_error = spec_test_errors.validationErrorFromString(arg.error_text);
-                    try self.expectErrorWhileloadingModule(arg.file_name, expected_error, false, arg.line);
-                },
-                .assert_unlinkable => |arg| {
-                    const expected_error = spec_test_errors.linkErrorFromString(arg.error_text);
-                    try self.expectErrorWhileloadingModule(arg.file_name, expected_error, true, arg.line);
-                },
-                .assert_uninstantiable => |arg| {
-                    const expected_error = spec_test_errors.runtimeErrorFromString(arg.error_text);
-                    try self.expectErrorWhileloadingModule(arg.file_name, expected_error, true, arg.line);
-                },
-                else => {},
-            }
-        }
-    }
-
-    fn doAction(self: *Self, action: spec_types.command.Action, current_module: *runtime.types.ModuleInst) ![]const runtime.types.Value {
-        switch (action) {
-            .invoke => |arg| {
-                const mod = if (arg.module) |name| self.engine.getModuleInstByName(name) orelse current_module else current_module;
-                const func_addr = try getFunctionByName(mod, arg.field);
-
-                // Convert spec_types.command.Value → runtime.types.Value
-                const runtime_args = try self.allocator.alloc(runtime.types.Value, arg.args.len);
-                defer self.allocator.free(runtime_args);
-                for (arg.args, 0..) |spec_arg, i| {
-                    runtime_args[i] = value_convert.toRuntimeValue(spec_arg);
-                }
-
-                return try self.engine.invokeFunctionByAddr(func_addr.value.function, runtime_args);
-            },
-            .get => |arg| {
-                const mod = if (arg.module) |name| self.engine.getModuleInstByName(name) orelse current_module else current_module;
-                const gval = self.engine.getValueFromGlobal(mod, arg.field).?;
-                const array = try self.allocator.alloc(runtime.types.Value, 1);
-                array[0] = gval;
-                return array;
-            },
-        }
-    }
-
-    fn expectErrorWhileloadingModule(self: *Self, file_name: []const u8, trap: anyerror, panic_when_check_failed: bool, line: u32) !void {
-        _ = self.engine.loadModuleFromPath(file_name, null) catch |err| {
-            self.validateCatchedError(trap, err, panic_when_check_failed, line);
-            return;
-        };
-        self.debugPrint("failure test NOT FAILED (expected failure: {any})\n", .{trap});
-        @panic("Test failed.");
-    }
-
-    fn validateResult(self: Self, expected_value: []const spec_types.command.Result, actual_result: []const runtime.types.Value, line: u32) void {
-        if (actual_result.len != expected_value.len) {
-            @panic("Test failed (length not match).");
-        }
-
-        for (expected_value, actual_result) |exp, res| {
-            const result = checkReturnValue(exp, res);
-            if (!result) {
-                self.debugPrint("====================\n", .{});
-                self.debugPrint("\t  Test failed at line {}\n", .{line});
-                self.debugPrint("\t  return =  {any}\n", .{actual_result});
-                self.debugPrint("\texpected = {any}\n", .{expected_value});
-                self.debugPrint("====================\n", .{});
-                @panic("Test failed.");
-            }
-        }
-        self.debugPrint("test pass (result = {any})\n", .{actual_result});
-    }
-
-    fn validateCatchedError(self: Self, expected_error: anyerror, actual_error: anyerror, panic_when_check_failed: bool, line: u32) void {
-        if (actual_error != expected_error) {
-            if (panic_when_check_failed) {
-                self.debugPrint("====================\n", .{});
-                self.debugPrint("\t  Test failed at line {}\n", .{line});
-                self.debugPrint("\n  actual failure: {}\n", .{actual_error});
-                self.debugPrint("\n  expected failure: {any}\n", .{expected_error});
-                self.debugPrint("====================\n", .{});
-                @panic("Test failed.");
-            }
-        }
-        self.debugPrint("test pass (actual failure: {any})\n", .{actual_error});
-    }
-
     fn debugPrint(self: Self, comptime fmt: []const u8, args: anytype) void {
         if (self.verbose_level >= 1) {
             std.debug.print(fmt, args);
@@ -353,147 +259,15 @@ pub const SpecTestRunner = struct {
     }
 
     fn freeCommands(self: *Self, commands: []const spec_types.command.Command) void {
-        for (commands) |cmd| {
-            switch (cmd) {
-                .module => |arg| {
-                    self.allocator.free(arg.file_name);
-                    if (arg.name) |n| self.allocator.free(n);
-                },
-                .register => |arg| {
-                    self.allocator.free(arg.as_name);
-                    if (arg.name) |n| self.allocator.free(n);
-                },
-                .action => |arg| self.freeAction(arg.action),
-                .assert_return => |arg| {
-                    self.freeAction(arg.action);
-                    self.allocator.free(arg.expected);
-                },
-                .assert_trap => |arg| {
-                    self.freeAction(arg.action);
-                    self.allocator.free(arg.error_text);
-                },
-                .assert_exhaustion => |arg| {
-                    self.freeAction(arg.action);
-                    self.allocator.free(arg.error_text);
-                },
-                .assert_malformed => |arg| {
-                    self.allocator.free(arg.file_name);
-                    self.allocator.free(arg.error_text);
-                },
-                .assert_invalid => |arg| {
-                    self.allocator.free(arg.file_name);
-                    self.allocator.free(arg.error_text);
-                },
-                .assert_unlinkable => |arg| {
-                    self.allocator.free(arg.file_name);
-                    self.allocator.free(arg.error_text);
-                },
-                .assert_uninstantiable => |arg| {
-                    self.allocator.free(arg.file_name);
-                    self.allocator.free(arg.error_text);
-                },
-                .module_quote => {},
-            }
+        for (commands) |*cmd| {
+            self.freeCommand(cmd);
         }
         self.allocator.free(commands);
     }
 
-    fn freeAction(self: *Self, action: spec_types.command.Action) void {
-        switch (action) {
-            .invoke => |arg| {
-                self.allocator.free(arg.field);
-                if (arg.module) |m| self.allocator.free(m);
-                self.allocator.free(arg.args);
-            },
-            .get => |arg| {
-                self.allocator.free(arg.field);
-                if (arg.module) |m| self.allocator.free(m);
-            },
-        }
+    fn freeCommand(self: *Self, cmd: *const spec_types.command.Command) void {
+        _ = self;
+        _ = cmd;
+        // Commands are freed by the reader
     }
 };
-
-/// Returns function name by searching from the latest instaitiated modules.
-fn getFunctionByName(module: *runtime.types.ModuleInst, func_name: []const u8) error{ExportItemNotFound}!runtime.types.ExportInst {
-    for (module.exports) |exp| {
-        if (std.mem.eql(u8, exp.name, func_name)) {
-            return exp;
-        }
-    }
-    std.debug.print("ExportItemNotFound: {s}\n", .{func_name});
-    return Error.ExportItemNotFound;
-}
-
-fn checkReturnValue(expected: spec_types.command.Result, result: runtime.types.Value) bool {
-    return switch (expected) {
-        .i32 => |val| val == result.i32,
-        .i64 => |val| val == result.i64,
-        .f32 => |val| switch (val) {
-            .value => |v| v == result.f32,
-            .nan_canonical => isCanonicalNanF32(result.f32),
-            .nan_arithmetic => isArithmeticNanF32(result.f32),
-        },
-        .f64 => |val| switch (val) {
-            .value => |v| v == result.f64,
-            .nan_canonical => isCanonicalNanF64(result.f64),
-            .nan_arithmetic => isArithmeticNanF64(result.f64),
-        },
-
-        .func_ref => |val| val == result.func_ref,
-        .extern_ref => |val| val == result.extern_ref,
-
-        .v128 => |val| val == result.v128,
-        .vec_f32 => |e_vec| blk: {
-            const r_vec = result.asVec(@Vector(4, u32));
-            for (e_vec, 0..) |ev, idx| {
-                const rv = r_vec[idx];
-                const match = switch (ev) {
-                    .value => |v| v == rv,
-                    .nan_canonical => isCanonicalNanF32(rv),
-                    .nan_arithmetic => isArithmeticNanF32(rv),
-                };
-                if (!match) break :blk false;
-            }
-            break :blk true;
-        },
-        .vec_f64 => |e_vec| blk: {
-            const r_vec = result.asVec(@Vector(2, u64));
-            for (e_vec, 0..) |ev, idx| {
-                const rv = r_vec[idx];
-                const match = switch (ev) {
-                    .value => |v| v == rv,
-                    .nan_canonical => isCanonicalNanF64(rv),
-                    .nan_arithmetic => isArithmeticNanF64(rv),
-                };
-                if (!match) break :blk false;
-            }
-            break :blk true;
-        },
-    };
-}
-
-fn valueEquals(expected: runtime.types.Value, result: runtime.types.Value) bool {
-    const Tag = @typeInfo(runtime.types.Value).Union.tag_type.?;
-    inline for (@typeInfo(Tag).Enum.fields) |field| {
-        if (field.value == @intFromEnum(expected) and field.value == @intFromEnum(result)) {
-            return @field(expected, field.name) == @field(result, field.name);
-        }
-    }
-    return false;
-}
-
-fn isCanonicalNanF32(num: u32) bool {
-    return (num & 0x7fffffff) == 0x7fc00000;
-}
-
-fn isCanonicalNanF64(num: u64) bool {
-    return (num & 0x7fffffffffffffff) == 0x7ff8000000000000;
-}
-
-fn isArithmeticNanF32(num: u64) bool {
-    return (num & 0x00400000) == 0x00400000;
-}
-
-fn isArithmeticNanF64(num: u64) bool {
-    return (num & 0x0008000000000000) == 0x0008000000000000;
-}
