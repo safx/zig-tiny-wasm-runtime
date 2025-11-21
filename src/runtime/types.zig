@@ -316,7 +316,11 @@ pub const Value = union(core.types.ValueType) {
     }
 
     pub inline fn asU32(self: Self) u32 {
-        return @bitCast(self.i32);
+        return switch (self) {
+            .i32 => @bitCast(self.i32),
+            .i64 => @intCast(self.i64),
+            else => @panic("asU32 called on non-integer type"),
+        };
     }
 
     pub fn format(self: Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {

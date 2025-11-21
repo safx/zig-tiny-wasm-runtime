@@ -100,6 +100,7 @@ pub const Parser = struct {
 
     pub fn expectToken(self: *Parser, expected: std.meta.Tag(Token)) !void {
         if (std.meta.activeTag(self.current_token) != expected) {
+            std.debug.print("Error: expectToken: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
         try self.advance();
@@ -128,6 +129,7 @@ pub const Parser = struct {
         try self.expectToken(.left_paren);
 
         if (self.current_token != .identifier) {
+            std.debug.print("Error: parseModuleField: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
 
@@ -239,44 +241,94 @@ pub const Parser = struct {
     }
 
     fn parseData(self: *Parser, builder: *ModuleBuilder) !void {
-        // Parse: (data (i32.const offset) "string")
+        // Parse: (data (i32.const offset) "string" "string" ...)
+        // or: (data $name (i32.const offset) "string" ...)
+        // or: (data (memory idx) (i32.const offset) "string" ...)
+        // or: (data (offset (i32.const offset)) "string" ...)
 
-        // Parse offset expression
-        var offset: wasm_core.types.InitExpression = .{ .i32_const = 0 };
-
-        if (self.current_token == .left_paren) {
-            try self.advance(); // consume '('
-            if (self.current_token == .identifier) {
-                const instr_name = self.current_token.identifier;
-                try self.advance();
-
-                if (std.mem.eql(u8, instr_name, "i32.const")) {
-                    if (self.current_token == .number) {
-                        const val = try std.fmt.parseInt(i32, self.current_token.number, 10);
-                        offset = .{ .i32_const = val };
-                        try self.advance();
-                    }
-                } else if (std.mem.eql(u8, instr_name, "i64.const")) {
-                    if (self.current_token == .number) {
-                        const val = try std.fmt.parseInt(i64, self.current_token.number, 10);
-                        offset = .{ .i64_const = val };
-                        try self.advance();
-                    }
-                }
-            }
-            try self.expectRightParen();
-        }
-
-        // Parse data string
-        var data_bytes: []const u8 = "";
-        if (self.current_token == .string) {
-            data_bytes = try self.unescapeString(self.current_token.string);
+        // Skip optional data name ($name)
+        if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
             try self.advance();
         }
 
-        // Create Data structure
+        var offset: wasm_core.types.InitExpression = .{ .i32_const = 0 };
+
+        // Check for (memory idx) or (offset ...) or (i32.const ...)
+        while (self.current_token == .left_paren) {
+            try self.advance(); // consume '('
+            
+            if (self.current_token != .identifier) break;
+            
+            const instr_name = self.current_token.identifier;
+            try self.advance();
+            
+            if (std.mem.eql(u8, instr_name, "memory")) {
+                // Skip memory index
+                if (self.current_token == .number or self.current_token == .identifier) {
+                    try self.advance();
+                }
+                try self.expectRightParen();
+            } else if (std.mem.eql(u8, instr_name, "offset")) {
+                // Parse (offset (i32.const ...))
+                if (self.current_token == .left_paren) {
+                    try self.advance();
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
+                        try self.advance();
+                        if (self.current_token == .number) {
+                            const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                            offset = .{ .i32_const = val };
+                            try self.advance();
+                        }
+                    }
+                    try self.expectRightParen();
+                }
+                try self.expectRightParen();
+                break;
+            } else if (std.mem.eql(u8, instr_name, "i32.const")) {
+                if (self.current_token == .number) {
+                    const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                    offset = .{ .i32_const = val };
+                    try self.advance();
+                }
+                try self.expectRightParen();
+                break;
+            } else if (std.mem.eql(u8, instr_name, "i64.const")) {
+                if (self.current_token == .number) {
+                    const val = try std.fmt.parseInt(i64, self.current_token.number, 0);
+                    offset = .{ .i64_const = val };
+                    try self.advance();
+                }
+                try self.expectRightParen();
+                break;
+            } else if (std.mem.eql(u8, instr_name, "global.get")) {
+                if (self.current_token == .number) {
+                    const val = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                    offset = .{ .global_get = val };
+                    try self.advance();
+                } else if (self.current_token == .identifier) {
+                    // Named global - skip for now (would need name resolution)
+                    try self.advance();
+                }
+                try self.expectRightParen();
+                break;
+            } else {
+                break;
+            }
+        }
+
+        // Parse data strings (can be multiple)
+        var data_list: std.ArrayList(u8) = .{};
+        defer data_list.deinit(self.allocator);
+        
+        while (self.current_token == .string) {
+            const unescaped = try self.unescapeString(self.current_token.string);
+            defer self.allocator.free(unescaped);
+            try data_list.appendSlice(self.allocator, unescaped);
+            try self.advance();
+        }
+
         const data = wasm_core.types.Data{
-            .init = data_bytes,
+            .init = try data_list.toOwnedSlice(self.allocator),
             .mode = .{
                 .active = .{
                     .mem_idx = 0,
@@ -295,12 +347,12 @@ pub const Parser = struct {
             if (input[i] == '\\' and i + 1 < input.len) {
                 i += 1;
                 const next = input[i];
-                const is_hex_digit = (next >= '0' and next <= '9') or 
-                                    (next >= 'a' and next <= 'f') or 
-                                    (next >= 'A' and next <= 'F');
+                const is_hex_digit = (next >= '0' and next <= '9') or
+                    (next >= 'a' and next <= 'f') or
+                    (next >= 'A' and next <= 'F');
                 if (is_hex_digit and i + 1 < input.len) {
                     // Hex escape: \XX
-                    const hex_str = input[i..i+2];
+                    const hex_str = input[i .. i + 2];
                     const byte = std.fmt.parseInt(u8, hex_str, 16) catch {
                         try result.append(self.allocator, '\\');
                         try result.append(self.allocator, next);
@@ -568,6 +620,7 @@ pub const Parser = struct {
     /// Expect and consume a right paren
     fn expectRightParen(self: *Parser) !void {
         if (self.current_token != .right_paren) {
+            std.debug.print("Error: expectRightParen: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
         try self.advance();
@@ -690,9 +743,11 @@ pub const Parser = struct {
                     type_idx = try self.parseU32OrIdentifier();
                     try self.expectRightParen();
                 } else {
+                    std.debug.print("Error: parseCallIndirect: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
                     return TextDecodeError.UnexpectedToken;
                 }
             } else {
+                std.debug.print("Error: parseCallIndirect: Expected '(' for type declaration at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
                 return TextDecodeError.UnexpectedToken;
             }
 
@@ -1226,6 +1281,7 @@ pub const Parser = struct {
                     }
                     try self.expectRightParen();
                 } else {
+                    std.debug.print("Error: parseSExpression: Expected 'then' block at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
                     return TextDecodeError.UnexpectedToken;
                 }
             }
@@ -1296,6 +1352,7 @@ pub const Parser = struct {
             // If not found, return 0 as fallback
             return 0;
         }
+        std.debug.print("Error: parseU32OrIdentifier: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
         return TextDecodeError.UnexpectedToken;
     }
 
@@ -1509,6 +1566,7 @@ pub const Parser = struct {
 
         // Parse failure message
         if (self.current_token != .string) {
+            std.debug.print("Error: parseAssertTrap: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
         const failure = try self.allocator.dupe(u8, self.current_token.string);
@@ -1544,6 +1602,7 @@ pub const Parser = struct {
         try self.expectToken(.left_paren);
 
         if (self.current_token != .identifier or !std.mem.eql(u8, self.current_token.identifier, "module")) {
+            std.debug.print("Error: parseAssertInvalid: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
 
@@ -1585,6 +1644,7 @@ pub const Parser = struct {
 
         // Parse name
         if (self.current_token != .string) {
+            std.debug.print("Error: parseRegister: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
         const name = try self.allocator.dupe(u8, self.current_token.string);
@@ -1617,6 +1677,7 @@ pub const Parser = struct {
 
     fn parseActionInner(self: *Parser) !spec_types.command.Action {
         if (self.current_token != .identifier) {
+            std.debug.print("Error: parseActionInner: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
 
@@ -1628,6 +1689,7 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, action_name, "get")) {
             return spec_types.command.Action{ .get = try self.parseGet() };
         } else {
+            std.debug.print("Error: parseActionInner: Unknown action '{s}' at line {d} char [{c}]\n", .{ action_name, self.lexer.line, self.lexer.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
     }
@@ -1643,6 +1705,7 @@ pub const Parser = struct {
 
         // Function name
         if (self.current_token != .string) {
+            std.debug.print("Error: parseInvoke: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
         const func_name = try self.allocator.dupe(u8, self.current_token.string);
@@ -1691,6 +1754,7 @@ pub const Parser = struct {
         try self.expectToken(.left_paren);
 
         if (self.current_token != .identifier) {
+            std.debug.print("Error: parseValue: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
 
@@ -1699,6 +1763,7 @@ pub const Parser = struct {
 
         if (std.mem.eql(u8, type_name, "i32.const")) {
             if (self.current_token != .number) {
+                std.debug.print("Error: parseValue: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
                 return TextDecodeError.UnexpectedToken;
             }
             const value = try numeric_parser.parseInteger(i32, self.current_token.number);
@@ -1707,6 +1772,7 @@ pub const Parser = struct {
             return spec_types.command.Value{ .i32 = value };
         } else if (std.mem.eql(u8, type_name, "i64.const")) {
             if (self.current_token != .number) {
+                std.debug.print("Error: parseValue: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
                 return TextDecodeError.UnexpectedToken;
             }
             const value = try numeric_parser.parseInteger(i64, self.current_token.number);
@@ -1718,8 +1784,10 @@ pub const Parser = struct {
                 self.current_token.identifier
             else if (self.current_token == .number)
                 self.current_token.number
-            else
+            else {
+                std.debug.print("Error: parseValue: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
                 return TextDecodeError.UnexpectedToken;
+            };
 
             const value = try numeric_parser.parseFloat(f32, input);
             try self.advance();
@@ -1730,9 +1798,10 @@ pub const Parser = struct {
                 self.current_token.identifier
             else if (self.current_token == .number)
                 self.current_token.number
-            else
+            else {
+                std.debug.print("Error: parseValue: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
                 return TextDecodeError.UnexpectedToken;
-
+            };
             const value = try numeric_parser.parseFloat(f64, input);
             try self.advance();
             try self.expectToken(.right_paren);
@@ -1748,6 +1817,7 @@ pub const Parser = struct {
         try self.expectToken(.left_paren);
 
         if (self.current_token != .identifier) {
+            std.debug.print("Error: parseResult: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
 
@@ -1756,6 +1826,7 @@ pub const Parser = struct {
 
         if (std.mem.eql(u8, type_name, "i32.const")) {
             if (self.current_token != .number) {
+                std.debug.print("Error: parseResult: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
                 return TextDecodeError.UnexpectedToken;
             }
             const value = try numeric_parser.parseInteger(i32, self.current_token.number);
@@ -1764,6 +1835,7 @@ pub const Parser = struct {
             return spec_types.command.Result{ .i32 = value };
         } else if (std.mem.eql(u8, type_name, "i64.const")) {
             if (self.current_token != .number) {
+                std.debug.print("Error: parseResult: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
                 return TextDecodeError.UnexpectedToken;
             }
             const value = try numeric_parser.parseInteger(i64, self.current_token.number);
@@ -1775,8 +1847,10 @@ pub const Parser = struct {
                 self.current_token.identifier
             else if (self.current_token == .number)
                 self.current_token.number
-            else
+            else {
+                std.debug.print("Error: parseResult: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
                 return TextDecodeError.UnexpectedToken;
+            };
 
             if (std.mem.eql(u8, input, "nan:canonical")) {
                 try self.advance();
@@ -1797,8 +1871,10 @@ pub const Parser = struct {
                 self.current_token.identifier
             else if (self.current_token == .number)
                 self.current_token.number
-            else
+            else {
+                std.debug.print("Error: parseResult: Unexpected token at line {d} char [{c}]\n", .{ self.lexer.line, self.lexer.current_char.? });
                 return TextDecodeError.UnexpectedToken;
+            };
 
             if (std.mem.eql(u8, input, "nan:canonical")) {
                 try self.advance();

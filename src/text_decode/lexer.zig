@@ -127,6 +127,7 @@ pub const Lexer = struct {
                 return try self.readIdentifierOrNumber();
             }
 
+            std.debug.print("Error: Unexpected token at line {d} char [{c}]\n", .{ self.line, self.current_char.? });
             return TextDecodeError.UnexpectedToken;
         }
     }
