@@ -270,7 +270,7 @@ pub const Parser = struct {
         // Parse data string
         var data_bytes: []const u8 = "";
         if (self.current_token == .string) {
-            data_bytes = self.current_token.string;
+            data_bytes = try self.unescapeString(self.current_token.string);
             try self.advance();
         }
 
@@ -286,6 +286,46 @@ pub const Parser = struct {
         };
 
         try builder.datas.append(builder.allocator, data);
+    }
+
+    fn unescapeString(self: *Parser, input: []const u8) ![]const u8 {
+        var result: std.ArrayList(u8) = .{};
+        var i: usize = 0;
+        while (i < input.len) : (i += 1) {
+            if (input[i] == '\\' and i + 1 < input.len) {
+                i += 1;
+                const next = input[i];
+                const is_hex_digit = (next >= '0' and next <= '9') or 
+                                    (next >= 'a' and next <= 'f') or 
+                                    (next >= 'A' and next <= 'F');
+                if (is_hex_digit and i + 1 < input.len) {
+                    // Hex escape: \XX
+                    const hex_str = input[i..i+2];
+                    const byte = std.fmt.parseInt(u8, hex_str, 16) catch {
+                        try result.append(self.allocator, '\\');
+                        try result.append(self.allocator, next);
+                        continue;
+                    };
+                    try result.append(self.allocator, byte);
+                    i += 1;
+                } else {
+                    switch (next) {
+                        'n' => try result.append(self.allocator, '\n'),
+                        't' => try result.append(self.allocator, '\t'),
+                        'r' => try result.append(self.allocator, '\r'),
+                        '\\' => try result.append(self.allocator, '\\'),
+                        '"' => try result.append(self.allocator, '"'),
+                        else => {
+                            try result.append(self.allocator, '\\');
+                            try result.append(self.allocator, next);
+                        },
+                    }
+                }
+            } else {
+                try result.append(self.allocator, input[i]);
+            }
+        }
+        return result.toOwnedSlice(self.allocator);
     }
 
     fn parseFunction(self: *Parser, builder: *ModuleBuilder) !void {
@@ -1406,6 +1446,7 @@ pub const Parser = struct {
     /// Parse assert_return: (assert_return (invoke "func" ...) (result...))
     fn parseAssertReturn(self: *Parser) !spec_types.command.Command {
         // current token is "assert_return"
+        const line = self.lexer.line;
         try self.advance();
 
         // Parse action
@@ -1424,7 +1465,7 @@ pub const Parser = struct {
 
         return spec_types.command.Command{
             .assert_return = .{
-                .line = 0,
+                .line = line,
                 .action = action,
                 .expected = try expected.toOwnedSlice(self.allocator),
             },
@@ -1434,6 +1475,7 @@ pub const Parser = struct {
     /// Parse assert_trap: (assert_trap (invoke ...) "message") or (assert_trap (module ...) "message")
     fn parseAssertTrap(self: *Parser) !spec_types.command.Command {
         // current token is "assert_trap"
+        const line = self.lexer.line;
         try self.advance();
 
         try self.expectToken(.left_paren);
@@ -1486,7 +1528,7 @@ pub const Parser = struct {
 
         return spec_types.command.Command{
             .assert_trap = .{
-                .line = 0,
+                .line = line,
                 .action = action,
                 .error_text = failure,
             },

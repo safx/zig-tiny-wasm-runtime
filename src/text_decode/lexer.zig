@@ -23,12 +23,14 @@ pub const Lexer = struct {
     input: []const u8,
     pos: usize,
     current_char: ?u8,
+    line: u32,
 
     pub fn init(input: []const u8) Lexer {
         var lexer = Lexer{
             .input = input,
             .pos = 0,
             .current_char = null,
+            .line = 1,
         };
         if (input.len > 0) {
             lexer.current_char = input[0];
@@ -47,7 +49,10 @@ pub const Lexer = struct {
 
     pub fn skipWhitespace(self: *Lexer) void {
         while (self.current_char) |char| {
-            if (char == ' ' or char == '\t' or char == '\n' or char == '\r') {
+            if (char == ' ' or char == '\t' or char == '\r') {
+                self.advance();
+            } else if (char == '\n') {
+                self.line += 1;
                 self.advance();
             } else {
                 break;
@@ -58,8 +63,12 @@ pub const Lexer = struct {
     pub fn skipComment(self: *Lexer) void {
         if (self.current_char == ';' and self.pos + 1 < self.input.len and self.input[self.pos + 1] == ';') {
             while (self.current_char) |char| {
+                if (char == '\n') {
+                    self.line += 1;
+                    self.advance();
+                    break;
+                }
                 self.advance();
-                if (char == '\n') break;
             }
         } else if (self.current_char == '(' and self.pos + 1 < self.input.len and self.input[self.pos + 1] == ';') {
             self.advance();
@@ -67,6 +76,9 @@ pub const Lexer = struct {
             var depth: u32 = 1;
             while (self.current_char != null and depth > 0) {
                 const char = self.current_char.?;
+                if (char == '\n') {
+                    self.line += 1;
+                }
                 if (char == '(' and self.pos + 1 < self.input.len and self.input[self.pos + 1] == ';') {
                     depth += 1;
                     self.advance();

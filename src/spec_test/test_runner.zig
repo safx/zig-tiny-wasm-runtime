@@ -126,7 +126,8 @@ pub const SpecTestRunner = struct {
                             for (results, a.expected) |result, expected| {
                                 if (!compare.resultEquals(result, expected)) {
                                     if (self.verbose_level >= 1) {
-                                        error_str = try std.fmt.allocPrint(self.allocator, "\nexpected: {any}\n  actual: {any}\n", .{ expected, result });
+                                        const actual = value_convert.toSpecResult(result);
+                                        error_str = try std.fmt.allocPrint(self.allocator, "\nexpected: {any}\n  actual: {any}\n", .{ expected, actual });
                                     }
                                     break;
                                 }
@@ -139,19 +140,19 @@ pub const SpecTestRunner = struct {
                             } else {
                                 failed += 1;
                                 if (self.verbose_level >= 1) {
-                                    self.debugPrint("✗ assert_return failed: value mismatch.{s}", .{error_str.?});
+                                    self.debugPrint("✗ assert_return failed (line {}): value mismatch.{s}", .{ a.line, error_str.? });
                                 }
                             }
                         } else {
                             failed += 1;
                             if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ assert_return failed: result count mismatch\n", .{});
+                                self.debugPrint("✗ assert_return failed (line {}): result count mismatch\n", .{a.line});
                             }
                         }
                     } else |err| {
                         failed += 1;
                         if (self.verbose_level >= 1) {
-                            self.debugPrint("✗ assert_return failed: {}\n", .{err});
+                            self.debugPrint("✗ assert_return failed (line {}): {}\n", .{ a.line, err });
                         }
                     }
                 },
@@ -161,7 +162,7 @@ pub const SpecTestRunner = struct {
                         self.allocator.free(results);
                         failed += 1;
                         if (self.verbose_level >= 1) {
-                            self.debugPrint("✗ assert_trap failed: expected trap\n", .{});
+                            self.debugPrint("✗ assert_trap failed (line {}): expected trap\n", .{a.line});
                         }
                     } else |_| {
                         passed += 1;
@@ -177,7 +178,7 @@ pub const SpecTestRunner = struct {
                         self.allocator.free(results);
                         failed += 1;
                         if (self.verbose_level >= 1) {
-                            self.debugPrint("✗ assert_exhaustion failed: expected error\n", .{});
+                            self.debugPrint("✗ assert_exhaustion failed (line {}): expected error\n", .{arg.line});
                         }
                     } else |err| {
                         if (err == expected_error) {
@@ -188,7 +189,7 @@ pub const SpecTestRunner = struct {
                         } else {
                             failed += 1;
                             if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ assert_exhaustion failed: wrong error\n", .{});
+                                self.debugPrint("✗ assert_exhaustion failed (line {}): wrong error\n", .{arg.line});
                             }
                         }
                     }
