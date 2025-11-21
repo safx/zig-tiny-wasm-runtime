@@ -1,15 +1,15 @@
 const std = @import("std");
-const local_types = @import("./types.zig");
-const errors = @import("./errors.zig");
+const spec_types = @import("spec-types");
+const spec_test_errors = @import("spec-test-errors");
 
 // Type aliases for convenience
-const Action = local_types.Action;
-const Command = local_types.Command;
-const Result = local_types.Result;
-const Value = local_types.Value;
-const ExternAddr = local_types.ExternAddr;
-const FuncAddr = local_types.FuncAddr;
-const FloatType = local_types.FloatType;
+const Action = spec_types.command.Action;
+const Command = spec_types.command.Command;
+const Result = spec_types.command.Result;
+const Value = spec_types.command.Value;
+const ExternAddr = spec_types.command.ExternAddr;
+const FuncAddr = spec_types.command.FuncAddr;
+const FloatType = spec_types.command.FloatType;
 
 pub fn readJsonFromFile(file: std.fs.File, allocator: std.mem.Allocator) ![]const Command {
     const buffer = try file.readToEndAlloc(allocator, 10_000_000);

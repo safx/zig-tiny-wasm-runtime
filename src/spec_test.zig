@@ -207,10 +207,21 @@ const WastRunner = struct {
                     std.debug.print("✓ assert_uninstantiable (skipped)\n", .{});
                 }
             },
-            .register => {
+            .register => |r| {
                 if (self.verbose >= 2) {
-                    std.debug.print("Register (skipped)\n", .{});
+                    std.debug.print("Registering module as '{s}'", .{r.as_name});
+                    if (r.name) |name| {
+                        std.debug.print(" (source: {s})", .{name});
+                    }
+                    std.debug.print("\n", .{});
                 }
+
+                const mod_inst = if (r.name) |name|
+                    self.engine.getModuleInstByName(name) orelse return error.ModuleNotFound
+                else
+                    self.current_module orelse return error.NoCurrentModule;
+
+                try self.registered_modules.put(r.as_name, mod_inst);
             },
         }
     }

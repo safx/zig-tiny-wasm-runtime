@@ -1,9 +1,9 @@
 const std = @import("std");
 const core = @import("wasm-core");
 const runtime = @import("wasm-runtime");
-const spec_types = @import("./types.zig");
-const errors = @import("./errors.zig");
-const Error = errors.RuntimeError;
+const spec_types = @import("spec-types");
+const spec_test_errors = @import("spec-test-errors");
+const Error = spec_test_errors.RuntimeError;
 const reader = @import("./reader.zig");
 const value_convert = @import("./executor/value_convert.zig");
 
@@ -29,7 +29,7 @@ pub const SpecTestRunner = struct {
         try self.execSpecTests(commands);
     }
 
-    fn execSpecTests(self: *Self, commands: []const spec_types.Command) !void {
+    fn execSpecTests(self: *Self, commands: []const spec_types.command.Command) !void {
         var current_module: *runtime.types.ModuleInst = try self.engine.loadModuleFromPath("spectest.wasm", "spectest");
 
         for (commands) |cmd| {
@@ -59,7 +59,7 @@ pub const SpecTestRunner = struct {
                     self.allocator.free(ret);
                 },
                 .assert_trap => |arg| {
-                    const expected_error = errors.runtimeErrorFromString(arg.error_text);
+                    const expected_error = spec_test_errors.runtimeErrorFromString(arg.error_text);
                     _ = self.doAction(arg.action, current_module) catch |err| {
                         self.validateCatchedError(expected_error, err, true, arg.line);
                         continue;
@@ -68,7 +68,7 @@ pub const SpecTestRunner = struct {
                     @panic("Test failed.");
                 },
                 .assert_exhaustion => |arg| {
-                    const expected_error = errors.runtimeErrorFromString(arg.error_text);
+                    const expected_error = spec_test_errors.runtimeErrorFromString(arg.error_text);
                     _ = self.doAction(arg.action, current_module) catch |err| {
                         self.validateCatchedError(expected_error, err, true, arg.line);
                         continue;
@@ -77,19 +77,19 @@ pub const SpecTestRunner = struct {
                     @panic("Test failed.");
                 },
                 .assert_malformed => |arg| {
-                    const expected_error = errors.decodeErrorFromString(arg.error_text);
+                    const expected_error = spec_test_errors.decodeErrorFromString(arg.error_text);
                     try self.expectErrorWhileloadingModule(arg.file_name, expected_error, false, arg.line);
                 },
                 .assert_invalid => |arg| {
-                    const expected_error = errors.validationErrorFromString(arg.error_text);
+                    const expected_error = spec_test_errors.validationErrorFromString(arg.error_text);
                     try self.expectErrorWhileloadingModule(arg.file_name, expected_error, false, arg.line);
                 },
                 .assert_unlinkable => |arg| {
-                    const expected_error = errors.linkErrorFromString(arg.error_text);
+                    const expected_error = spec_test_errors.linkErrorFromString(arg.error_text);
                     try self.expectErrorWhileloadingModule(arg.file_name, expected_error, true, arg.line);
                 },
                 .assert_uninstantiable => |arg| {
-                    const expected_error = errors.runtimeErrorFromString(arg.error_text);
+                    const expected_error = spec_test_errors.runtimeErrorFromString(arg.error_text);
                     try self.expectErrorWhileloadingModule(arg.file_name, expected_error, true, arg.line);
                 },
                 else => {},
@@ -97,13 +97,13 @@ pub const SpecTestRunner = struct {
         }
     }
 
-    fn doAction(self: *Self, action: spec_types.Action, current_module: *runtime.types.ModuleInst) ![]const runtime.types.Value {
+    fn doAction(self: *Self, action: spec_types.command.Action, current_module: *runtime.types.ModuleInst) ![]const runtime.types.Value {
         switch (action) {
             .invoke => |arg| {
                 const mod = if (arg.module) |name| self.engine.getModuleInstByName(name) orelse current_module else current_module;
                 const func_addr = try getFunctionByName(mod, arg.field);
 
-                // Convert spec_types.Value → runtime.types.Value
+                // Convert spec_types.command.Value → runtime.types.Value
                 const runtime_args = try self.allocator.alloc(runtime.types.Value, arg.args.len);
                 defer self.allocator.free(runtime_args);
                 for (arg.args, 0..) |spec_arg, i| {
@@ -131,7 +131,7 @@ pub const SpecTestRunner = struct {
         @panic("Test failed.");
     }
 
-    fn validateResult(self: Self, expected_value: []const spec_types.Result, actual_result: []const runtime.types.Value, line: u32) void {
+    fn validateResult(self: Self, expected_value: []const spec_types.command.Result, actual_result: []const runtime.types.Value, line: u32) void {
         if (actual_result.len != expected_value.len) {
             @panic("Test failed (length not match).");
         }
@@ -170,7 +170,7 @@ pub const SpecTestRunner = struct {
         }
     }
 
-    fn freeCommands(self: *Self, commands: []const spec_types.Command) void {
+    fn freeCommands(self: *Self, commands: []const spec_types.command.Command) void {
         for (commands) |cmd| {
             switch (cmd) {
                 .module => |arg| {
@@ -216,7 +216,7 @@ pub const SpecTestRunner = struct {
         self.allocator.free(commands);
     }
 
-    fn freeAction(self: *Self, action: spec_types.Action) void {
+    fn freeAction(self: *Self, action: spec_types.command.Action) void {
         switch (action) {
             .invoke => |arg| {
                 self.allocator.free(arg.field);
@@ -242,7 +242,7 @@ fn getFunctionByName(module: *runtime.types.ModuleInst, func_name: []const u8) e
     return Error.ExportItemNotFound;
 }
 
-fn checkReturnValue(expected: spec_types.Result, result: runtime.types.Value) bool {
+fn checkReturnValue(expected: spec_types.command.Result, result: runtime.types.Value) bool {
     return switch (expected) {
         .i32 => |val| val == result.i32,
         .i64 => |val| val == result.i64,
