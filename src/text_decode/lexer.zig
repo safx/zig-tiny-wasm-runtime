@@ -127,9 +127,50 @@ pub const Lexer = struct {
                 return try self.readIdentifierOrNumber();
             }
 
-            std.debug.print("Error: Unexpected token at line {d} char [{c}]\n", .{ self.line, self.current_char.? });
+            std.debug.print("Error: Unexpected token at line {d}: col {d}: {s}\n", .{ self.line, self.getColumn(), self.getCurrentLine() });
             return TextDecodeError.UnexpectedToken;
         }
+    }
+
+    pub fn getCurrentLine(self: *Lexer) []const u8 {
+        var line_start: usize = 0;
+        var line_end: usize = self.input.len;
+
+        // Find start of the current line
+        var i: usize = self.pos;
+        while (i > 0) : (i -= 1) {
+            if (self.input[i - 1] == '\n') {
+                line_start = i;
+                break;
+            }
+        }
+
+        // Find end of the current line
+        i = self.pos;
+        while (i < self.input.len) : (i += 1) {
+            if (self.input[i] == '\n') {
+                line_end = i;
+                break;
+            }
+        }
+
+        const line = self.input[line_start..line_end];
+        return line;
+    }
+
+    pub fn getColumn(self: *Lexer) usize {
+        var line_start: usize = 0;
+
+        // Find start of the current line
+        var i: usize = self.pos;
+        while (i > 0) : (i -= 1) {
+            if (self.input[i - 1] == '\n') {
+                line_start = i;
+                break;
+            }
+        }
+
+        return self.pos - line_start;
     }
 
     pub fn peekToken(self: *Lexer) !Token {
