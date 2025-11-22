@@ -142,6 +142,8 @@ pub const Parser = struct {
             try self.parseData(builder);
         } else if (std.mem.eql(u8, field_name, "table")) {
             try self.parseTable(builder);
+        } else if (std.mem.eql(u8, field_name, "elem")) {
+            try self.parseElem(builder);
         } else if (std.mem.eql(u8, field_name, "import")) {
             try self.parseImport(builder);
         } else if (std.mem.eql(u8, field_name, "global")) {
@@ -165,6 +167,223 @@ pub const Parser = struct {
         }
 
         try self.expectToken(.right_paren);
+    }
+
+    fn parseElem(self: *Parser, builder: *ModuleBuilder) !void {
+        // Skip optional name
+        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
+            try self.advance();
+        }
+        
+        const ref_type: wasm_core.types.RefType = .funcref;
+        var table_idx: u32 = 0;
+        var offset: wasm_core.types.InitExpression = .{ .i32_const = 0 };
+        var mode: wasm_core.types.ElementMode = .passive;
+        
+        // Check for (table $t) or (table idx) or (offset-expr) or (i32.const ...)
+        if (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+            
+            try self.advance();
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "table")) {
+                try self.advance();
+                if (self.current_token == .number) {
+                    table_idx = try std.fmt.parseInt(u32, self.current_token.number, 0);
+                    try self.advance();
+                } else if (self.current_token == .identifier) {
+                    // Table name - skip
+                    try self.advance();
+                }
+                try self.expectRightParen();
+                
+                // Parse offset
+                if (self.current_token == .left_paren) {
+                    try self.advance();
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "offset")) {
+                        try self.advance();
+                        if (self.current_token == .left_paren) {
+                            try self.advance();
+                            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
+                                try self.advance();
+                                if (self.current_token == .number) {
+                                    const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                                    offset = .{ .i32_const = val };
+                                    try self.advance();
+                                }
+                                try self.expectRightParen();
+                            }
+                        }
+                        try self.expectRightParen();
+                    } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
+                        try self.advance();
+                        if (self.current_token == .number) {
+                            const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                            offset = .{ .i32_const = val };
+                            try self.advance();
+                        }
+                        try self.expectRightParen();
+                    }
+                }
+                
+                mode = .{ .active = .{ .table_idx = table_idx, .offset = offset } };
+            } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "offset")) {
+                // (offset (i32.const 0))
+                try self.advance();
+                if (self.current_token == .left_paren) {
+                    try self.advance();
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
+                        try self.advance();
+                        if (self.current_token == .number) {
+                            const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                            offset = .{ .i32_const = val };
+                            try self.advance();
+                        }
+                        try self.expectRightParen();
+                    } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "global.get")) {
+                        try self.advance();
+                        const val: u32 = if (self.current_token == .number)
+                            try std.fmt.parseInt(u32, self.current_token.number, 0)
+                        else
+                            0;
+                        offset = .{ .global_get = val };
+                        try self.advance();
+                        try self.expectRightParen();
+                    }
+                }
+                try self.expectRightParen();
+                mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
+            } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
+                // Direct offset expression: (i32.const 0)
+                try self.advance();
+                if (self.current_token == .number) {
+                    const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                    offset = .{ .i32_const = val };
+                    try self.advance();
+                }
+                try self.expectRightParen();
+                mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
+            } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "global.get")) {
+                // Direct offset expression: (global.get 0)
+                try self.advance();
+                const val: u32 = if (self.current_token == .number)
+                    try std.fmt.parseInt(u32, self.current_token.number, 0)
+                else
+                    0;
+                offset = .{ .global_get = val };
+                try self.advance();
+                try self.expectRightParen();
+                mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
+            } else {
+                // Not table or offset, restore
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+            }
+        }
+        
+        // Check for 'declare' keyword
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "declare")) {
+            mode = .declarative;
+            try self.advance();
+        }
+        
+        // Skip 'func' keyword if present
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "func")) {
+            try self.advance();
+        }
+        
+        // Parse function references
+        var init_list = std.ArrayList(wasm_core.types.InitExpression){};
+        defer init_list.deinit(self.allocator);
+        
+        while (self.current_token != .right_paren and self.current_token != .eof) {
+            if (self.current_token == .left_paren) {
+                try self.advance();
+                if (self.current_token == .identifier) {
+                    if (std.mem.eql(u8, self.current_token.identifier, "ref")) {
+                        // (ref func) - type specification, skip
+                        try self.advance();
+                        if (self.current_token == .identifier) {
+                            try self.advance();
+                        }
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, self.current_token.identifier, "ref.func")) {
+                        try self.advance();
+                        const func_idx: u32 = if (self.current_token == .number)
+                            try std.fmt.parseInt(u32, self.current_token.number, 0)
+                        else
+                            0;
+                        try init_list.append(self.allocator, .{ .ref_func = func_idx });
+                        try self.advance();
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, self.current_token.identifier, "item")) {
+                        try self.advance();
+                        if (self.current_token == .left_paren) {
+                            try self.advance();
+                            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref.func")) {
+                                try self.advance();
+                                const func_idx: u32 = if (self.current_token == .number)
+                                    try std.fmt.parseInt(u32, self.current_token.number, 0)
+                                else
+                                    0;
+                                try init_list.append(self.allocator, .{ .ref_func = func_idx });
+                                try self.advance();
+                                try self.expectRightParen();
+                                try self.expectRightParen();
+                            } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref.null")) {
+                                try self.advance();
+                                try init_list.append(self.allocator, .{ .ref_null = .funcref });
+                                try self.advance();
+                                try self.expectRightParen();
+                                try self.expectRightParen();
+                            }
+                        } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref.func")) {
+                            try self.advance();
+                            const func_idx: u32 = if (self.current_token == .number)
+                                try std.fmt.parseInt(u32, self.current_token.number, 0)
+                            else
+                                0;
+                            try init_list.append(self.allocator, .{ .ref_func = func_idx });
+                            try self.advance();
+                            try self.expectRightParen();
+                        }
+                    } else if (std.mem.eql(u8, self.current_token.identifier, "ref.null")) {
+                        try self.advance();
+                        try init_list.append(self.allocator, .{ .ref_null = .funcref });
+                        try self.advance();
+                        try self.expectRightParen();
+                    } else {
+                        try self.advance();
+                        try self.expectRightParen();
+                    }
+                }
+            } else if (self.current_token == .identifier) {
+                // Function name or index
+                if (std.mem.startsWith(u8, self.current_token.identifier, "$")) {
+                    // Function name - skip for now, would need name resolution
+                    try init_list.append(self.allocator, .{ .ref_func = 0 });
+                } else {
+                    // Try to parse as number
+                    const func_idx = std.fmt.parseInt(u32, self.current_token.identifier, 0) catch 0;
+                    try init_list.append(self.allocator, .{ .ref_func = func_idx });
+                }
+                try self.advance();
+            } else if (self.current_token == .number) {
+                const func_idx = try std.fmt.parseInt(u32, self.current_token.number, 0);
+                try init_list.append(self.allocator, .{ .ref_func = func_idx });
+                try self.advance();
+            } else {
+                break;
+            }
+        }
+        
+        try builder.elements.append(self.allocator, .{
+            .type = ref_type,
+            .init = try init_list.toOwnedSlice(self.allocator),
+            .mode = mode,
+        });
     }
 
     fn parseGlobal(self: *Parser, builder: *ModuleBuilder) !void {
@@ -330,7 +549,26 @@ pub const Parser = struct {
         try self.advance();
         
         const import_desc = if (std.mem.eql(u8, desc_type, "func")) blk: {
-            // Skip function signature
+            // Parse function type index or signature
+            var type_idx: u32 = 0;
+            
+            // Check for (type $name) or (type idx)
+            if (self.current_token == .left_paren) {
+                try self.advance();
+                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
+                    try self.advance();
+                    if (self.current_token == .number) {
+                        type_idx = try std.fmt.parseInt(u32, self.current_token.number, 0);
+                        try self.advance();
+                    } else if (self.current_token == .identifier) {
+                        // Type name - skip for now
+                        try self.advance();
+                    }
+                    try self.expectRightParen();
+                }
+            }
+            
+            // Skip remaining signature
             while (self.current_token != .right_paren and self.current_token != .eof) {
                 if (self.current_token == .left_paren) {
                     var depth: u32 = 1;
@@ -345,25 +583,70 @@ pub const Parser = struct {
                     try self.advance();
                 }
             }
-            break :blk wasm_core.types.ImportDesc{ .function = 0 };
+            break :blk wasm_core.types.ImportDesc{ .function = type_idx };
         } else if (std.mem.eql(u8, desc_type, "global")) blk: {
-            // Skip global type
-            while (self.current_token != .right_paren and self.current_token != .eof) {
+            // Parse global type
+            var value_type: wasm_core.types.ValueType = .i32;
+            var mutability: wasm_core.types.Mutability = .immutable;
+            
+            // Check for (mut type)
+            if (self.current_token == .left_paren) {
                 try self.advance();
+                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "mut")) {
+                    mutability = .mutable;
+                    try self.advance();
+                    if (self.current_token == .identifier) {
+                        value_type = try self.parseValueType() orelse .i32;
+                    }
+                    try self.expectRightParen();
+                }
+            } else if (self.current_token == .identifier) {
+                value_type = try self.parseValueType() orelse .i32;
             }
-            break :blk wasm_core.types.ImportDesc{ .global = .{ .value_type = .i32, .mutability = .immutable } };
+            
+            break :blk wasm_core.types.ImportDesc{ .global = .{ .value_type = value_type, .mutability = mutability } };
         } else if (std.mem.eql(u8, desc_type, "table")) blk: {
-            // Skip table type
-            while (self.current_token != .right_paren and self.current_token != .eof) {
+            // Parse table type: min [max] reftype
+            var min: u32 = 0;
+            var max: ?u32 = null;
+            var ref_type: wasm_core.types.RefType = .funcref;
+            
+            if (self.current_token == .number) {
+                min = try std.fmt.parseInt(u32, self.current_token.number, 0);
                 try self.advance();
             }
-            break :blk wasm_core.types.ImportDesc{ .table = .{ .limits = .{ .min = 0, .max = null }, .ref_type = .funcref } };
+            
+            if (self.current_token == .number) {
+                max = try std.fmt.parseInt(u32, self.current_token.number, 0);
+                try self.advance();
+            }
+            
+            if (self.current_token == .identifier) {
+                if (std.mem.eql(u8, self.current_token.identifier, "funcref")) {
+                    ref_type = .funcref;
+                } else if (std.mem.eql(u8, self.current_token.identifier, "externref")) {
+                    ref_type = .externref;
+                }
+                try self.advance();
+            }
+            
+            break :blk wasm_core.types.ImportDesc{ .table = .{ .limits = .{ .min = min, .max = max }, .ref_type = ref_type } };
         } else if (std.mem.eql(u8, desc_type, "memory")) blk: {
-            // Skip memory type
-            while (self.current_token != .right_paren and self.current_token != .eof) {
+            // Parse memory type: min [max]
+            var min: u32 = 1;
+            var max: ?u32 = null;
+            
+            if (self.current_token == .number) {
+                min = try std.fmt.parseInt(u32, self.current_token.number, 0);
                 try self.advance();
             }
-            break :blk wasm_core.types.ImportDesc{ .memory = .{ .limits = .{ .min = 0, .max = null } } };
+            
+            if (self.current_token == .number) {
+                max = try std.fmt.parseInt(u32, self.current_token.number, 0);
+                try self.advance();
+            }
+            
+            break :blk wasm_core.types.ImportDesc{ .memory = .{ .limits = .{ .min = min, .max = max } } };
         } else {
             return TextDecodeError.UnexpectedToken;
         };
