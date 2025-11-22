@@ -1449,14 +1449,11 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, instr_name, "unreachable")) {
             return .@"unreachable";
         } else if (std.mem.eql(u8, instr_name, "block")) {
-            const block_type = try self.parseBlockType();
-            return .{ .block = .{ .type = block_type, .end = 0 } };
+            return .{ .block = .{ .type = try self.parseBlockType(), .end = 0 } };
         } else if (std.mem.eql(u8, instr_name, "loop")) {
-            const block_type = try self.parseBlockType();
-            return .{ .loop = .{ .type = block_type, .end = 0 } };
+            return .{ .loop = .{ .type = try self.parseBlockType(), .end = 0 } };
         } else if (std.mem.eql(u8, instr_name, "if")) {
-            const block_type = try self.parseBlockType();
-            return .{ .@"if" = .{ .type = block_type, .@"else" = null, .end = 0 } };
+            return .{ .@"if" = .{ .type = try self.parseBlockType(), .@"else" = null, .end = 0 } };
         } else if (std.mem.eql(u8, instr_name, "else")) {
             return .@"else";
         } else if (std.mem.eql(u8, instr_name, "end")) {
@@ -1467,11 +1464,9 @@ pub const Parser = struct {
 
         // Branch instructions
         else if (std.mem.eql(u8, instr_name, "br")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .br = idx };
+            return .{ .br = try self.parseU32OrIdentifier() };
         } else if (std.mem.eql(u8, instr_name, "br_if")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .br_if = idx };
+            return .{ .br_if = try self.parseU32OrIdentifier() };
         } else if (std.mem.eql(u8, instr_name, "br_table")) {
             // Parse br_table: (br_table label1 label2 ... default)
             var label_idxs = std.ArrayList(u32){};
@@ -1509,8 +1504,7 @@ pub const Parser = struct {
 
         // Call instructions
         else if (std.mem.eql(u8, instr_name, "call")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .call = idx };
+            return .{ .call = try self.parseU32OrIdentifier() };
         } else if (std.mem.eql(u8, instr_name, "call_indirect")) {
             // Parse (type idx) and optional (table idx)
             var type_idx: u32 = 0;
@@ -1579,8 +1573,7 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, instr_name, "ref.is_null")) {
             return .ref_is_null;
         } else if (std.mem.eql(u8, instr_name, "ref.func")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .ref_func = idx };
+            return .{ .ref_func = try self.parseU32OrIdentifier() };
         }
 
         // parametric instructions
@@ -1590,20 +1583,15 @@ pub const Parser = struct {
 
         // Variable instructions
         else if (std.mem.eql(u8, instr_name, "local.get")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .local_get = idx };
+            return .{ .local_get = try self.parseU32OrIdentifier() };
         } else if (std.mem.eql(u8, instr_name, "local.set")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .local_set = idx };
+            return .{ .local_set = try self.parseU32OrIdentifier() };
         } else if (std.mem.eql(u8, instr_name, "local.tee")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .local_tee = idx };
+            return .{ .local_tee = try self.parseU32OrIdentifier() };
         } else if (std.mem.eql(u8, instr_name, "global.get")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .global_get = idx };
+            return .{ .global_get = try self.parseU32OrIdentifier() };
         } else if (std.mem.eql(u8, instr_name, "global.set")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .global_set = idx };
+            return .{ .global_set = try self.parseU32OrIdentifier() };
         }
         // table instructions
         else if (std.mem.eql(u8, instr_name, "table.get")) {
@@ -1655,94 +1643,68 @@ pub const Parser = struct {
                 return .{ .table_init = .{ .table_idx = 0, .elem_idx = first_idx } };
             }
         } else if (std.mem.eql(u8, instr_name, "elem.drop")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .elem_drop = idx };
+            return .{ .elem_drop = try self.parseU32OrIdentifier() };
         }
 
         // Memory instructions
         else if (std.mem.eql(u8, instr_name, "i32.load")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i32_load = memarg };
+            return .{ .i32_load = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i64.load")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i64_load = memarg };
+            return .{ .i64_load = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "f32.load")) {
-            const memarg = try self.parseMemArg();
-            return .{ .f32_load = memarg };
+            return .{ .f32_load = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "f64.load")) {
-            const memarg = try self.parseMemArg();
-            return .{ .f64_load = memarg };
+            return .{ .f64_load = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i32.load8_s")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i32_load8_s = memarg };
+            return .{ .i32_load8_s = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i32.load8_u")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i32_load8_u = memarg };
+            return .{ .i32_load8_u = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i32.load16_s")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i32_load16_s = memarg };
+            return .{ .i32_load16_s = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i32.load16_u")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i32_load16_u = memarg };
+            return .{ .i32_load16_u = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i64.load8_s")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i64_load8_s = memarg };
+            return .{ .i64_load8_s = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i64.load8_u")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i64_load8_u = memarg };
+            return .{ .i64_load8_u = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i64.load16_s")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i64_load16_s = memarg };
+            return .{ .i64_load16_s = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i64.load16_u")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i64_load16_u = memarg };
+            return .{ .i64_load16_u = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i64.load32_s")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i64_load32_s = memarg };
+            return .{ .i64_load32_s = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i64.load32_u")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i64_load32_u = memarg };
+            return .{ .i64_load32_u = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i32.store")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i32_store = memarg };
+            return .{ .i32_store = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i64.store")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i64_store = memarg };
+            return .{ .i64_store = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "f32.store")) {
-            const memarg = try self.parseMemArg();
-            return .{ .f32_store = memarg };
+            return .{ .f32_store = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "f64.store")) {
-            const memarg = try self.parseMemArg();
-            return .{ .f64_store = memarg };
+            return .{ .f64_store = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i32.store8")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i32_store8 = memarg };
+            return .{ .i32_store8 = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i32.store16")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i32_store16 = memarg };
+            return .{ .i32_store16 = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i64.store8")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i64_store8 = memarg };
+            return .{ .i64_store8 = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i64.store16")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i64_store16 = memarg };
+            return .{ .i64_store16 = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "i64.store32")) {
-            const memarg = try self.parseMemArg();
-            return .{ .i64_store32 = memarg };
+            return .{ .i64_store32 = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "memory.size")) {
             return .memory_size;
         } else if (std.mem.eql(u8, instr_name, "memory.grow")) {
             return .memory_grow;
         } else if (std.mem.eql(u8, instr_name, "memory.init")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .memory_init = idx };
+            return .{ .memory_init = try self.parseU32OrIdentifier() };
         } else if (std.mem.eql(u8, instr_name, "memory.copy")) {
             return .memory_copy;
         } else if (std.mem.eql(u8, instr_name, "memory.fill")) {
             return .memory_fill;
         } else if (std.mem.eql(u8, instr_name, "data.drop")) {
-            const idx = try self.parseU32OrIdentifier();
-            return .{ .data_drop = idx };
+            return .{ .data_drop = try self.parseU32OrIdentifier() };
         }
 
         // Numeric const instructions
@@ -1761,11 +1723,9 @@ pub const Parser = struct {
             try self.advance();
             return .{ .i64_const = val };
         } else if (std.mem.eql(u8, instr_name, "f32.const")) {
-            const val = try self.parseFloat(f32);
-            return .{ .f32_const = val };
+            return .{ .f32_const = try self.parseFloat(f32) };
         } else if (std.mem.eql(u8, instr_name, "f64.const")) {
-            const val = try self.parseFloat(f64);
-            return .{ .f64_const = val };
+            return .{ .f64_const = try self.parseFloat(f64) };
         } else if (std.mem.eql(u8, instr_name, "v128.const")) {
             if (self.current_token != .number) {
                 return TextDecodeError.InvalidNumber;
