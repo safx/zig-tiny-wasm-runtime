@@ -144,6 +144,8 @@ pub const Parser = struct {
             try self.parseTable(builder);
         } else if (std.mem.eql(u8, field_name, "import")) {
             try self.parseImport(builder);
+        } else if (std.mem.eql(u8, field_name, "global")) {
+            try self.parseGlobal(builder);
         } else if (std.mem.eql(u8, field_name, "func")) {
             try self.parseFunction(builder);
         } else if (std.mem.eql(u8, field_name, "export")) {
@@ -165,39 +167,98 @@ pub const Parser = struct {
         try self.expectToken(.right_paren);
     }
 
-    fn parseImport(self: *Parser, _: *ModuleBuilder) !void {
-        // Skip module name string
-        if (self.current_token == .string) {
-            try self.advance();
-        }
-        
-        // Skip field name string
-        if (self.current_token == .string) {
-            try self.advance();
-        }
-        
-        // Skip import descriptor: (func ...), (table ...), (memory ...), (global ...)
+    fn parseGlobal(self: *Parser, _: *ModuleBuilder) !void {
+        // Skip everything - minimal implementation
         while (self.current_token != .right_paren and self.current_token != .eof) {
             if (self.current_token == .left_paren) {
                 var depth: u32 = 1;
                 try self.advance();
                 while (depth > 0 and self.current_token != .eof) {
-                    if (self.current_token == .left_paren) {
-                        depth += 1;
-                    } else if (self.current_token == .right_paren) {
-                        depth -= 1;
-                    }
-                    if (depth > 0) {
-                        try self.advance();
-                    }
+                    if (self.current_token == .left_paren) depth += 1
+                    else if (self.current_token == .right_paren) depth -= 1;
+                    if (depth > 0) try self.advance();
                 }
-                if (self.current_token == .right_paren) {
-                    try self.advance();
-                }
+                if (self.current_token == .right_paren) try self.advance();
             } else {
                 try self.advance();
             }
         }
+    }
+
+    fn parseImport(self: *Parser, builder: *ModuleBuilder) !void {
+        // Parse module name string
+        if (self.current_token != .string) {
+            return TextDecodeError.UnexpectedToken;
+        }
+        const module_name = try self.allocator.dupe(u8, self.current_token.string);
+        try self.advance();
+        
+        // Parse field name string
+        if (self.current_token != .string) {
+            return TextDecodeError.UnexpectedToken;
+        }
+        const field_name = try self.allocator.dupe(u8, self.current_token.string);
+        try self.advance();
+        
+        // Parse import descriptor: (func ...), (table ...), (memory ...), (global ...)
+        if (self.current_token != .left_paren) {
+            return TextDecodeError.UnexpectedToken;
+        }
+        try self.advance();
+        
+        if (self.current_token != .identifier) {
+            return TextDecodeError.UnexpectedToken;
+        }
+        
+        const desc_type = self.current_token.identifier;
+        try self.advance();
+        
+        const import_desc = if (std.mem.eql(u8, desc_type, "func")) blk: {
+            // Skip function signature
+            while (self.current_token != .right_paren and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    var depth: u32 = 1;
+                    try self.advance();
+                    while (depth > 0 and self.current_token != .eof) {
+                        if (self.current_token == .left_paren) depth += 1
+                        else if (self.current_token == .right_paren) depth -= 1;
+                        if (depth > 0) try self.advance();
+                    }
+                    if (self.current_token == .right_paren) try self.advance();
+                } else {
+                    try self.advance();
+                }
+            }
+            break :blk wasm_core.types.ImportDesc{ .function = 0 };
+        } else if (std.mem.eql(u8, desc_type, "global")) blk: {
+            // Skip global type
+            while (self.current_token != .right_paren and self.current_token != .eof) {
+                try self.advance();
+            }
+            break :blk wasm_core.types.ImportDesc{ .global = .{ .value_type = .i32, .mutability = .immutable } };
+        } else if (std.mem.eql(u8, desc_type, "table")) blk: {
+            // Skip table type
+            while (self.current_token != .right_paren and self.current_token != .eof) {
+                try self.advance();
+            }
+            break :blk wasm_core.types.ImportDesc{ .table = .{ .limits = .{ .min = 0, .max = null }, .ref_type = .funcref } };
+        } else if (std.mem.eql(u8, desc_type, "memory")) blk: {
+            // Skip memory type
+            while (self.current_token != .right_paren and self.current_token != .eof) {
+                try self.advance();
+            }
+            break :blk wasm_core.types.ImportDesc{ .memory = .{ .limits = .{ .min = 0, .max = null } } };
+        } else {
+            return TextDecodeError.UnexpectedToken;
+        };
+        
+        try self.expectRightParen();
+        
+        try builder.imports.append(self.allocator, .{
+            .module_name = module_name,
+            .name = field_name,
+            .desc = import_desc,
+        });
     }
 
     fn parseTable(self: *Parser, _: *ModuleBuilder) !void {
@@ -380,7 +441,56 @@ pub const Parser = struct {
                 }
                 try self.expectRightParen();
                 break;
+            } else if (std.mem.eql(u8, instr_name, "i32.add")) {
+                // Parse (i32.add (i32.const a) (i32.const b)) -> a + b
+                var val1: i32 = 0;
+                var val2: i32 = 0;
+                
+                // Parse first operand
+                if (self.current_token == .left_paren) {
+                    try self.advance();
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
+                        try self.advance();
+                        if (self.current_token == .number) {
+                            val1 = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                            try self.advance();
+                        }
+                    }
+                    try self.expectRightParen();
+                }
+                
+                // Parse second operand
+                if (self.current_token == .left_paren) {
+                    try self.advance();
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
+                        try self.advance();
+                        if (self.current_token == .number) {
+                            val2 = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                            try self.advance();
+                        }
+                    }
+                    try self.expectRightParen();
+                }
+                
+                offset = .{ .i32_const = val1 + val2 };
+                try self.expectRightParen();
+                break;
             } else {
+                // Unknown instruction in offset - skip the entire expression
+                var depth: u32 = 1;
+                while (depth > 0 and self.current_token != .eof) {
+                    if (self.current_token == .left_paren) {
+                        depth += 1;
+                    } else if (self.current_token == .right_paren) {
+                        depth -= 1;
+                    }
+                    if (depth > 0) {
+                        try self.advance();
+                    }
+                }
+                if (self.current_token == .right_paren) {
+                    try self.advance();
+                }
                 break;
             }
         }

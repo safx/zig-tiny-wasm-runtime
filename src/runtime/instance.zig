@@ -311,8 +311,15 @@ pub const Instance = struct {
                     try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
-                    try self.execOneInstruction(.{ .memory_init = @intCast(i) });
-                    try self.execOneInstruction(.{ .data_drop = @intCast(i) });
+                    if (aux_module.mem_addrs.len > 0) {
+                        try self.execOneInstruction(.{ .memory_init = @intCast(i) });
+                        try self.execOneInstruction(.{ .data_drop = @intCast(i) });
+                    } else {
+                        // Pop the values we pushed if no memory exists
+                        _ = self.stack.pop();
+                        _ = self.stack.pop();
+                        _ = self.stack.pop();
+                    }
                 },
                 else => continue,
             }

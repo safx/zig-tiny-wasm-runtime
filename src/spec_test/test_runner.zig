@@ -70,6 +70,11 @@ pub const SpecTestRunner = struct {
         defer registered_modules.deinit();
 
         var current_module: ?*runtime.types.ModuleInst = self.loadSpectestHostModule() catch null;
+        
+        // Register spectest module if loaded successfully
+        if (current_module) |spectest_mod| {
+            try registered_modules.put("spectest", spectest_mod);
+        }
 
         var passed: u32 = 0;
         var failed: u32 = 0;
