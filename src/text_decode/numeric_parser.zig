@@ -1,6 +1,10 @@
 const std = @import("std");
 const TextDecodeError = @import("lexer.zig").TextDecodeError;
 
+const libc = @cImport({
+    @cInclude("stdlib.h");
+});
+
 /// Helper function to remove underscores from numeric literals
 /// WASM allows underscores in numeric literals (e.g., 1_000_000)
 fn removeUnderscores(input: []const u8, buffer: []u8) ![]u8 {
@@ -63,7 +67,20 @@ pub fn parseFloat(comptime T: type, input: []const u8) !T {
         return -std.math.inf(T);
     } else {
         // Regular number - parse as float
-        return try std.fmt.parseFloat(T, input);
+        var buffer: [512]u8 = undefined;
+        const clean = try removeUnderscores(input, &buffer);
+        
+        // Use C library for correct IEEE 754 rounding
+        var c_buffer: [512]u8 = undefined;
+        const c_str = try std.fmt.bufPrintZ(&c_buffer, "{s}", .{clean});
+        
+        if (T == f32) {
+            const result = libc.strtof(c_str.ptr, null);
+            return result;
+        } else {
+            const result = libc.strtod(c_str.ptr, null);
+            return result;
+        }
     }
 }
 
