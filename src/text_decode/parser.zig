@@ -167,21 +167,137 @@ pub const Parser = struct {
         try self.expectToken(.right_paren);
     }
 
-    fn parseGlobal(self: *Parser, _: *ModuleBuilder) !void {
-        // Skip everything - minimal implementation
-        while (self.current_token != .right_paren and self.current_token != .eof) {
-            if (self.current_token == .left_paren) {
-                var depth: u32 = 1;
+    fn parseGlobal(self: *Parser, builder: *ModuleBuilder) !void {
+        // Skip optional name
+        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
+            try self.advance();
+        }
+        
+        // Check if it's an import
+        if (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+            
+            try self.advance();
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "import")) {
+                try self.advance(); // consume 'import'
+                
+                // Parse module name
+                if (self.current_token != .string) return TextDecodeError.UnexpectedToken;
+                const module_name = try self.allocator.dupe(u8, self.current_token.string);
                 try self.advance();
-                while (depth > 0 and self.current_token != .eof) {
-                    if (self.current_token == .left_paren) depth += 1
-                    else if (self.current_token == .right_paren) depth -= 1;
-                    if (depth > 0) try self.advance();
+                
+                // Parse field name
+                if (self.current_token != .string) return TextDecodeError.UnexpectedToken;
+                const field_name = try self.allocator.dupe(u8, self.current_token.string);
+                try self.advance();
+                
+                try self.expectRightParen();
+                
+                // Parse global type
+                var value_type: wasm_core.types.ValueType = .i32;
+                if (self.current_token == .identifier) {
+                    value_type = try self.parseValueType() orelse .i32;
                 }
-                if (self.current_token == .right_paren) try self.advance();
+                
+                // Add to imports
+                try builder.imports.append(self.allocator, .{
+                    .module_name = module_name,
+                    .name = field_name,
+                    .desc = .{ .global = .{ .value_type = value_type, .mutability = .immutable } },
+                });
+                return;
             } else {
-                try self.advance();
+                // Not import, restore
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
             }
+        }
+        
+        // Process optional export
+        var export_name: ?[]const u8 = null;
+        while (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+            
+            try self.advance();
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "export")) {
+                try self.advance(); // skip 'export'
+                if (self.current_token == .string) {
+                    export_name = try self.allocator.dupe(u8, self.current_token.string);
+                    try self.advance();
+                }
+                try self.expectRightParen();
+            } else {
+                // Not export, restore
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+                break;
+            }
+        }
+        
+        // Parse type
+        var value_type: wasm_core.types.ValueType = .i32;
+        const mutability: wasm_core.types.Mutability = .immutable;
+        
+        if (self.current_token == .identifier) {
+            value_type = try self.parseValueType() orelse .i32;
+        }
+        
+        // Parse init expression
+        var init_expr: wasm_core.types.InitExpression = .{ .i32_const = 0 };
+        
+        if (self.current_token == .left_paren) {
+            try self.advance();
+            if (self.current_token == .identifier) {
+                const instr = self.current_token.identifier;
+                try self.advance();
+                
+                if (std.mem.eql(u8, instr, "i32.const")) {
+                    if (self.current_token == .number) {
+                        const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                        init_expr = .{ .i32_const = val };
+                        try self.advance();
+                    }
+                } else if (std.mem.eql(u8, instr, "i64.const")) {
+                    if (self.current_token == .number) {
+                        const val = try std.fmt.parseInt(i64, self.current_token.number, 0);
+                        init_expr = .{ .i64_const = val };
+                        try self.advance();
+                    }
+                } else if (std.mem.eql(u8, instr, "f32.const")) {
+                    if (self.current_token == .number) {
+                        const val = try numeric_parser.parseFloat(f32, self.current_token.number);
+                        init_expr = .{ .f32_const = val };
+                        try self.advance();
+                    }
+                } else if (std.mem.eql(u8, instr, "f64.const")) {
+                    if (self.current_token == .number) {
+                        const val = try numeric_parser.parseFloat(f64, self.current_token.number);
+                        init_expr = .{ .f64_const = val };
+                        try self.advance();
+                    }
+                }
+            }
+            try self.expectRightParen();
+        }
+        
+        const global_idx: u32 = @intCast(builder.globals.items.len);
+        try builder.globals.append(self.allocator, .{
+            .type = .{ .value_type = value_type, .mutability = mutability },
+            .init = init_expr,
+        });
+        
+        // Add export if present
+        if (export_name) |name| {
+            try builder.exports.append(self.allocator, .{
+                .name = name,
+                .desc = .{ .global = global_idx },
+            });
         }
     }
 
@@ -297,22 +413,93 @@ pub const Parser = struct {
             try self.advance(); // skip the name
         }
 
-        // Skip any inline exports or other nested expressions like (export "mem")
-        while (self.current_token == .left_paren) {
-            var depth: u32 = 1;
-            try self.advance(); // consume '('
-            while (depth > 0 and self.current_token != .eof) {
-                if (self.current_token == .left_paren) {
-                    depth += 1;
-                } else if (self.current_token == .right_paren) {
-                    depth -= 1;
+        // Check if it's an import
+        if (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+            
+            try self.advance();
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "import")) {
+                try self.advance(); // consume 'import'
+                
+                // Parse module name
+                if (self.current_token != .string) return TextDecodeError.UnexpectedToken;
+                const module_name = try self.allocator.dupe(u8, self.current_token.string);
+                try self.advance();
+                
+                // Parse field name
+                if (self.current_token != .string) return TextDecodeError.UnexpectedToken;
+                const field_name = try self.allocator.dupe(u8, self.current_token.string);
+                try self.advance();
+                
+                try self.expectRightParen();
+                
+                // Parse memory limits (min max)
+                if (self.current_token != .left_paren) return TextDecodeError.UnexpectedToken;
+                try self.advance(); // consume '('
+                if (self.current_token != .identifier or !std.mem.eql(u8, self.current_token.identifier, "memory")) {
+                    return TextDecodeError.UnexpectedToken;
                 }
-                if (depth > 0) {
+                try self.advance(); // consume 'memory'
+                
+                var min: u32 = 1;
+                var max: ?u32 = null;
+                if (self.current_token == .number) {
+                    min = @intCast(try std.fmt.parseInt(u64, self.current_token.number, 0));
                     try self.advance();
                 }
+                if (self.current_token == .number) {
+                    max = @intCast(try std.fmt.parseInt(u64, self.current_token.number, 0));
+                    try self.advance();
+                }
+                
+                try self.expectRightParen();
+                
+                // Add to imports
+                try builder.imports.append(self.allocator, .{
+                    .module_name = module_name,
+                    .name = field_name,
+                    .desc = .{ .memory = .{ .limits = .{ .min = min, .max = max } } },
+                });
+                return;
+            } else {
+                // Not import, restore
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
             }
-            if (self.current_token == .right_paren) {
-                try self.advance(); // consume closing ')'
+        }
+
+        // Process inline exports like (export "mem")
+        var export_name: ?[]const u8 = null;
+        while (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+            
+            try self.advance(); // consume '('
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "export")) {
+                try self.advance(); // consume 'export'
+                if (self.current_token == .string) {
+                    export_name = try self.allocator.dupe(u8, self.current_token.string);
+                    try self.advance();
+                }
+                try self.expectRightParen();
+            } else {
+                // Not export, restore and skip
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+                
+                var depth: u32 = 1;
+                try self.advance();
+                while (depth > 0 and self.current_token != .eof) {
+                    if (self.current_token == .left_paren) depth += 1
+                    else if (self.current_token == .right_paren) depth -= 1;
+                    if (depth > 0) try self.advance();
+                }
+                if (self.current_token == .right_paren) try self.advance();
             }
         }
 
@@ -367,7 +554,16 @@ pub const Parser = struct {
             },
         };
 
+        const mem_idx: u32 = @intCast(builder.memories.items.len);
         try builder.memories.append(builder.allocator, memory_type);
+        
+        // Add export if present
+        if (export_name) |name| {
+            try builder.exports.append(self.allocator, .{
+                .name = name,
+                .desc = .{ .memory = mem_idx },
+            });
+        }
     }
 
     fn parseData(self: *Parser, builder: *ModuleBuilder) !void {
