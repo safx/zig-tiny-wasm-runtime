@@ -601,6 +601,11 @@ pub const Parser = struct {
 
     /// Parse block type: checks for (result ...) and returns appropriate BlockType
     fn parseBlockType(self: *Parser) !wasm_core.types.Instruction.BlockType {
+        // Skip label if present (e.g., $l)
+        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
+            try self.advance();
+        }
+        
         // Check if next token is '(' followed by 'result'
         if (self.current_token != .left_paren) {
             return .empty;
@@ -612,6 +617,49 @@ pub const Parser = struct {
         const saved_token = self.current_token;
 
         try self.advance(); // consume '('
+
+        // Skip (type ...) if present
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
+            try self.advance(); // consume 'type'
+            if (self.current_token == .identifier) {
+                try self.advance(); // skip type identifier
+            }
+            if (self.current_token == .right_paren) {
+                try self.advance();
+            }
+            
+            // Check for (result ...) or (param ...) after (type ...)
+            if (self.current_token != .left_paren) {
+                return .empty;
+            }
+            try self.advance(); // consume '('
+        }
+
+        // Skip (param ...) if present
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "param")) {
+            var depth: u32 = 1;
+            try self.advance();
+            while (depth > 0 and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    depth += 1;
+                } else if (self.current_token == .right_paren) {
+                    depth -= 1;
+                }
+                if (depth > 0) {
+                    try self.advance();
+                }
+            }
+            if (self.current_token == .right_paren) {
+                try self.advance();
+            }
+            
+            // Check for (result ...) after (param ...)
+            if (self.current_token == .left_paren) {
+                try self.advance();
+            } else {
+                return .empty;
+            }
+        }
 
         if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "result")) {
             try self.advance(); // consume 'result'
@@ -1233,6 +1281,13 @@ pub const Parser = struct {
             return .i64_extend32_s;
         }
 
+        // Skip non-instruction keywords
+        if (std.mem.eql(u8, instr_name, "type") or 
+            std.mem.eql(u8, instr_name, "param") or
+            std.mem.eql(u8, instr_name, "result")) {
+            return null;
+        }
+
         // Unknown instruction
         std.debug.print("Unknown instruction: {s}\n", .{instr_name});
         unreachable;
@@ -1241,7 +1296,13 @@ pub const Parser = struct {
     /// Parse S-expression recursively: (instr arg1 arg2 ...)
     fn parseSExpression(self: *Parser, instructions: *std.ArrayList(wasm_core.types.Instruction)) !void {
         // Parse the instruction
-        const instr = try self.parseInstruction() orelse return;
+        const instr = try self.parseInstruction() orelse {
+            // Skip to closing paren for non-instruction keywords
+            while (self.current_token != .right_paren and self.current_token != .eof) {
+                try self.advance();
+            }
+            return;
+        };
 
         // Special handling for 'block' instruction with folded form: (block (result) ...)
         if (std.meta.activeTag(instr) == .block) {
