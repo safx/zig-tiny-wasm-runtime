@@ -140,6 +140,8 @@ pub const Parser = struct {
             try self.parseMemory(builder);
         } else if (std.mem.eql(u8, field_name, "data")) {
             try self.parseData(builder);
+        } else if (std.mem.eql(u8, field_name, "table")) {
+            try self.parseTable(builder);
         } else if (std.mem.eql(u8, field_name, "func")) {
             try self.parseFunction(builder);
         } else if (std.mem.eql(u8, field_name, "export")) {
@@ -159,6 +161,36 @@ pub const Parser = struct {
         }
 
         try self.expectToken(.right_paren);
+    }
+
+    fn parseTable(self: *Parser, _: *ModuleBuilder) !void {
+        // Skip table name if present
+        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
+            try self.advance();
+        }
+
+        // Skip everything until closing paren (minimal implementation)
+        while (self.current_token != .right_paren and self.current_token != .eof) {
+            if (self.current_token == .left_paren) {
+                var depth: u32 = 1;
+                try self.advance();
+                while (depth > 0 and self.current_token != .eof) {
+                    if (self.current_token == .left_paren) {
+                        depth += 1;
+                    } else if (self.current_token == .right_paren) {
+                        depth -= 1;
+                    }
+                    if (depth > 0) {
+                        try self.advance();
+                    }
+                }
+                if (self.current_token == .right_paren) {
+                    try self.advance();
+                }
+            } else {
+                try self.advance();
+            }
+        }
     }
 
     fn parseMemory(self: *Parser, builder: *ModuleBuilder) !void {
@@ -1188,6 +1220,19 @@ pub const Parser = struct {
             return .f64_reinterpret_i64;
         }
 
+        // Sign extension instructions (WebAssembly 2.0)
+        else if (std.mem.eql(u8, instr_name, "i32.extend8_s")) {
+            return .i32_extend8_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.extend16_s")) {
+            return .i32_extend16_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.extend8_s")) {
+            return .i64_extend8_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.extend16_s")) {
+            return .i64_extend16_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.extend32_s")) {
+            return .i64_extend32_s;
+        }
+
         // Unknown instruction
         std.debug.print("Unknown instruction: {s}\n", .{instr_name});
         unreachable;
@@ -1250,11 +1295,26 @@ pub const Parser = struct {
 
         // Special handling for 'if' instruction with folded form: (if (result) (cond) (then ...) (else ...))
         if (std.meta.activeTag(instr) == .@"if") {
-            // Parse condition expression
+            // Parse condition expression (only if not followed by 'then')
             if (self.current_token == .left_paren) {
+                // Peek ahead to check if it's (then ...)
+                const saved_pos = self.lexer.pos;
+                const saved_char = self.lexer.current_char;
+                const saved_token = self.current_token;
+                
                 try self.advance(); // consume '('
-                try self.parseSExpression(instructions);
-                try self.expectRightParen();
+                const is_then = self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "then");
+                
+                // Restore position
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+                
+                if (!is_then) {
+                    try self.advance(); // consume '('
+                    try self.parseSExpression(instructions);
+                    try self.expectRightParen();
+                }
             }
 
             // Add 'if' instruction
