@@ -20,6 +20,7 @@ pub const ModuleBuilder = struct {
     start: ?wasm_core.types.FuncIdx,
     imports: std.ArrayList(wasm_core.types.Import),
     exports: std.ArrayList(wasm_core.types.Export),
+    func_names: std.StringHashMap(u32),
 
     pub fn init(allocator: std.mem.Allocator) ModuleBuilder {
         return ModuleBuilder{
@@ -34,6 +35,7 @@ pub const ModuleBuilder = struct {
             .start = null,
             .imports = std.ArrayList(wasm_core.types.Import){},
             .exports = std.ArrayList(wasm_core.types.Export){},
+            .func_names = std.StringHashMap(u32).init(allocator),
         };
     }
 
@@ -66,6 +68,21 @@ pub const ModuleBuilder = struct {
         self.datas.deinit(self.allocator);
         self.imports.deinit(self.allocator);
         self.exports.deinit(self.allocator);
+        self.func_names.deinit();
+    }
+
+    pub fn clear(self: *ModuleBuilder) void {
+        self.types.clearRetainingCapacity();
+        self.funcs.clearRetainingCapacity();
+        self.tables.clearRetainingCapacity();
+        self.memories.clearRetainingCapacity();
+        self.globals.clearRetainingCapacity();
+        self.elements.clearRetainingCapacity();
+        self.datas.clearRetainingCapacity();
+        self.imports.clearRetainingCapacity();
+        self.exports.clearRetainingCapacity();
+        self.func_names.clearRetainingCapacity();
+        self.start = null;
     }
 };
 
@@ -76,8 +93,9 @@ pub const Parser = struct {
     input: []const u8,
     // Name resolution for current function
     local_names: std.StringHashMap(u32),
+    builder: *ModuleBuilder,
 
-    pub fn init(allocator: std.mem.Allocator, input: []const u8) !Parser {
+    pub fn init(allocator: std.mem.Allocator, input: []const u8, builder: *ModuleBuilder) !Parser {
         var lexer = Lexer.init(input);
         const current_token = try lexer.nextToken();
 
@@ -87,6 +105,7 @@ pub const Parser = struct {
             .allocator = allocator,
             .input = input,
             .local_names = std.StringHashMap(u32).init(allocator),
+            .builder = builder,
         };
     }
 
@@ -114,15 +133,12 @@ pub const Parser = struct {
         }
         try self.advance();
 
-        var builder = ModuleBuilder.init(self.allocator);
-        defer builder.deinit();
-
         while (self.current_token != .right_paren and self.current_token != .eof) {
-            try self.parseModuleField(&builder);
+            try self.parseModuleField(self.builder);
         }
 
         try self.expectToken(.right_paren);
-        return try builder.build();
+        return try self.builder.build();
     }
 
     fn parseModuleField(self: *Parser, builder: *ModuleBuilder) !void {
@@ -1279,6 +1295,12 @@ pub const Parser = struct {
         };
         try builder.funcs.append(self.allocator, func);
 
+        // Register function name if present
+        if (func_name) |name| {
+            const func_idx: u32 = @intCast(builder.funcs.items.len - 1);
+            try builder.func_names.put(name, func_idx);
+        }
+
         // Add export if present
         if (export_name) |name| {
             const func_idx: u32 = @intCast(builder.funcs.items.len - 1);
@@ -2271,8 +2293,11 @@ pub const Parser = struct {
         } else if (self.current_token == .identifier) {
             const id = self.current_token.identifier;
             try self.advance();
-            // Resolve named index
+            // Resolve named index - check locals first, then functions
             if (self.local_names.get(id)) |idx| {
+                return idx;
+            }
+            if (self.builder.func_names.get(id)) |idx| {
                 return idx;
             }
             // If not found, return 0 as fallback
@@ -2401,17 +2426,16 @@ pub const Parser = struct {
         }
 
         // Parse text format module
-        var builder = ModuleBuilder.init(self.allocator);
-        defer builder.deinit();
+        self.builder.clear();
 
         while (self.current_token != .right_paren and self.current_token != .eof) {
-            try self.parseModuleField(&builder);
+            try self.parseModuleField(self.builder);
         }
 
         try self.expectToken(.right_paren);
         const module_end_pos = self.lexer.pos;
 
-        _ = try builder.build();
+        _ = try self.builder.build();
 
         const module_text = self.input[module_start_pos..module_end_pos];
         const module_data = try self.allocator.dupe(u8, module_text);
@@ -2824,7 +2848,9 @@ pub const Parser = struct {
 };
 
 pub fn parseWastModule(allocator: std.mem.Allocator, input: []const u8) !wasm_core.types.Module {
-    var parser = try Parser.init(allocator, input);
+    var builder = ModuleBuilder.init(allocator);
+    defer builder.deinit();
+    var parser = try Parser.init(allocator, input, &builder);
     return parser.parseModule();
 }
 
@@ -2838,7 +2864,9 @@ pub fn parseWastScript(allocator: std.mem.Allocator, input: []const u8) ![]spec_
         commands.deinit(allocator);
     }
 
-    var parser = try Parser.init(allocator, input);
+    var builder = ModuleBuilder.init(allocator);
+    defer builder.deinit();
+    var parser = try Parser.init(allocator, input, &builder);
 
     while (parser.current_token != .eof) {
         if (parser.current_token == .eof) break;
