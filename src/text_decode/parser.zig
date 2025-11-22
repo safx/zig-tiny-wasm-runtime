@@ -152,18 +152,12 @@ pub const Parser = struct {
             try self.parseFunction(builder);
         } else if (std.mem.eql(u8, field_name, "export")) {
             try self.parseExport(builder);
+        } else if (std.mem.eql(u8, field_name, "start")) {
+            const idx = try self.parseU32OrIdentifier();
+            builder.start = idx;
         } else {
-            // Skip unknown fields
-            var depth: u32 = 1;
-            while (depth > 0 and self.current_token != .eof) {
-                if (self.current_token == .left_paren) {
-                    depth += 1;
-                } else if (self.current_token == .right_paren) {
-                    depth -= 1;
-                }
-                try self.advance();
-            }
-            return;
+            std.debug.print("Error: Unknown module field: {s}\n", .{field_name});
+            return TextDecodeError.UnexpectedToken;
         }
 
         try self.expectToken(.right_paren);
@@ -981,22 +975,8 @@ pub const Parser = struct {
                 try self.expectRightParen();
                 break;
             } else {
-                // Unknown instruction in offset - skip the entire expression
-                var depth: u32 = 1;
-                while (depth > 0 and self.current_token != .eof) {
-                    if (self.current_token == .left_paren) {
-                        depth += 1;
-                    } else if (self.current_token == .right_paren) {
-                        depth -= 1;
-                    }
-                    if (depth > 0) {
-                        try self.advance();
-                    }
-                }
-                if (self.current_token == .right_paren) {
-                    try self.advance();
-                }
-                break;
+                std.debug.print("Error: Unknown instruction in data offset: {s}\n", .{self.current_token.identifier});
+                return TextDecodeError.UnexpectedToken;
             }
         }
 
@@ -1135,6 +1115,9 @@ pub const Parser = struct {
                         // Parse type
                         if (try self.parseValueType()) |vtype| {
                             try params.append(self.allocator, vtype);
+                        } else {
+                            std.debug.print("Error: Unknown parameter type: {s}\n", .{type_name});
+                            return TextDecodeError.UnexpectedToken;
                         }
                     } else {
                         try self.advance();
@@ -1147,6 +1130,9 @@ pub const Parser = struct {
                 while (self.current_token != .right_paren and self.current_token != .eof) {
                     if (try self.parseValueType()) |vtype| {
                         try results.append(self.allocator, vtype);
+                    } else {
+                        std.debug.print("Error: Unknown result type at line {d}\n", .{self.lexer.line});
+                        return TextDecodeError.UnexpectedToken;
                     }
                 }
                 try self.expectRightParen();
@@ -1372,8 +1358,8 @@ pub const Parser = struct {
                     try instructions.append(self.allocator, instr);
                 }
             } else {
-                // Skip unknown tokens
-                try self.advance();
+                std.debug.print("Error: Unexpected token in instruction sequence at line {d}\n", .{self.lexer.line});
+                return TextDecodeError.UnexpectedToken;
             }
         }
     }
@@ -1509,6 +1495,30 @@ pub const Parser = struct {
         }
 
         // reference instructions
+        else if (std.mem.eql(u8, instr_name, "ref.null")) {
+            // Parse ref type (funcref or externref)
+            if (self.current_token == .identifier) {
+                if (std.mem.eql(u8, self.current_token.identifier, "funcref")) {
+                    try self.advance();
+                    return .{ .ref_null = .funcref };
+                } else if (std.mem.eql(u8, self.current_token.identifier, "externref")) {
+                    try self.advance();
+                    return .{ .ref_null = .externref };
+                } else if (std.mem.eql(u8, self.current_token.identifier, "func")) {
+                    try self.advance();
+                    return .{ .ref_null = .funcref };
+                } else if (std.mem.eql(u8, self.current_token.identifier, "extern")) {
+                    try self.advance();
+                    return .{ .ref_null = .externref };
+                }
+            }
+            return .{ .ref_null = .funcref };
+        } else if (std.mem.eql(u8, instr_name, "ref.is_null")) {
+            return .ref_is_null;
+        } else if (std.mem.eql(u8, instr_name, "ref.func")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .ref_func = idx };
+        }
 
         // parametric instructions
         else if (std.mem.eql(u8, instr_name, "drop")) {
@@ -1996,8 +2006,8 @@ pub const Parser = struct {
         }
 
         // Unknown instruction
-        std.debug.print("Unknown instruction: {s}\n", .{instr_name});
-        unreachable;
+        std.debug.print("Error: Unknown instruction: {s}\n", .{instr_name});
+        return TextDecodeError.UnexpectedToken;
     }
 
     /// Parse S-expression recursively: (instr arg1 arg2 ...)
