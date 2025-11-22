@@ -136,7 +136,9 @@ pub const Parser = struct {
         const field_name = self.current_token.identifier;
         try self.advance();
 
-        if (std.mem.eql(u8, field_name, "memory")) {
+        if (std.mem.eql(u8, field_name, "type")) {
+            try self.parseType(builder);
+        } else if (std.mem.eql(u8, field_name, "memory")) {
             try self.parseMemory(builder);
         } else if (std.mem.eql(u8, field_name, "data")) {
             try self.parseData(builder);
@@ -378,6 +380,67 @@ pub const Parser = struct {
             .init = try init_list.toOwnedSlice(self.allocator),
             .mode = mode,
         });
+    }
+
+    fn parseType(self: *Parser, builder: *ModuleBuilder) !void {
+        // Skip optional type name
+        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
+            try self.advance();
+        }
+
+        // Expect (func ...)
+        try self.expectToken(.left_paren);
+        if (self.current_token != .identifier or !std.mem.eql(u8, self.current_token.identifier, "func")) {
+            std.debug.print("Error: Expected 'func' in type definition\n", .{});
+            return TextDecodeError.UnexpectedToken;
+        }
+        try self.advance();
+
+        var params: std.ArrayList(wasm_core.types.ValueType) = .{};
+        defer params.deinit(self.allocator);
+        var results: std.ArrayList(wasm_core.types.ValueType) = .{};
+        defer results.deinit(self.allocator);
+
+        // Parse (param ...) and (result ...)
+        while (self.current_token == .left_paren) {
+            try self.advance();
+            if (self.current_token != .identifier) break;
+
+            const keyword = self.current_token.identifier;
+            if (std.mem.eql(u8, keyword, "param")) {
+                try self.advance();
+                while (self.current_token != .right_paren and self.current_token != .eof) {
+                    if (try self.parseValueType()) |vtype| {
+                        try params.append(self.allocator, vtype);
+                    } else {
+                        std.debug.print("Error: Unknown parameter type in type definition\n", .{});
+                        return TextDecodeError.UnexpectedToken;
+                    }
+                }
+                try self.expectRightParen();
+            } else if (std.mem.eql(u8, keyword, "result")) {
+                try self.advance();
+                while (self.current_token != .right_paren and self.current_token != .eof) {
+                    if (try self.parseValueType()) |vtype| {
+                        try results.append(self.allocator, vtype);
+                    } else {
+                        std.debug.print("Error: Unknown result type in type definition\n", .{});
+                        return TextDecodeError.UnexpectedToken;
+                    }
+                }
+                try self.expectRightParen();
+            } else {
+                break;
+            }
+        }
+
+        try self.expectRightParen(); // close (func ...)
+
+        const func_type = wasm_core.types.FuncType{
+            .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, params.items),
+            .result_types = try self.allocator.dupe(wasm_core.types.ValueType, results.items),
+        };
+        try builder.types.append(self.allocator, func_type);
     }
 
     fn parseGlobal(self: *Parser, builder: *ModuleBuilder) !void {
