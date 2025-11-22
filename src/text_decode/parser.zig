@@ -723,6 +723,29 @@ pub const Parser = struct {
             try self.advance();
         }
 
+        // Process optional export
+        var export_name: ?[]const u8 = null;
+        if (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+            
+            try self.advance();
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "export")) {
+                try self.advance(); // skip 'export'
+                if (self.current_token == .string) {
+                    export_name = try self.allocator.dupe(u8, self.current_token.string);
+                    try self.advance();
+                }
+                try self.expectRightParen();
+            } else {
+                // Not export, restore
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+            }
+        }
+
         // Parse table limits and type
         var min: u32 = 0;
         var max: ?u32 = null;
@@ -767,10 +790,19 @@ pub const Parser = struct {
             }
         }
 
+        const table_idx: u32 = @intCast(builder.tables.items.len);
         try builder.tables.append(self.allocator, .{
             .ref_type = ref_type,
             .limits = .{ .min = min, .max = max },
         });
+
+        // Add export if present
+        if (export_name) |name| {
+            try builder.exports.append(self.allocator, .{
+                .name = name,
+                .desc = .{ .table = table_idx },
+            });
+        }
     }
 
     fn parseMemory(self: *Parser, builder: *ModuleBuilder) !void {
