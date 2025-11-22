@@ -660,34 +660,60 @@ pub const Parser = struct {
         });
     }
 
-    fn parseTable(self: *Parser, _: *ModuleBuilder) !void {
+    fn parseTable(self: *Parser, builder: *ModuleBuilder) !void {
         // Skip table name if present
         if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
             try self.advance();
         }
 
-        // Skip everything until closing paren (minimal implementation)
-        while (self.current_token != .right_paren and self.current_token != .eof) {
-            if (self.current_token == .left_paren) {
-                var depth: u32 = 1;
+        // Parse table limits and type
+        var min: u32 = 0;
+        var max: ?u32 = null;
+        var ref_type: wasm_core.types.RefType = .funcref;
+
+        // Parse min
+        if (self.current_token == .number) {
+            min = try std.fmt.parseInt(u32, self.current_token.number, 0);
+            try self.advance();
+        }
+
+        // Parse optional max
+        if (self.current_token == .number) {
+            max = try std.fmt.parseInt(u32, self.current_token.number, 0);
+            try self.advance();
+        }
+
+        // Parse ref type (funcref or externref)
+        if (self.current_token == .identifier) {
+            if (std.mem.eql(u8, self.current_token.identifier, "funcref")) {
+                ref_type = .funcref;
                 try self.advance();
-                while (depth > 0 and self.current_token != .eof) {
-                    if (self.current_token == .left_paren) {
-                        depth += 1;
-                    } else if (self.current_token == .right_paren) {
-                        depth -= 1;
-                    }
-                    if (depth > 0) {
-                        try self.advance();
-                    }
-                }
-                if (self.current_token == .right_paren) {
-                    try self.advance();
-                }
-            } else {
+            } else if (std.mem.eql(u8, self.current_token.identifier, "externref")) {
+                ref_type = .externref;
                 try self.advance();
             }
         }
+
+        // Skip inline elem if present: (elem ...)
+        if (self.current_token == .left_paren) {
+            var depth: u32 = 1;
+            try self.advance();
+            while (depth > 0 and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    depth += 1;
+                } else if (self.current_token == .right_paren) {
+                    depth -= 1;
+                }
+                if (depth > 0) {
+                    try self.advance();
+                }
+            }
+        }
+
+        try builder.tables.append(self.allocator, .{
+            .ref_type = ref_type,
+            .limits = .{ .min = min, .max = max },
+        });
     }
 
     fn parseMemory(self: *Parser, builder: *ModuleBuilder) !void {
@@ -1507,6 +1533,58 @@ pub const Parser = struct {
             return .{ .global_set = idx };
         }
         // table instructions
+        else if (std.mem.eql(u8, instr_name, "table.get")) {
+            const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
+                try self.parseU32OrIdentifier()
+            else
+                0;
+            return .{ .table_get = idx };
+        } else if (std.mem.eql(u8, instr_name, "table.set")) {
+            const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
+                try self.parseU32OrIdentifier()
+            else
+                0;
+            return .{ .table_set = idx };
+        } else if (std.mem.eql(u8, instr_name, "table.size")) {
+            const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
+                try self.parseU32OrIdentifier()
+            else
+                0;
+            return .{ .table_size = idx };
+        } else if (std.mem.eql(u8, instr_name, "table.grow")) {
+            const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
+                try self.parseU32OrIdentifier()
+            else
+                0;
+            return .{ .table_grow = idx };
+        } else if (std.mem.eql(u8, instr_name, "table.fill")) {
+            const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
+                try self.parseU32OrIdentifier()
+            else
+                0;
+            return .{ .table_fill = idx };
+        } else if (std.mem.eql(u8, instr_name, "table.copy")) {
+            // Check if there are table indices
+            if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$"))) {
+                const dst = try self.parseU32OrIdentifier();
+                const src = try self.parseU32OrIdentifier();
+                return .{ .table_copy = .{ .table_idx_dst = dst, .table_idx_src = src } };
+            } else {
+                return .{ .table_copy = .{ .table_idx_dst = 0, .table_idx_src = 0 } };
+            }
+        } else if (std.mem.eql(u8, instr_name, "table.init")) {
+            const first_idx = try self.parseU32OrIdentifier();
+            // Check if there's a second index (table elem) or just one (elem, table=0)
+            if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$"))) {
+                const second_idx = try self.parseU32OrIdentifier();
+                return .{ .table_init = .{ .table_idx = first_idx, .elem_idx = second_idx } };
+            } else {
+                return .{ .table_init = .{ .table_idx = 0, .elem_idx = first_idx } };
+            }
+        } else if (std.mem.eql(u8, instr_name, "elem.drop")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .elem_drop = idx };
+        }
 
         // Memory instructions
         else if (std.mem.eql(u8, instr_name, "i32.load")) {
