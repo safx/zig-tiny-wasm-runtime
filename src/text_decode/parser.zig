@@ -142,6 +142,8 @@ pub const Parser = struct {
             try self.parseData(builder);
         } else if (std.mem.eql(u8, field_name, "table")) {
             try self.parseTable(builder);
+        } else if (std.mem.eql(u8, field_name, "import")) {
+            try self.parseImport(builder);
         } else if (std.mem.eql(u8, field_name, "func")) {
             try self.parseFunction(builder);
         } else if (std.mem.eql(u8, field_name, "export")) {
@@ -161,6 +163,41 @@ pub const Parser = struct {
         }
 
         try self.expectToken(.right_paren);
+    }
+
+    fn parseImport(self: *Parser, _: *ModuleBuilder) !void {
+        // Skip module name string
+        if (self.current_token == .string) {
+            try self.advance();
+        }
+        
+        // Skip field name string
+        if (self.current_token == .string) {
+            try self.advance();
+        }
+        
+        // Skip import descriptor: (func ...), (table ...), (memory ...), (global ...)
+        while (self.current_token != .right_paren and self.current_token != .eof) {
+            if (self.current_token == .left_paren) {
+                var depth: u32 = 1;
+                try self.advance();
+                while (depth > 0 and self.current_token != .eof) {
+                    if (self.current_token == .left_paren) {
+                        depth += 1;
+                    } else if (self.current_token == .right_paren) {
+                        depth -= 1;
+                    }
+                    if (depth > 0) {
+                        try self.advance();
+                    }
+                }
+                if (self.current_token == .right_paren) {
+                    try self.advance();
+                }
+            } else {
+                try self.advance();
+            }
+        }
     }
 
     fn parseTable(self: *Parser, _: *ModuleBuilder) !void {
@@ -963,6 +1000,9 @@ pub const Parser = struct {
             return .memory_copy;
         } else if (std.mem.eql(u8, instr_name, "memory.fill")) {
             return .memory_fill;
+        } else if (std.mem.eql(u8, instr_name, "data.drop")) {
+            const idx = try self.parseU32OrIdentifier();
+            return .{ .data_drop = idx };
         }
 
         // Numeric const instructions
