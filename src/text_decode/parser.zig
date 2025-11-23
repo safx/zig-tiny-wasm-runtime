@@ -1469,7 +1469,7 @@ pub const Parser = struct {
 
         for (instructions, 0..) |*inst, i| {
             const pos: u32 = @intCast(i);
-            
+
             if (inst.* == .block or inst.* == .loop or inst.* == .@"if") {
                 try nested_blocks.append(self.allocator, pos);
             } else if (inst.* == .@"else") {
@@ -2366,6 +2366,7 @@ pub const Parser = struct {
 
     /// Parse module command: (module ...)
     fn parseModuleCommand(self: *Parser) !spec_types.command.Command {
+        const line = self.lexer.line;
         // current token is "module"
         // Need to include the '(' before "module"
         const module_start_pos = self.lexer.pos - "module".len - 1;
@@ -2416,7 +2417,7 @@ pub const Parser = struct {
 
                 return spec_types.command.Command{
                     .module = .{
-                        .line = 0,
+                        .line = line,
                         .file_name = try self.allocator.dupe(u8, ""),
                         .name = name,
                         .module_data = null,
@@ -2442,7 +2443,7 @@ pub const Parser = struct {
 
         return spec_types.command.Command{
             .module = .{
-                .line = 0,
+                .line = line,
                 .file_name = try self.allocator.dupe(u8, ""),
                 .name = name,
                 .module_data = module_data,
@@ -2545,6 +2546,7 @@ pub const Parser = struct {
 
     /// Parse assert_invalid: (assert_invalid (module ...) "message")
     fn parseAssertInvalid(self: *Parser) !spec_types.command.Command {
+        const line = self.lexer.line;
         // current token is "assert_invalid"
         try self.advance();
 
@@ -2580,7 +2582,7 @@ pub const Parser = struct {
 
         return spec_types.command.Command{
             .assert_invalid = .{
-                .line = 0,
+                .line = line,
                 .file_name = try self.allocator.dupe(u8, ""),
                 .error_text = failure,
             },

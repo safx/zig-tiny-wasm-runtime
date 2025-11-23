@@ -70,7 +70,7 @@ pub const SpecTestRunner = struct {
         defer registered_modules.deinit();
 
         var current_module: ?*runtime.types.ModuleInst = self.loadSpectestHostModule() catch null;
-        
+
         // Register spectest module if loaded successfully
         if (current_module) |spectest_mod| {
             try registered_modules.put("spectest", spectest_mod);
@@ -83,7 +83,7 @@ pub const SpecTestRunner = struct {
         for (commands) |cmd| {
             if (self.verbose_level >= 2) {
                 self.debugPrint("-" ** 75 ++ "\n", .{});
-                self.debugPrint("{any}\n", .{cmd});
+                self.debugPrint("{f}\n", .{cmd});
             }
 
             switch (cmd) {

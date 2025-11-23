@@ -45,12 +45,12 @@ pub const Instruction = union(enum) {
         value_type: ValueType,
         type_index: TypeIdx,
 
-        pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
             switch (self) {
                 inline else => |val| if (@TypeOf(val) == void) {
                     try writer.print("{s}", .{@tagName(self)});
                 } else {
-                    try writer.print("{s}({any})", .{ @tagName(self), val });
+                    try writer.print("{s}({f})", .{ @tagName(self), val });
                 },
             }
         }
@@ -576,7 +576,7 @@ pub const Instruction = union(enum) {
     i32x4_relaxed_dot_i8x16_i7x16_add_s,
     f32x4_relaxed_dot_bf16x8_add_f32x4,
 
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         switch (self) {
             inline else => |val| if (@TypeOf(val) == void) {
                 try writer.print("{s}", .{@tagName(self)});
@@ -584,13 +584,13 @@ pub const Instruction = union(enum) {
                 try writer.print("{s} (", .{@tagName(self)});
                 const fields = @typeInfo(@TypeOf(val)).@"struct".fields;
                 inline for (fields, 0..) |f, i| {
-                    try writer.print("{s} = {any}", .{ f.name, @field(val, f.name) });
+                    try writer.print("{s} = {s}", .{ f.name, @field(val, f.name) });
                     if (i + 1 < fields.len)
                         try writer.writeAll(", ");
                 }
                 try writer.writeAll(")");
             } else {
-                try writer.print("{s} {any}", .{ @tagName(self), val });
+                try writer.print("{s} {s}", .{ @tagName(self), val });
             },
         }
     }

@@ -20,7 +20,7 @@ pub const ValidationType = enum(u8) {
         return @intFromEnum(v);
     }
 
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         try writer.print("{s}", .{@tagName(self)});
     }
 };

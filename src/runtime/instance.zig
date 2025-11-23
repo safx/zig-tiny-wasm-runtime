@@ -98,7 +98,7 @@ pub const Instance = struct {
 
         self.debugPrint("---------------\n", .{});
         for (func_inst.code.body, 0..) |op, idx|
-            self.debugPrint("[{any}] {any}\n", .{ idx, op });
+            self.debugPrint("[{d}] {any}\n", .{ idx, op });
         self.debugPrint("---------------\n", .{});
     }
 
@@ -181,12 +181,12 @@ pub const Instance = struct {
             const instr = instrs[ip];
 
             self.printStack();
-            self.debugPrint("= [{any}]: {any}\n", .{ ip, instr });
+            self.debugPrint("= [{d}]: {any}\n", .{ ip, instr });
 
             const flow_ctrl = try self.execInstruction(instr);
 
             if (flow_ctrl != .none)
-                self.debugPrint("\t-> {any}\n", .{flow_ctrl});
+                self.debugPrint("\t-> {f}\n", .{flow_ctrl});
 
             switch (flow_ctrl) {
                 .none => self.stack.updateTopFrameIp(ip + 1),
@@ -350,15 +350,15 @@ pub const Instance = struct {
         const len = self.stack.array.items.len;
         const slice = if (len > 10) self.stack.array.items[len - 10 ..] else self.stack.array.items;
         if (len > 10) {
-            self.debugPrint("  : ({any} more items)\n  :\n", .{len - 10});
+            self.debugPrint("  : ({d} more items)\n  :\n", .{len - 10});
         }
         for (slice) |i| {
             if (i == .frame and i.frame.instructions.len == 0)
                 continue;
             switch (i) {
-                .value => |v| self.debugPrint("  V {any}\n", .{v}),
-                .label => |v| self.debugPrint("  L {any}\n", .{v}),
-                .frame => |v| self.debugPrint("  F locals: {any}, arity: {any}, ip: {any}\n", .{ v.locals, v.arity, v.ip }),
+                .value => |v| self.debugPrint("  V {f}\n", .{v}),
+                .label => |v| self.debugPrint("  L {f}\n", .{v}),
+                .frame => |v| self.debugPrint("  F locals: {any}, arity: {d}, ip: {d}\n", .{ v.locals, v.arity, v.ip }),
             }
         }
     }
@@ -1924,7 +1924,7 @@ const FlowControl = union(enum) {
         }
     }
 
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         switch (self) {
             inline else => |val| if (@TypeOf(val) == void) {
                 try writer.print("{s}", .{@tagName(self)});
