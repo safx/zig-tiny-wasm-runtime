@@ -593,57 +593,7 @@ pub const Parser = struct {
                         try self.advance();
                     }
                 } else if (std.mem.eql(u8, instr, "v128.const")) {
-                    if (self.current_token != .identifier) {
-                        return TextDecodeError.UnexpectedToken;
-                    }
-                    const shape = self.current_token.identifier;
-                    try self.advance();
-
-                    var bytes: [16]u8 = undefined;
-
-                    if (std.mem.eql(u8, shape, "i8x16")) {
-                        for (0..16) |i| {
-                            const val = try numeric_parser.parseInteger(i8, self.current_token.number);
-                            bytes[i] = @bitCast(val);
-                            try self.advance();
-                        }
-                    } else if (std.mem.eql(u8, shape, "i16x8")) {
-                        for (0..8) |i| {
-                            const val = try numeric_parser.parseInteger(i16, self.current_token.number);
-                            const val_bytes: [2]u8 = @bitCast(val);
-                            bytes[i * 2] = val_bytes[0];
-                            bytes[i * 2 + 1] = val_bytes[1];
-                            try self.advance();
-                        }
-                    } else if (std.mem.eql(u8, shape, "i32x4")) {
-                        for (0..4) |i| {
-                            const val = try numeric_parser.parseInteger(i32, self.current_token.number);
-                            const val_bytes: [4]u8 = @bitCast(val);
-                            @memcpy(bytes[i * 4 .. i * 4 + 4], &val_bytes);
-                            try self.advance();
-                        }
-                    } else if (std.mem.eql(u8, shape, "i64x2")) {
-                        for (0..2) |i| {
-                            const val = try numeric_parser.parseInteger(i64, self.current_token.number);
-                            const val_bytes: [8]u8 = @bitCast(val);
-                            @memcpy(bytes[i * 8 .. i * 8 + 8], &val_bytes);
-                            try self.advance();
-                        }
-                    } else if (std.mem.eql(u8, shape, "f32x4")) {
-                        for (0..4) |i| {
-                            const val = try self.parseFloat(f32);
-                            const val_bytes: [4]u8 = @bitCast(val);
-                            @memcpy(bytes[i * 4 .. i * 4 + 4], &val_bytes);
-                        }
-                    } else if (std.mem.eql(u8, shape, "f64x2")) {
-                        for (0..2) |i| {
-                            const val = try self.parseFloat(f64);
-                            const val_bytes: [8]u8 = @bitCast(val);
-                            @memcpy(bytes[i * 8 .. i * 8 + 8], &val_bytes);
-                        }
-                    }
-
-                    const result: i128 = @bitCast(bytes);
+                    const result = try self.parseV128Const();
                     init_expr = .{ .v128_const = result };
                 }
             }
@@ -1972,59 +1922,7 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, instr_name, "f64.const")) {
             return .{ .f64_const = try self.parseFloat(f64) };
         } else if (std.mem.eql(u8, instr_name, "v128.const")) {
-            if (self.current_token != .identifier) {
-                return TextDecodeError.UnexpectedToken;
-            }
-            const shape = self.current_token.identifier;
-            try self.advance();
-
-            var bytes: [16]u8 = undefined;
-
-            if (std.mem.eql(u8, shape, "i8x16")) {
-                for (0..16) |i| {
-                    const val = try numeric_parser.parseInteger(i8, self.current_token.number);
-                    bytes[i] = @bitCast(val);
-                    try self.advance();
-                }
-            } else if (std.mem.eql(u8, shape, "i16x8")) {
-                for (0..8) |i| {
-                    const val = try numeric_parser.parseInteger(i16, self.current_token.number);
-                    const val_bytes: [2]u8 = @bitCast(val);
-                    bytes[i * 2] = val_bytes[0];
-                    bytes[i * 2 + 1] = val_bytes[1];
-                    try self.advance();
-                }
-            } else if (std.mem.eql(u8, shape, "i32x4")) {
-                for (0..4) |i| {
-                    const val = try numeric_parser.parseInteger(i32, self.current_token.number);
-                    const val_bytes: [4]u8 = @bitCast(val);
-                    @memcpy(bytes[i * 4 .. i * 4 + 4], &val_bytes);
-                    try self.advance();
-                }
-            } else if (std.mem.eql(u8, shape, "i64x2")) {
-                for (0..2) |i| {
-                    const val = try numeric_parser.parseInteger(i64, self.current_token.number);
-                    const val_bytes: [8]u8 = @bitCast(val);
-                    @memcpy(bytes[i * 8 .. i * 8 + 8], &val_bytes);
-                    try self.advance();
-                }
-            } else if (std.mem.eql(u8, shape, "f32x4")) {
-                for (0..4) |i| {
-                    const val = try self.parseFloat(f32);
-                    const val_bytes: [4]u8 = @bitCast(val);
-                    @memcpy(bytes[i * 4 .. i * 4 + 4], &val_bytes);
-                }
-            } else if (std.mem.eql(u8, shape, "f64x2")) {
-                for (0..2) |i| {
-                    const val = try self.parseFloat(f64);
-                    const val_bytes: [8]u8 = @bitCast(val);
-                    @memcpy(bytes[i * 8 .. i * 8 + 8], &val_bytes);
-                }
-            } else {
-                return TextDecodeError.UnexpectedToken;
-            }
-
-            const result: i128 = @bitCast(bytes);
+            const result = try self.parseV128Const();
             return .{ .v128_const = result };
         }
 
@@ -3180,6 +3078,63 @@ pub const Parser = struct {
         return val;
     }
 
+    /// Parse v128.const value: shape and values
+    fn parseV128Const(self: *Parser) !i128 {
+        if (self.current_token != .identifier) {
+            return TextDecodeError.UnexpectedToken;
+        }
+        const shape = self.current_token.identifier;
+        try self.advance();
+
+        var bytes: [16]u8 = undefined;
+
+        if (std.mem.eql(u8, shape, "i8x16")) {
+            for (0..16) |i| {
+                const val = try numeric_parser.parseInteger(i8, self.current_token.number);
+                bytes[i] = @bitCast(val);
+                try self.advance();
+            }
+        } else if (std.mem.eql(u8, shape, "i16x8")) {
+            for (0..8) |i| {
+                const val = try numeric_parser.parseInteger(i16, self.current_token.number);
+                const val_bytes: [2]u8 = @bitCast(val);
+                bytes[i * 2] = val_bytes[0];
+                bytes[i * 2 + 1] = val_bytes[1];
+                try self.advance();
+            }
+        } else if (std.mem.eql(u8, shape, "i32x4")) {
+            for (0..4) |i| {
+                const val = try numeric_parser.parseInteger(i32, self.current_token.number);
+                const val_bytes: [4]u8 = @bitCast(val);
+                @memcpy(bytes[i * 4 .. i * 4 + 4], &val_bytes);
+                try self.advance();
+            }
+        } else if (std.mem.eql(u8, shape, "i64x2")) {
+            for (0..2) |i| {
+                const val = try numeric_parser.parseInteger(i64, self.current_token.number);
+                const val_bytes: [8]u8 = @bitCast(val);
+                @memcpy(bytes[i * 8 .. i * 8 + 8], &val_bytes);
+                try self.advance();
+            }
+        } else if (std.mem.eql(u8, shape, "f32x4")) {
+            for (0..4) |i| {
+                const val = try self.parseFloat(f32);
+                const val_bytes: [4]u8 = @bitCast(val);
+                @memcpy(bytes[i * 4 .. i * 4 + 4], &val_bytes);
+            }
+        } else if (std.mem.eql(u8, shape, "f64x2")) {
+            for (0..2) |i| {
+                const val = try self.parseFloat(f64);
+                const val_bytes: [8]u8 = @bitCast(val);
+                @memcpy(bytes[i * 8 .. i * 8 + 8], &val_bytes);
+            }
+        } else {
+            return TextDecodeError.UnexpectedToken;
+        }
+
+        return @bitCast(bytes);
+    }
+
     /// Skip to the closing paren of the current s-expression
     fn skipToClosingParen(self: *Parser) !void {
         var depth: u32 = 1;
@@ -3677,57 +3632,7 @@ pub const Parser = struct {
             try self.expectToken(.right_paren);
             return spec_types.command.Result{ .f64 = .{ .value = @bitCast(value) } };
         } else if (std.mem.eql(u8, type_name, "v128.const")) {
-            if (self.current_token != .identifier) {
-                return TextDecodeError.UnexpectedToken;
-            }
-            const shape = self.current_token.identifier;
-            try self.advance();
-
-            var bytes: [16]u8 = undefined;
-
-            if (std.mem.eql(u8, shape, "i8x16")) {
-                for (0..16) |i| {
-                    const val = try numeric_parser.parseInteger(i8, self.current_token.number);
-                    bytes[i] = @bitCast(val);
-                    try self.advance();
-                }
-            } else if (std.mem.eql(u8, shape, "i16x8")) {
-                for (0..8) |i| {
-                    const val = try numeric_parser.parseInteger(i16, self.current_token.number);
-                    const val_bytes: [2]u8 = @bitCast(val);
-                    bytes[i * 2] = val_bytes[0];
-                    bytes[i * 2 + 1] = val_bytes[1];
-                    try self.advance();
-                }
-            } else if (std.mem.eql(u8, shape, "i32x4")) {
-                for (0..4) |i| {
-                    const val = try numeric_parser.parseInteger(i32, self.current_token.number);
-                    const val_bytes: [4]u8 = @bitCast(val);
-                    @memcpy(bytes[i * 4 .. i * 4 + 4], &val_bytes);
-                    try self.advance();
-                }
-            } else if (std.mem.eql(u8, shape, "i64x2")) {
-                for (0..2) |i| {
-                    const val = try numeric_parser.parseInteger(i64, self.current_token.number);
-                    const val_bytes: [8]u8 = @bitCast(val);
-                    @memcpy(bytes[i * 8 .. i * 8 + 8], &val_bytes);
-                    try self.advance();
-                }
-            } else if (std.mem.eql(u8, shape, "f32x4")) {
-                for (0..4) |i| {
-                    const val = try self.parseFloat(f32);
-                    const val_bytes: [4]u8 = @bitCast(val);
-                    @memcpy(bytes[i * 4 .. i * 4 + 4], &val_bytes);
-                }
-            } else if (std.mem.eql(u8, shape, "f64x2")) {
-                for (0..2) |i| {
-                    const val = try self.parseFloat(f64);
-                    const val_bytes: [8]u8 = @bitCast(val);
-                    @memcpy(bytes[i * 8 .. i * 8 + 8], &val_bytes);
-                }
-            }
-
-            const result: i128 = @bitCast(bytes);
+            const result = try self.parseV128Const();
             try self.expectToken(.right_paren);
             return spec_types.command.Result{ .v128 = result };
         } else {
