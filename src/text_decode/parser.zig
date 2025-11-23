@@ -1543,28 +1543,37 @@ pub const Parser = struct {
             return .{ .type_index = type_idx };
         }
 
-        // Skip (param ...) if present
+        // Parse (param ...) if present
+        var param_types = std.ArrayList(wasm_core.types.ValueType){};
+        defer param_types.deinit(self.allocator);
+        
         if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "param")) {
-            var depth: u32 = 1;
-            try self.advance();
-            while (depth > 0 and self.current_token != .eof) {
-                if (self.current_token == .left_paren) {
-                    depth += 1;
-                } else if (self.current_token == .right_paren) {
-                    depth -= 1;
-                }
-                if (depth > 0) {
-                    try self.advance();
+            try self.advance(); // consume 'param'
+            
+            while (self.current_token != .right_paren) {
+                if (try self.parseValueType()) |vtype| {
+                    try param_types.append(self.allocator, vtype);
+                } else {
+                    break;
                 }
             }
-            if (self.current_token == .right_paren) {
-                try self.advance();
-            }
+            
+            try self.expectRightParen(); // consume ')'
 
             // Check for (result ...) after (param ...)
             if (self.current_token == .left_paren) {
                 try self.advance();
             } else {
+                // Only params, no result - need to create a function type
+                if (param_types.items.len > 0) {
+                    const func_type = wasm_core.types.FuncType{
+                        .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, param_types.items),
+                        .result_types = &.{},
+                    };
+                    const type_idx: u32 = @intCast(self.builder.types.items.len);
+                    try self.builder.types.append(self.allocator, func_type);
+                    return .{ .type_index = type_idx };
+                }
                 return .empty;
             }
         }
@@ -1586,7 +1595,18 @@ pub const Parser = struct {
 
             try self.expectRightParen(); // consume ')'
 
-            // Return appropriate BlockType based on result count
+            // If we have params, always create a function type
+            if (param_types.items.len > 0) {
+                const func_type = wasm_core.types.FuncType{
+                    .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, param_types.items),
+                    .result_types = try self.allocator.dupe(wasm_core.types.ValueType, result_types.items),
+                };
+                const type_idx: u32 = @intCast(self.builder.types.items.len);
+                try self.builder.types.append(self.allocator, func_type);
+                return .{ .type_index = type_idx };
+            }
+
+            // No params - return based on result count
             if (result_types.items.len == 0) {
                 return .empty;
             } else if (result_types.items.len == 1) {
