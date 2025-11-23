@@ -116,6 +116,7 @@ pub const ModuleCommandArg = struct {
     file_name: []const u8,
     name: ?[]const u8,
     module_data: ?[]const u8, // WAT source text
+    module_binary: ?[]const u8, // Binary data
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         if (self.name) |n| {
@@ -173,6 +174,7 @@ pub const AssertMalformedCommandArg = struct {
     line: u32,
     file_name: []const u8,
     module_data: ?[]const u8, // WAT source text
+    module_binary: ?[]const u8, // Binary data
     error_text: []const u8, // Error string from test file
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
@@ -184,6 +186,7 @@ pub const AssertInvalidCommandArg = struct {
     line: u32,
     file_name: []const u8,
     module_data: ?[]const u8, // WAT source text
+    module_binary: ?[]const u8, // Binary data
     error_text: []const u8, // Error string from test file
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {

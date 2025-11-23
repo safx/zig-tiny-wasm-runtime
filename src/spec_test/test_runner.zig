@@ -102,6 +102,21 @@ pub const SpecTestRunner = struct {
                             }
                             continue;
                         };
+                    } else if (arg.module_binary) |binary| {
+                        const decode = @import("wasm-decode");
+                        var loader = decode.Loader.new(self.allocator);
+                        const module = loader.parseAll(binary) catch |err| {
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ Failed to parse binary module: {}\n", .{err});
+                            }
+                            continue;
+                        };
+                        current_module = self.engine.loadModule(module, arg.name orelse "") catch |err| {
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ Failed to load binary module: {}\n", .{err});
+                            }
+                            continue;
+                        };
                     } else if (arg.file_name.len > 0) {
                         current_module = self.engine.loadModuleFromPath(arg.file_name, arg.name) catch |err| {
                             if (self.verbose_level >= 1) {
@@ -223,6 +238,30 @@ pub const SpecTestRunner = struct {
                                 self.debugPrint("✓ assert_invalid passed\n", .{});
                             }
                         }
+                    } else if (arg.module_binary) |binary| {
+                        total += 1;
+                        const decode = @import("wasm-decode");
+                        var loader = decode.Loader.new(self.allocator);
+                        const module = loader.parseAll(binary) catch |parse_err| {
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ assert_invalid failed (line {}): parse error (expected validation error): {}\n", .{ arg.line, parse_err });
+                            }
+                            failed += 1;
+                            continue;
+                        };
+                        defer module.deinit();
+                        
+                        if (self.engine.loadModule(module, "")) |_| {
+                            failed += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ assert_invalid failed (line {}): module loaded successfully (expected validation error)\n", .{arg.line});
+                            }
+                        } else |_| {
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_invalid passed\n", .{});
+                            }
+                        }
                     } else if (self.verbose_level >= 2) {
                         self.debugPrint("✓ assert_invalid (skipped - no module data)\n", .{});
                     }
@@ -232,6 +271,22 @@ pub const SpecTestRunner = struct {
                         total += 1;
                         const text_decode = @import("wasm-text-decode");
                         if (text_decode.parseWastModule(self.allocator, wat)) |module| {
+                            defer module.deinit();
+                            failed += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ assert_malformed failed (line {}): module parsed successfully (expected parse error)\n", .{arg.line});
+                            }
+                        } else |_| {
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_malformed passed\n", .{});
+                            }
+                        }
+                    } else if (arg.module_binary) |binary| {
+                        total += 1;
+                        const decode = @import("wasm-decode");
+                        var loader = decode.Loader.new(self.allocator);
+                        if (loader.parseAll(binary)) |module| {
                             defer module.deinit();
                             failed += 1;
                             if (self.verbose_level >= 1) {

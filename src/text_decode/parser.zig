@@ -3200,6 +3200,33 @@ pub const Parser = struct {
                 std.mem.eql(u8, format_type, "instance"))
             {
                 try self.advance();
+                
+                if (std.mem.eql(u8, format_type, "binary")) {
+                    // Collect binary data
+                    var binary_data = std.ArrayList(u8){};
+                    defer binary_data.deinit(self.allocator);
+                    
+                    while (self.current_token == .string) {
+                        const bytes = try parseBinaryString(self.allocator, self.current_token.string);
+                        defer self.allocator.free(bytes);
+                        try binary_data.appendSlice(self.allocator, bytes);
+                        try self.advance();
+                    }
+                    
+                    try self.expectToken(.right_paren);
+                    
+                    return spec_types.command.Command{
+                        .module = .{
+                            .line = line,
+                            .file_name = try self.allocator.dupe(u8, ""),
+                            .name = name,
+                            .module_data = null,
+                            .module_binary = try binary_data.toOwnedSlice(self.allocator),
+                        },
+                    };
+                }
+                
+                // quote or instance format
                 while (self.current_token == .string or self.current_token == .identifier) {
                     try self.advance();
                 }
@@ -3215,6 +3242,7 @@ pub const Parser = struct {
                         .file_name = try self.allocator.dupe(u8, ""),
                         .name = name,
                         .module_data = null,
+                        .module_binary = null,
                     },
                 };
             }
@@ -3241,6 +3269,7 @@ pub const Parser = struct {
                 .file_name = try self.allocator.dupe(u8, ""),
                 .name = name,
                 .module_data = module_data,
+                .module_binary = null,
             },
         };
     }
@@ -3338,6 +3367,55 @@ pub const Parser = struct {
         };
     }
 
+    /// Convert escaped string to binary data
+    fn parseBinaryString(allocator: std.mem.Allocator, str: []const u8) ![]u8 {
+        var result = std.ArrayList(u8){};
+        var i: usize = 0;
+        while (i < str.len) {
+            if (str[i] == '\\' and i + 1 < str.len) {
+                i += 1;
+                const c = str[i];
+                if (c >= '0' and c <= '9') {
+                    // Hex escape: \XX
+                    if (i + 1 < str.len) {
+                        const hex_str = str[i..i+2];
+                        const byte = try std.fmt.parseInt(u8, hex_str, 16);
+                        try result.append(allocator, byte);
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                } else if ((c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F')) {
+                    // Hex escape: \XX
+                    if (i + 1 < str.len) {
+                        const hex_str = str[i..i+2];
+                        const byte = try std.fmt.parseInt(u8, hex_str, 16);
+                        try result.append(allocator, byte);
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                } else {
+                    // Other escapes
+                    const byte: u8 = switch (c) {
+                        'n' => '\n',
+                        't' => '\t',
+                        'r' => '\r',
+                        '\\' => '\\',
+                        '"' => '"',
+                        else => c,
+                    };
+                    try result.append(allocator, byte);
+                    i += 1;
+                }
+            } else {
+                try result.append(allocator, str[i]);
+                i += 1;
+            }
+        }
+        return result.toOwnedSlice(allocator);
+    }
+
     /// Parse assert_invalid: (assert_invalid (module ...) "message")
     fn parseAssertInvalid(self: *Parser) !spec_types.command.Command {
         const line = self.lexer.line;
@@ -3354,24 +3432,60 @@ pub const Parser = struct {
 
         try self.advance();
 
-        // Check for "quote" format
-        var module_text: []const u8 = "";
-        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "quote")) {
-            // module quote format: collect string literals
-            try self.advance();
-            var text_parts = std.ArrayList(u8){};
-            defer text_parts.deinit(self.allocator);
-            
-            try text_parts.appendSlice(self.allocator, "(module");
-            while (self.current_token == .string) {
-                try text_parts.append(self.allocator, ' ');
-                try text_parts.appendSlice(self.allocator, self.current_token.string);
+        // Check for format type
+        var module_text: ?[]const u8 = null;
+        var module_binary: ?[]const u8 = null;
+        
+        if (self.current_token == .identifier) {
+            const format_type = self.current_token.identifier;
+            if (std.mem.eql(u8, format_type, "quote")) {
+                // module quote format: collect string literals
                 try self.advance();
+                var text_parts = std.ArrayList(u8){};
+                defer text_parts.deinit(self.allocator);
+                
+                try text_parts.appendSlice(self.allocator, "(module");
+                while (self.current_token == .string) {
+                    try text_parts.append(self.allocator, ' ');
+                    try text_parts.appendSlice(self.allocator, self.current_token.string);
+                    try self.advance();
+                }
+                try text_parts.append(self.allocator, ')');
+                
+                module_text = try text_parts.toOwnedSlice(self.allocator);
+                try self.expectToken(.right_paren);
+            } else if (std.mem.eql(u8, format_type, "binary")) {
+                // module binary format: collect and convert strings
+                try self.advance();
+                var binary_data = std.ArrayList(u8){};
+                defer binary_data.deinit(self.allocator);
+                
+                while (self.current_token == .string) {
+                    const bytes = try parseBinaryString(self.allocator, self.current_token.string);
+                    defer self.allocator.free(bytes);
+                    try binary_data.appendSlice(self.allocator, bytes);
+                    try self.advance();
+                }
+                
+                module_binary = try binary_data.toOwnedSlice(self.allocator);
+                try self.expectToken(.right_paren);
+            } else {
+                // Regular module format: extract text
+                const module_start = self.lexer.pos;
+                var depth: u32 = 1;
+
+                while (depth > 0 and self.current_token != .eof) {
+                    if (self.current_token == .left_paren) {
+                        depth += 1;
+                    } else if (self.current_token == .right_paren) {
+                        depth -= 1;
+                    }
+                    try self.advance();
+                }
+
+                const module_end = self.lexer.pos;
+                module_text = try self.allocator.dupe(u8, self.lexer.input[module_start..module_end]);
             }
-            try text_parts.append(self.allocator, ')');
-            
-            module_text = try text_parts.toOwnedSlice(self.allocator);
-            try self.expectToken(.right_paren);
         } else {
             // Regular module format: extract text
             const module_start = self.lexer.pos;
@@ -3404,6 +3518,7 @@ pub const Parser = struct {
                 .line = line,
                 .file_name = try self.allocator.dupe(u8, ""),
                 .module_data = module_text,
+                .module_binary = module_binary,
                 .error_text = failure,
             },
         };
@@ -3425,8 +3540,10 @@ pub const Parser = struct {
 
         try self.advance();
 
-        // Check for "quote" or "binary" format
+        // Check for format type
         var module_text: ?[]const u8 = null;
+        var module_binary: ?[]const u8 = null;
+        
         if (self.current_token == .identifier) {
             const format_type = self.current_token.identifier;
             if (std.mem.eql(u8, format_type, "quote")) {
@@ -3446,11 +3563,19 @@ pub const Parser = struct {
                 module_text = try text_parts.toOwnedSlice(self.allocator);
                 try self.expectToken(.right_paren);
             } else if (std.mem.eql(u8, format_type, "binary")) {
-                // module binary format: skip (not supported)
+                // module binary format: collect and convert strings
                 try self.advance();
+                var binary_data = std.ArrayList(u8){};
+                defer binary_data.deinit(self.allocator);
+                
                 while (self.current_token == .string) {
+                    const bytes = try parseBinaryString(self.allocator, self.current_token.string);
+                    defer self.allocator.free(bytes);
+                    try binary_data.appendSlice(self.allocator, bytes);
                     try self.advance();
                 }
+                
+                module_binary = try binary_data.toOwnedSlice(self.allocator);
                 try self.expectToken(.right_paren);
             } else {
                 // Regular module format: extract text
@@ -3501,6 +3626,7 @@ pub const Parser = struct {
                 .line = line,
                 .file_name = try self.allocator.dupe(u8, ""),
                 .module_data = module_text,
+                .module_binary = module_binary,
                 .error_text = failure,
             },
         };
@@ -3842,6 +3968,9 @@ pub fn freeCommand(allocator: std.mem.Allocator, cmd: *spec_types.command.Comman
             if (m.module_data) |data| {
                 allocator.free(data);
             }
+            if (m.module_binary) |data| {
+                allocator.free(data);
+            }
         },
         .register => |r| {
             allocator.free(r.as_name);
@@ -3861,11 +3990,13 @@ pub fn freeCommand(allocator: std.mem.Allocator, cmd: *spec_types.command.Comman
         .assert_invalid => |ai| {
             allocator.free(ai.file_name);
             if (ai.module_data) |data| allocator.free(data);
+            if (ai.module_binary) |data| allocator.free(data);
             allocator.free(ai.error_text);
         },
         .assert_malformed => |am| {
             allocator.free(am.file_name);
             if (am.module_data) |data| allocator.free(data);
+            if (am.module_binary) |data| allocator.free(data);
             allocator.free(am.error_text);
         },
         else => {},
