@@ -2623,6 +2623,61 @@ pub const Parser = struct {
             return .f64x2_pmax;
         }
 
+        // v128 type conversion instructions
+        else if (std.mem.eql(u8, instr_name, "i32x4.trunc_sat_f32x4_s")) {
+            return .i32x4_trunc_sat_f32x4_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.trunc_sat_f32x4_u")) {
+            return .i32x4_trunc_sat_f32x4_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.trunc_sat_f64x2_s_zero")) {
+            return .i32x4_trunc_sat_f64x2_s_zero;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.trunc_sat_f64x2_u_zero")) {
+            return .i32x4_trunc_sat_f64x2_u_zero;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.convert_i32x4_s")) {
+            return .f32x4_convert_i32x4_s;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.convert_i32x4_u")) {
+            return .f32x4_convert_i32x4_u;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.convert_low_i32x4_s")) {
+            return .f64x2_convert_low_i32x4_s;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.convert_low_i32x4_u")) {
+            return .f64x2_convert_low_i32x4_u;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.demote_f64x2_zero")) {
+            return .f32x4_demote_f64x2_zero;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.promote_low_f32x4")) {
+            return .f64x2_promote_low_f32x4;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.narrow_i16x8_s")) {
+            return .i8x16_narrow_i16x8_s;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.narrow_i16x8_u")) {
+            return .i8x16_narrow_i16x8_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.narrow_i32x4_s")) {
+            return .i16x8_narrow_i32x4_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.narrow_i32x4_u")) {
+            return .i16x8_narrow_i32x4_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.extend_low_i8x16_s")) {
+            return .i16x8_extend_low_i8x16_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.extend_low_i8x16_u")) {
+            return .i16x8_extend_low_i8x16_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.extend_high_i8x16_s")) {
+            return .i16x8_extend_high_i8x16_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.extend_high_i8x16_u")) {
+            return .i16x8_extend_high_i8x16_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.extend_low_i16x8_s")) {
+            return .i32x4_extend_low_i16x8_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.extend_low_i16x8_u")) {
+            return .i32x4_extend_low_i16x8_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.extend_high_i16x8_s")) {
+            return .i32x4_extend_high_i16x8_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.extend_high_i16x8_u")) {
+            return .i32x4_extend_high_i16x8_u;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.extend_low_i32x4_s")) {
+            return .i64x2_extend_low_i32x4_s;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.extend_low_i32x4_u")) {
+            return .i64x2_extend_low_i32x4_u;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.extend_high_i32x4_s")) {
+            return .i64x2_extend_high_i32x4_s;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.extend_high_i32x4_u")) {
+            return .i64x2_extend_high_i32x4_u;
+        }
+
         // Relaxed SIMD instructions (WebAssembly 2.0)
         else if (std.mem.eql(u8, instr_name, "i8x16.relaxed_swizzle")) {
             return .i8x16_relaxed_swizzle;
