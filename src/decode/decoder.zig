@@ -129,8 +129,8 @@ pub const Decoder = struct {
             n(.i64_store8) => .{ .i64_store8 = try memArg(reader) },
             n(.i64_store16) => .{ .i64_store16 = try memArg(reader) },
             n(.i64_store32) => .{ .i64_store32 = try memArg(reader) },
-            n(.memory_size) => if (try reader.readU8() == 0) .memory_size else return Error.ZeroByteExpected,
-            n(.memory_grow) => if (try reader.readU8() == 0) .memory_grow else return Error.ZeroByteExpected,
+            n(.memory_size) => .{ .memory_size = try reader.readVarU32() },
+            n(.memory_grow) => .{ .memory_grow = try reader.readVarU32() },
 
             // Numeric const instructions
             n(.i32_const) => .{ .i32_const = try reader.readVarI32() },
@@ -317,8 +317,8 @@ pub const Decoder = struct {
             // memory instructions
             n(.memory_init) => try memoryInit(reader),
             n(.data_drop) => .{ .data_drop = try reader.readVarU32() },
-            n(.memory_copy) => if (try reader.readU8() == 0 and try reader.readU8() == 0) .memory_copy else unreachable,
-            n(.memory_fill) => if (try reader.readU8() == 0) .memory_fill else unreachable,
+            n(.memory_copy) => .{ .memory_copy = .{ .mem_idx_dst = try reader.readVarU32(), .mem_idx_src = try reader.readVarU32() } },
+            n(.memory_fill) => .{ .memory_fill = try reader.readVarU32() },
 
             // saturating truncation instructions
             n(.i32_trunc_sat_f32_s) => .i32_trunc_sat_f32_s,
@@ -627,9 +627,8 @@ fn laneIdx(reader: *BinaryReader) (Error || error{OutOfMemory})!Instruction.Lane
 
 fn memoryInit(reader: *BinaryReader) Error!Instruction {
     const data_idx = try reader.readVarU32();
-    const zero = try reader.readVarU32();
-    std.debug.assert(zero == 0);
-    return .{ .memory_init = data_idx };
+    const mem_idx = try reader.readVarU32();
+    return .{ .memory_init = .{ .data_idx = data_idx, .mem_idx = mem_idx } };
 }
 
 fn memArg(reader: *BinaryReader) Error!Instruction.MemArg {

@@ -1802,15 +1802,40 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, instr_name, "i64.store32")) {
             return .{ .i64_store32 = try self.parseMemArg() };
         } else if (std.mem.eql(u8, instr_name, "memory.size")) {
-            return .memory_size;
+            const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
+                try self.parseU32OrIdentifier()
+            else
+                0;
+            return .{ .memory_size = mem_idx };
         } else if (std.mem.eql(u8, instr_name, "memory.grow")) {
-            return .memory_grow;
+            const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
+                try self.parseU32OrIdentifier()
+            else
+                0;
+            return .{ .memory_grow = mem_idx };
         } else if (std.mem.eql(u8, instr_name, "memory.init")) {
-            return .{ .memory_init = try self.parseU32OrIdentifier() };
+            const data_idx = try self.parseU32OrIdentifier();
+            const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
+                try self.parseU32OrIdentifier()
+            else
+                0;
+            return .{ .memory_init = .{ .data_idx = data_idx, .mem_idx = mem_idx } };
         } else if (std.mem.eql(u8, instr_name, "memory.copy")) {
-            return .memory_copy;
+            const mem_idx_dst = if (self.current_token == .number or self.current_token == .identifier)
+                try self.parseU32OrIdentifier()
+            else
+                0;
+            const mem_idx_src = if (self.current_token == .number or self.current_token == .identifier)
+                try self.parseU32OrIdentifier()
+            else
+                0;
+            return .{ .memory_copy = .{ .mem_idx_dst = mem_idx_dst, .mem_idx_src = mem_idx_src } };
         } else if (std.mem.eql(u8, instr_name, "memory.fill")) {
-            return .memory_fill;
+            const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
+                try self.parseU32OrIdentifier()
+            else
+                0;
+            return .{ .memory_fill = mem_idx };
         } else if (std.mem.eql(u8, instr_name, "data.drop")) {
             return .{ .data_drop = try self.parseU32OrIdentifier() };
         }

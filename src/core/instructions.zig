@@ -6,12 +6,14 @@ pub const Instruction = union(enum) {
     pub const MemArg = struct {
         @"align": u32,
         offset: u32,
+        mem_idx: u32 = 0,
     };
 
     pub const MemArgWithLaneIdx = struct {
         @"align": u32,
         offset: u32,
         lane_idx: LaneIdx,
+        mem_idx: u32 = 0,
     };
 
     pub const CallIndirectArg = struct {
@@ -27,6 +29,16 @@ pub const Instruction = union(enum) {
     pub const TableCopyArg = struct {
         table_idx_src: TableIdx,
         table_idx_dst: TableIdx,
+    };
+
+    pub const MemoryInitArg = struct {
+        data_idx: DataIdx,
+        mem_idx: MemIdx,
+    };
+
+    pub const MemoryCopyArg = struct {
+        mem_idx_src: MemIdx,
+        mem_idx_dst: MemIdx,
     };
 
     pub const BlockInfo = struct {
@@ -73,6 +85,7 @@ pub const Instruction = union(enum) {
     const DataIdx = types.DataIdx;
     const LocalIdx = types.LocalIdx;
     const TableIdx = types.TableIdx;
+    const MemIdx = types.MemIdx;
     const GlobalIdx = types.GlobalIdx;
 
     const InstractionAddr = types.InstractionAddr;
@@ -144,12 +157,12 @@ pub const Instruction = union(enum) {
     i64_store8: MemArg,
     i64_store16: MemArg,
     i64_store32: MemArg,
-    memory_size,
-    memory_grow,
-    memory_init: DataIdx,
+    memory_size: MemIdx,
+    memory_grow: MemIdx,
+    memory_init: MemoryInitArg,
     data_drop: DataIdx,
-    memory_copy,
-    memory_fill,
+    memory_copy: MemoryCopyArg,
+    memory_fill: MemIdx,
 
     // numeric instructions (1)
     i32_const: i32,

@@ -306,13 +306,12 @@ pub const Instance = struct {
         for (module.datas, 0..) |data, i| {
             switch (data.mode) {
                 .active => |active_type| {
-                    assert(active_type.mem_idx == 0);
                     const n = data.init.len;
                     try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
-                    if (mod_inst.mem_addrs.len > 0) {
-                        try self.execOneInstruction(.{ .memory_init = @intCast(i) });
+                    if (mod_inst.mem_addrs.len > active_type.mem_idx) {
+                        try self.execOneInstruction(.{ .memory_init = .{ .data_idx = @intCast(i), .mem_idx = active_type.mem_idx } });
                         try self.execOneInstruction(.{ .data_drop = @intCast(i) });
                     } else {
                         // Pop the values we pushed if no memory exists
@@ -439,12 +438,12 @@ pub const Instance = struct {
             .i64_store8 => |mem_arg| try self.opStore(i64, 8, mem_arg),
             .i64_store16 => |mem_arg| try self.opStore(i64, 16, mem_arg),
             .i64_store32 => |mem_arg| try self.opStore(i64, 32, mem_arg),
-            .memory_size => try self.opMemorySize(),
-            .memory_grow => try self.opMemoryGrow(),
-            .memory_init => |data_idx| try self.opMemoryInit(data_idx),
+            .memory_size => |mem_idx| try self.opMemorySize(mem_idx),
+            .memory_grow => |mem_idx| try self.opMemoryGrow(mem_idx),
+            .memory_init => |arg| try self.opMemoryInit(arg.data_idx, arg.mem_idx),
             .data_drop => |data_idx| self.opDataDrop(data_idx),
-            .memory_copy => try self.opMemoryCopy(),
-            .memory_fill => try self.opMemoryFill(),
+            .memory_copy => |arg| try self.opMemoryCopy(arg.mem_idx_dst, arg.mem_idx_src),
+            .memory_fill => |mem_idx| try self.opMemoryFill(mem_idx),
 
             // numeric instructions (1)
             .i32_const => |val| try self.stack.pushValueAs(i32, val),
@@ -1238,7 +1237,7 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-xref-syntax-instructions-syntax-memarg-mathit-memarg-and-t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-n-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opLoad(self: *Self, comptime T: type, comptime N: type, mem_arg: Instruction.MemArg) Error!void {
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, @sizeOf(N));
         const val = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
         try self.stack.pushValueAs(T, val);
     }
@@ -1258,7 +1257,7 @@ pub const Instance = struct {
         const child_size = @sizeOf(HalfOfC);
         const size = child_size * len;
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, size);
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, size);
         var result: T = undefined;
         inline for (0..len) |i| {
             const start = m.start + i * child_size;
@@ -1275,7 +1274,7 @@ pub const Instance = struct {
         const len = 128 / @bitSizeOf(N);
         const V = @Vector(len, N);
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, @sizeOf(N));
         const val = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
         const result: V = @splat(val);
         try self.stack.pushValueAs(V, result);
@@ -1286,7 +1285,7 @@ pub const Instance = struct {
         const len = 128 / @bitSizeOf(N);
         const V = @Vector(len, N);
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, @sizeOf(N));
         var result: V = @splat(0);
         result[0] = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
 
@@ -1300,7 +1299,7 @@ pub const Instance = struct {
 
         var v = self.stack.pop().value.asVec(V);
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, @sizeOf(N));
         v[mem_arg.lane_idx] = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
         try self.stack.pushValueAs(V, v);
     }
@@ -1314,7 +1313,7 @@ pub const Instance = struct {
         const c: DestType = @truncate(ci);
         const byte_size = bit_size / 8;
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, byte_size);
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, byte_size);
         std.mem.writeInt(DestType, @as(*[byte_size]u8, @ptrCast(&m.mem.data[m.start])), c, .little);
     }
 
@@ -1324,14 +1323,14 @@ pub const Instance = struct {
         const v = self.stack.pop().value.asVec(@Vector(len, N));
         const byte_size = @sizeOf(N);
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, byte_size);
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, byte_size);
         std.mem.writeInt(N, @as(*[byte_size]u8, @ptrCast(&m.mem.data[m.start])), v[mem_arg.lane_idx], .little);
     }
 
     /// returns memery and effective address for load and store operations
-    inline fn getMemoryAndEffectiveAddress(self: *Self, offset: u32, size: u32) error{OutOfBoundsMemoryAccess}!MemoryAndEffectiveAddress {
+    inline fn getMemoryAndEffectiveAddress(self: *Self, mem_idx: u32, offset: u32, size: u32) error{OutOfBoundsMemoryAccess}!MemoryAndEffectiveAddress {
         const module = self.stack.topFrame().module;
-        const a = module.mem_addrs[0];
+        const a = module.mem_addrs[mem_idx];
         const mem = &self.store.mems.items[a];
 
         const ea: u32 = self.stack.pop().value.asU32();
@@ -1353,9 +1352,9 @@ pub const Instance = struct {
     };
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-size
-    inline fn opMemorySize(self: *Self) error{CallStackExhausted}!void {
+    inline fn opMemorySize(self: *Self, mem_idx: u32) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
-        const mem_addr = module.mem_addrs[0];
+        const mem_addr = module.mem_addrs[mem_idx];
         const mem_inst = self.store.mems.items[mem_addr];
 
         const sz: u32 = @intCast(mem_inst.data.len / page_size);
@@ -1363,9 +1362,9 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-grow
-    inline fn opMemoryGrow(self: *Self) error{CallStackExhausted}!void {
+    inline fn opMemoryGrow(self: *Self, mem_idx: u32) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
-        const mem_addr = module.mem_addrs[0];
+        const mem_addr = module.mem_addrs[mem_idx];
         const mem_inst = self.store.mems.items[mem_addr];
 
         const sz: u32 = @intCast(mem_inst.data.len / page_size);
@@ -1406,9 +1405,9 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-fill
-    inline fn opMemoryFill(self: *Self) (Error || error{OutOfMemory})!void {
+    inline fn opMemoryFill(self: *Self, mem_idx: u32) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
-        const mem_addr = module.mem_addrs[0];
+        const mem_addr = module.mem_addrs[mem_idx];
         const mem_inst = self.store.mems.items[mem_addr];
 
         var n: u32 = self.stack.pop().value.asU32();
@@ -1422,50 +1421,58 @@ pub const Instance = struct {
         while (n > 0) : (n -= 1) {
             try self.stack.pushValueAs(u32, d);
             try self.stack.push(val);
-            try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
+            try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx } });
             d += 1;
         }
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-copy
-    inline fn opMemoryCopy(self: *Self) (Error || error{OutOfMemory})!void {
+    inline fn opMemoryCopy(self: *Self, mem_idx_dst: u32, mem_idx_src: u32) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
-        const mem_addr = module.mem_addrs[0];
-        const mem_inst = self.store.mems.items[mem_addr];
+        const mem_addr_dst = module.mem_addrs[mem_idx_dst];
+        const mem_addr_src = module.mem_addrs[mem_idx_src];
+        const mem_inst_dst = self.store.mems.items[mem_addr_dst];
+        const mem_inst_src = self.store.mems.items[mem_addr_src];
 
         var n: u32 = self.stack.pop().value.asU32();
         var s: u32 = self.stack.pop().value.asU32();
         var d: u32 = self.stack.pop().value.asU32();
 
         const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
-        if (overflow_sn == 1 or s_plus_n > mem_inst.data.len)
+        if (overflow_sn == 1 or s_plus_n > mem_inst_src.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
         const d_plus_n, const overflow_dn = @addWithOverflow(d, n);
-        if (overflow_dn == 1 or d_plus_n > mem_inst.data.len)
+        if (overflow_dn == 1 or d_plus_n > mem_inst_dst.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        while (n > 0) : (n -= 1) {
-            if (d <= s) {
-                try self.stack.pushValueAs(u32, d);
-                try self.stack.pushValueAs(u32, s);
-                try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0 } });
-                try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
-                d += 1;
-                s += 1;
-            } else {
-                try self.stack.pushValueAs(u32, d + n - 1);
-                try self.stack.pushValueAs(u32, s + n - 1);
-                try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0 } });
-                try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
+        if (mem_idx_dst == mem_idx_src) {
+            // Same memory: handle overlapping regions
+            while (n > 0) : (n -= 1) {
+                if (d <= s) {
+                    try self.stack.pushValueAs(u32, d);
+                    try self.stack.pushValueAs(u32, s);
+                    try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx_src } });
+                    try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx_dst } });
+                    d += 1;
+                    s += 1;
+                } else {
+                    try self.stack.pushValueAs(u32, d + n - 1);
+                    try self.stack.pushValueAs(u32, s + n - 1);
+                    try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx_src } });
+                    try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx_dst } });
+                }
             }
+        } else {
+            // Different memories: no overlap possible, use fast memcpy
+            @memcpy(mem_inst_dst.data[d..d_plus_n], mem_inst_src.data[s..s_plus_n]);
         }
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-init-x
-    inline fn opMemoryInit(self: *Self, data_idx: DataIdx) (Error || error{OutOfMemory})!void {
+    inline fn opMemoryInit(self: *Self, data_idx: u32, mem_idx: u32) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
-        const mem_addr = module.mem_addrs[0];
+        const mem_addr = module.mem_addrs[mem_idx];
         const mem = self.store.mems.items[mem_addr];
         const data_addr = module.data_addrs[data_idx];
         const data = self.store.datas.items[data_addr];

@@ -361,18 +361,18 @@ pub const ModuleValidator = struct {
             .i64_store8 => |mem_arg| try opStore(i64, 8, mem_arg, type_stack, c),
             .i64_store16 => |mem_arg| try opStore(i64, 16, mem_arg, type_stack, c),
             .i64_store32 => |mem_arg| try opStore(i64, 32, mem_arg, type_stack, c),
-            .memory_size => {
-                try c.checkMem(0);
+            .memory_size => |mem_idx| {
+                try c.checkMem(mem_idx);
                 try type_stack.pushValueType(.i32);
             },
-            .memory_grow => {
-                try c.checkMem(0);
+            .memory_grow => |mem_idx| {
+                try c.checkMem(mem_idx);
                 try type_stack.popWithCheckingValueType(.i32);
                 try type_stack.pushValueType(.i32);
             },
-            .memory_init => |data_idx| {
-                try c.checkMem(0);
-                try c.checkData(data_idx);
+            .memory_init => |arg| {
+                try c.checkMem(arg.mem_idx);
+                try c.checkData(arg.data_idx);
                 try type_stack.popWithCheckingValueType(.i32);
                 try type_stack.popWithCheckingValueType(.i32);
                 try type_stack.popWithCheckingValueType(.i32);
@@ -380,14 +380,15 @@ pub const ModuleValidator = struct {
             .data_drop => |data_idx| {
                 try c.checkData(data_idx);
             },
-            .memory_copy => {
-                try c.checkMem(0);
+            .memory_copy => |arg| {
+                try c.checkMem(arg.mem_idx_dst);
+                try c.checkMem(arg.mem_idx_src);
                 try type_stack.popWithCheckingValueType(.i32);
                 try type_stack.popWithCheckingValueType(.i32);
                 try type_stack.popWithCheckingValueType(.i32);
             },
-            .memory_fill => {
-                try c.checkMem(0);
+            .memory_fill => |mem_idx| {
+                try c.checkMem(mem_idx);
                 try type_stack.popWithCheckingValueType(.i32);
                 try type_stack.popWithCheckingValueType(.i32);
                 try type_stack.popWithCheckingValueType(.i32);
@@ -832,7 +833,7 @@ inline fn exp2(n: u32) error{NegativeNumberAlignment}!u32 {
 inline fn opLoad(comptime T: type, comptime N: type, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8)
         return Error.NegativeNumberAlignment;
-    try c.checkMem(0);
+    try c.checkMem(mem_arg.mem_idx);
 
     try type_stack.popWithCheckingValueType(.i32);
     const t = valueTypeOf(T);
@@ -842,7 +843,7 @@ inline fn opLoad(comptime T: type, comptime N: type, mem_arg: Instruction.MemArg
 inline fn opV128Load(comptime N: type, comptime M: u8, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8 * M)
         return Error.NegativeNumberAlignment;
-    try c.checkMem(0);
+    try c.checkMem(mem_arg.mem_idx);
 
     try type_stack.popWithCheckingValueType(.i32);
     try type_stack.pushValueType(.v128);
@@ -851,7 +852,7 @@ inline fn opV128Load(comptime N: type, comptime M: u8, mem_arg: Instruction.MemA
 inline fn opV128LoadSplat(comptime N: type, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8)
         return Error.NegativeNumberAlignment;
-    try c.checkMem(0);
+    try c.checkMem(mem_arg.mem_idx);
 
     try type_stack.popWithCheckingValueType(.i32);
     try type_stack.pushValueType(.v128);
@@ -866,7 +867,7 @@ inline fn opVSprat(comptime T: type, type_stack: *TypeStack) Error!void {
 inline fn opStore(comptime T: type, comptime bit_size: u32, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > bit_size / 8)
         return Error.NegativeNumberAlignment;
-    try c.checkMem(0);
+    try c.checkMem(mem_arg.mem_idx);
 
     const t = valueTypeOf(T);
     try type_stack.popWithCheckingValueType(t);
