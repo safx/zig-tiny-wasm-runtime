@@ -3104,7 +3104,7 @@ pub const Parser = struct {
         // Special handling for 'if' instruction with folded form: (if (result) (cond) (then ...) (else ...))
         if (std.meta.activeTag(instr) == .@"if") {
             // Parse condition expression (only if not followed by 'then')
-            if (self.current_token == .left_paren) {
+            while (self.current_token == .left_paren) {
                 // Peek ahead to check if it's (then ...)
                 const saved_pos = self.lexer.pos;
                 const saved_char = self.lexer.current_char;
@@ -3118,11 +3118,11 @@ pub const Parser = struct {
                 self.lexer.current_char = saved_char;
                 self.current_token = saved_token;
 
-                if (!is_then) {
-                    try self.advance(); // consume '('
-                    try self.parseSExpression(instructions);
-                    try self.expectRightParen();
-                }
+                if (is_then) break;
+                
+                try self.advance(); // consume '('
+                try self.parseSExpression(instructions);
+                try self.expectRightParen();
             }
 
             // Add 'if' instruction

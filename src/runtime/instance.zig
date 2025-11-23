@@ -2173,9 +2173,9 @@ fn opTruncSat(comptime R: type, comptime T: type, value: T) R {
     const tval = @trunc(value);
     const fmax: T = @floatFromInt(max);
     const fmin: T = @floatFromInt(min);
-    if (tval > fmax)
+    if (tval >= fmax)
         return max;
-    if (tval < fmin)
+    if (tval <= fmin)
         return min;
 
     return @as(R, @intFromFloat(tval));
