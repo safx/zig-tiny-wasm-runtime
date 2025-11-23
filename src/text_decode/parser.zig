@@ -1221,13 +1221,13 @@ pub const Parser = struct {
                             try self.advance();
                             continue;
                         }
-                        // Parse type
-                        if (try self.parseValueType()) |vtype| {
-                            try params.append(self.allocator, vtype);
-                        } else {
-                            std.debug.print("Error: Unknown parameter type: {s}\n", .{type_name});
-                            return TextDecodeError.UnexpectedToken;
-                        }
+                    }
+                    // Parse type (handles both identifier and (ref ...) syntax)
+                    if (try self.parseValueType()) |vtype| {
+                        try params.append(self.allocator, vtype);
+                    } else if (self.current_token == .identifier) {
+                        std.debug.print("Error: Unknown parameter type: {s}\n", .{self.current_token.identifier});
+                        return TextDecodeError.UnexpectedToken;
                     } else {
                         try self.advance();
                     }
@@ -1258,10 +1258,10 @@ pub const Parser = struct {
                             try self.advance();
                             continue;
                         }
-                        // Parse type
-                        if (try self.parseValueType()) |vtype| {
-                            try locals.append(self.allocator, vtype);
-                        }
+                    }
+                    // Parse type (handles both identifier and (ref ...) syntax)
+                    if (try self.parseValueType()) |vtype| {
+                        try locals.append(self.allocator, vtype);
                     } else {
                         try self.advance();
                     }
@@ -1329,8 +1329,30 @@ pub const Parser = struct {
         _ = builder;
     }
 
-    /// Parse a value type (i32, i64, f32, f64, v128, funcref, externref)
+    /// Parse a value type (i32, i64, f32, f64, v128, funcref, externref, ref)
     fn parseValueType(self: *Parser) !?wasm_core.types.ValueType {
+        // Handle (ref ...) syntax
+        if (self.current_token == .left_paren) {
+            try self.advance(); // consume '('
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref")) {
+                try self.advance(); // consume 'ref'
+                if (self.current_token == .identifier) {
+                    const ref_type = self.current_token.identifier;
+                    try self.advance();
+                    try self.expectRightParen();
+                    // Map ref types to basic reference types
+                    if (std.mem.eql(u8, ref_type, "extern")) {
+                        return .extern_ref;
+                    } else if (std.mem.eql(u8, ref_type, "func")) {
+                        return .func_ref;
+                    }
+                    // For other ref types (GC types), return externref as fallback
+                    return .extern_ref;
+                }
+            }
+            return null;
+        }
+
         if (self.current_token != .identifier) return null;
 
         const type_name = self.current_token.identifier;
