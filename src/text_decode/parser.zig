@@ -815,18 +815,84 @@ pub const Parser = struct {
             }
         }
 
-        // Skip inline elem if present: (elem ...)
+        // Parse inline elem if present: (elem ...)
         if (self.current_token == .left_paren) {
-            var depth: u32 = 1;
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+
             try self.advance();
-            while (depth > 0 and self.current_token != .eof) {
-                if (self.current_token == .left_paren) {
-                    depth += 1;
-                } else if (self.current_token == .right_paren) {
-                    depth -= 1;
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "elem")) {
+                try self.advance();
+                
+                // Parse element initializers
+                var init_list = std.ArrayList(wasm_core.types.InitExpression){};
+                defer init_list.deinit(self.allocator);
+                
+                while (self.current_token != .right_paren and self.current_token != .eof) {
+                    if (self.current_token == .identifier) {
+                        if (self.builder.func_names.get(self.current_token.identifier)) |idx| {
+                            try init_list.append(self.allocator, .{ .ref_func = idx });
+                        }
+                        try self.advance();
+                    } else if (self.current_token == .number) {
+                        const idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                        try init_list.append(self.allocator, .{ .ref_func = idx });
+                        try self.advance();
+                    } else {
+                        break;
+                    }
                 }
-                if (depth > 0) {
-                    try self.advance();
+                
+                try self.expectRightParen();
+                
+                // Update limits if not specified
+                if (min == 0 and max == null) {
+                    min = @intCast(init_list.items.len);
+                    max = min;
+                }
+                
+                // Create table
+                const table_idx: u32 = @intCast(builder.tables.items.len);
+                try builder.tables.append(self.allocator, .{
+                    .ref_type = ref_type,
+                    .limits = .{ .min = min, .max = max },
+                });
+                
+                // Create element segment
+                const offset = wasm_core.types.InitExpression{ .i32_const = 0 };
+                try builder.elements.append(self.allocator, .{
+                    .type = ref_type,
+                    .init = try self.allocator.dupe(wasm_core.types.InitExpression, init_list.items),
+                    .mode = .{ .active = .{ .table_idx = table_idx, .offset = offset } },
+                });
+                
+                // Add export if present
+                if (export_name) |name| {
+                    try builder.exports.append(self.allocator, .{
+                        .name = name,
+                        .desc = .{ .table = table_idx },
+                    });
+                }
+                
+                return;
+            } else {
+                // Not elem, restore and skip
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+                
+                var depth: u32 = 1;
+                try self.advance();
+                while (depth > 0 and self.current_token != .eof) {
+                    if (self.current_token == .left_paren) {
+                        depth += 1;
+                    } else if (self.current_token == .right_paren) {
+                        depth -= 1;
+                    }
+                    if (depth > 0) {
+                        try self.advance();
+                    }
                 }
             }
         }
