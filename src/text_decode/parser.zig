@@ -231,7 +231,6 @@ pub const Parser = struct {
                         try self.advance();
                         offset = try self.parseInitExpression();
                         try self.expectRightParen(); // close offset
-                        try self.expectRightParen(); // close outer paren
                     } else {
                         // Restore and parse as init expression
                         self.lexer.pos = saved_pos2;
@@ -247,14 +246,14 @@ pub const Parser = struct {
                 try self.advance();
                 offset = try self.parseInitExpression();
                 try self.expectRightParen(); // close offset
-                try self.expectRightParen(); // close outer paren
                 mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
             } else {
-                // Direct offset expression or other
-                // Restore and let it be handled as passive
+                // Direct offset expression like (i32.const 0)
                 self.lexer.pos = saved_pos;
                 self.lexer.current_char = saved_char;
                 self.current_token = saved_token;
+                offset = try self.parseInitExpression();
+                mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
             }
         }
 
