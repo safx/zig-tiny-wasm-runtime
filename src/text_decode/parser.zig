@@ -1484,9 +1484,14 @@ pub const Parser = struct {
             } else if (result_types.items.len == 1) {
                 return .{ .value_type = result_types.items[0] };
             } else {
-                // Multiple results - would need type_index, but for now return first type
-                // TODO: properly handle multiple result types with type indices
-                return .{ .value_type = result_types.items[0] };
+                // Multiple results - register a new type and return its index
+                const func_type = wasm_core.types.FuncType{
+                    .parameter_types = &.{},
+                    .result_types = try self.allocator.dupe(wasm_core.types.ValueType, result_types.items),
+                };
+                const type_idx: u32 = @intCast(self.builder.types.items.len);
+                try self.builder.types.append(self.allocator, func_type);
+                return .{ .type_index = type_idx };
             }
         } else {
             // Not a (result ...), restore lexer state
