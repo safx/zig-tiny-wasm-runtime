@@ -290,8 +290,8 @@ pub const Decoder = struct {
             n(.simd_prefix) => try simdOpcode(reader, allocator),
 
             else => {
-                std.debug.print("?? Unknown opcode: 0x{x}\n", .{op_code});
-                unreachable;
+                std.debug.print("Warning: Unknown opcode: 0x{x}\n", .{op_code});
+                return Error.UnknownOpcode;
             },
         };
 

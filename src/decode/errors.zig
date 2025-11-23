@@ -15,6 +15,7 @@ pub const Error = error{
     DataCountAndDataSectionHaveInconsistentLengths,
     DataCountSectionRequired,
     IllegalOpcode,
+    UnknownOpcode,
     UnexpectedContentAfterLastSection,
     IntegerRepresentationTooLong,
     MalformedUtf8Encoding,

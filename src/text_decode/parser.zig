@@ -438,10 +438,14 @@ pub const Parser = struct {
             if (std.mem.eql(u8, keyword, "param")) {
                 try self.advance();
                 while (self.current_token != .right_paren and self.current_token != .eof) {
+                    // Skip parameter name if present (e.g., $x)
+                    if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                        try self.advance();
+                    }
                     if (try self.parseValueType()) |vtype| {
                         try params.append(self.allocator, vtype);
                     } else {
-                        std.debug.print("Error: Unknown parameter type in type definition\n", .{});
+                        std.debug.print("Warning: Unknown parameter type in type definition\n", .{});
                         return TextDecodeError.UnexpectedToken;
                     }
                 }

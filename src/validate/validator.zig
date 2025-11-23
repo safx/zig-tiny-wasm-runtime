@@ -67,8 +67,6 @@ pub const ModuleValidator = struct {
             for (module.exports) |exp|
                 try validateExport(c, exp);
 
-            if (c.mems.len > 1)
-                return Error.MultipleMemories;
         }
 
         { // under the context c'
