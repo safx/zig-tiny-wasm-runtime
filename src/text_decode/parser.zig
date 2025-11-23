@@ -2248,6 +2248,115 @@ pub const Parser = struct {
             return .{ .f64x2_replace_lane = try self.parseLaneIdx() };
         }
 
+        // v128 comparison instructions - i8x16
+        else if (std.mem.eql(u8, instr_name, "i8x16.eq")) {
+            return .i8x16_eq;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.ne")) {
+            return .i8x16_ne;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.lt_s")) {
+            return .i8x16_lt_s;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.lt_u")) {
+            return .i8x16_lt_u;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.gt_s")) {
+            return .i8x16_gt_s;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.gt_u")) {
+            return .i8x16_gt_u;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.le_s")) {
+            return .i8x16_le_s;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.le_u")) {
+            return .i8x16_le_u;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.ge_s")) {
+            return .i8x16_ge_s;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.ge_u")) {
+            return .i8x16_ge_u;
+        }
+        // i16x8
+        else if (std.mem.eql(u8, instr_name, "i16x8.eq")) {
+            return .i16x8_eq;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.ne")) {
+            return .i16x8_ne;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.lt_s")) {
+            return .i16x8_lt_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.lt_u")) {
+            return .i16x8_lt_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.gt_s")) {
+            return .i16x8_gt_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.gt_u")) {
+            return .i16x8_gt_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.le_s")) {
+            return .i16x8_le_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.le_u")) {
+            return .i16x8_le_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.ge_s")) {
+            return .i16x8_ge_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.ge_u")) {
+            return .i16x8_ge_u;
+        }
+        // i32x4
+        else if (std.mem.eql(u8, instr_name, "i32x4.eq")) {
+            return .i32x4_eq;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.ne")) {
+            return .i32x4_ne;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.lt_s")) {
+            return .i32x4_lt_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.lt_u")) {
+            return .i32x4_lt_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.gt_s")) {
+            return .i32x4_gt_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.gt_u")) {
+            return .i32x4_gt_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.le_s")) {
+            return .i32x4_le_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.le_u")) {
+            return .i32x4_le_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.ge_s")) {
+            return .i32x4_ge_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.ge_u")) {
+            return .i32x4_ge_u;
+        }
+        // i64x2
+        else if (std.mem.eql(u8, instr_name, "i64x2.eq")) {
+            return .i64x2_eq;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.ne")) {
+            return .i64x2_ne;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.lt_s")) {
+            return .i64x2_lt_s;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.gt_s")) {
+            return .i64x2_gt_s;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.le_s")) {
+            return .i64x2_le_s;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.ge_s")) {
+            return .i64x2_ge_s;
+        }
+        // f32x4
+        else if (std.mem.eql(u8, instr_name, "f32x4.eq")) {
+            return .f32x4_eq;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.ne")) {
+            return .f32x4_ne;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.lt")) {
+            return .f32x4_lt;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.gt")) {
+            return .f32x4_gt;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.le")) {
+            return .f32x4_le;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.ge")) {
+            return .f32x4_ge;
+        }
+        // f64x2
+        else if (std.mem.eql(u8, instr_name, "f64x2.eq")) {
+            return .f64x2_eq;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.ne")) {
+            return .f64x2_ne;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.lt")) {
+            return .f64x2_lt;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.gt")) {
+            return .f64x2_gt;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.le")) {
+            return .f64x2_le;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.ge")) {
+            return .f64x2_ge;
+        }
+
         // Relaxed SIMD instructions (WebAssembly 2.0)
         else if (std.mem.eql(u8, instr_name, "i8x16.relaxed_swizzle")) {
             return .i8x16_relaxed_swizzle;
