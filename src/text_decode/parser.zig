@@ -2350,6 +2350,14 @@ pub const Parser = struct {
             return .i32_trunc_f64_s;
         } else if (std.mem.eql(u8, instr_name, "i32.trunc_f64_u")) {
             return .i32_trunc_f64_u;
+        } else if (std.mem.eql(u8, instr_name, "i32.trunc_sat_f32_s")) {
+            return .i32_trunc_sat_f32_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.trunc_sat_f32_u")) {
+            return .i32_trunc_sat_f32_u;
+        } else if (std.mem.eql(u8, instr_name, "i32.trunc_sat_f64_s")) {
+            return .i32_trunc_sat_f64_s;
+        } else if (std.mem.eql(u8, instr_name, "i32.trunc_sat_f64_u")) {
+            return .i32_trunc_sat_f64_u;
         } else if (std.mem.eql(u8, instr_name, "i64.extend_i32_s")) {
             return .i64_extend_i32_s;
         } else if (std.mem.eql(u8, instr_name, "i64.extend_i32_u")) {
@@ -2362,6 +2370,14 @@ pub const Parser = struct {
             return .i64_trunc_f64_s;
         } else if (std.mem.eql(u8, instr_name, "i64.trunc_f64_u")) {
             return .i64_trunc_f64_u;
+        } else if (std.mem.eql(u8, instr_name, "i64.trunc_sat_f32_s")) {
+            return .i64_trunc_sat_f32_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.trunc_sat_f32_u")) {
+            return .i64_trunc_sat_f32_u;
+        } else if (std.mem.eql(u8, instr_name, "i64.trunc_sat_f64_s")) {
+            return .i64_trunc_sat_f64_s;
+        } else if (std.mem.eql(u8, instr_name, "i64.trunc_sat_f64_u")) {
+            return .i64_trunc_sat_f64_u;
         } else if (std.mem.eql(u8, instr_name, "f32.convert_i32_s")) {
             return .f32_convert_i32_s;
         } else if (std.mem.eql(u8, instr_name, "f32.convert_i32_u")) {
