@@ -129,7 +129,7 @@ pub const Parser = struct {
 
     pub fn expectToken(self: *Parser, expected: std.meta.Tag(Token)) !void {
         if (std.meta.activeTag(self.current_token) != expected) {
-            std.debug.print("Error: expectToken: Unexpected token at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
+            std.debug.print("Warning: expectToken: Unexpected token at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
             return TextDecodeError.UnexpectedToken;
         }
         try self.advance();
@@ -184,7 +184,7 @@ pub const Parser = struct {
             const idx = try self.parseU32OrIdentifier();
             builder.start = idx;
         } else {
-            std.debug.print("Error: Unknown module field: {s}\n", .{field_name});
+            std.debug.print("Warning: Unknown module field: {s}\n", .{field_name});
             return TextDecodeError.UnexpectedToken;
         }
 
@@ -3272,7 +3272,13 @@ pub const Parser = struct {
                 offset = try std.fmt.parseInt(u32, id[7..], 0);
                 try self.advance();
             } else if (std.mem.startsWith(u8, id, "align=")) {
-                alignment = try std.fmt.parseInt(u32, id[6..], 0);
+                const align_bytes = try std.fmt.parseInt(u32, id[6..], 0);
+                // Alignment must be a power of 2 and at least 1
+                if (align_bytes == 0 or (align_bytes & (align_bytes - 1)) != 0) {
+                    return TextDecodeError.InvalidFormat;
+                }
+                // Convert byte alignment to log2 (e.g., 4 bytes -> 2)
+                alignment = @ctz(align_bytes);
                 try self.advance();
             } else {
                 break;
@@ -3299,7 +3305,13 @@ pub const Parser = struct {
                 offset = try std.fmt.parseInt(u32, id[7..], 0);
                 try self.advance();
             } else if (std.mem.startsWith(u8, id, "align=")) {
-                alignment = try std.fmt.parseInt(u32, id[6..], 0);
+                const align_bytes = try std.fmt.parseInt(u32, id[6..], 0);
+                // Alignment must be a power of 2 and at least 1
+                if (align_bytes == 0 or (align_bytes & (align_bytes - 1)) != 0) {
+                    return TextDecodeError.InvalidFormat;
+                }
+                // Convert byte alignment to log2 (e.g., 4 bytes -> 2)
+                alignment = @ctz(align_bytes);
                 try self.advance();
             } else {
                 break;
@@ -3719,13 +3731,13 @@ pub const Parser = struct {
                 var text_parts = std.ArrayList(u8){};
                 defer text_parts.deinit(self.allocator);
                 
-                try text_parts.appendSlice(self.allocator, "(module");
                 while (self.current_token == .string) {
-                    try text_parts.append(self.allocator, ' ');
+                    if (text_parts.items.len > 0) {
+                        try text_parts.append(self.allocator, ' ');
+                    }
                     try text_parts.appendSlice(self.allocator, self.current_token.string);
                     try self.advance();
                 }
-                try text_parts.append(self.allocator, ')');
                 
                 module_text = try text_parts.toOwnedSlice(self.allocator);
                 try self.expectToken(.right_paren);
@@ -3827,13 +3839,13 @@ pub const Parser = struct {
                 var text_parts = std.ArrayList(u8){};
                 defer text_parts.deinit(self.allocator);
                 
-                try text_parts.appendSlice(self.allocator, "(module");
                 while (self.current_token == .string) {
-                    try text_parts.append(self.allocator, ' ');
+                    if (text_parts.items.len > 0) {
+                        try text_parts.append(self.allocator, ' ');
+                    }
                     try text_parts.appendSlice(self.allocator, self.current_token.string);
                     try self.advance();
                 }
-                try text_parts.append(self.allocator, ')');
                 
                 module_text = try text_parts.toOwnedSlice(self.allocator);
                 try self.expectToken(.right_paren);
