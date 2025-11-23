@@ -1493,7 +1493,7 @@ pub const Instance = struct {
             const b = data.data[s];
             try self.stack.pushValueAs(u32, d);
             try self.stack.pushValueAs(u32, b);
-            try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
+            try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx } });
             s += 1;
             d += 1;
         }

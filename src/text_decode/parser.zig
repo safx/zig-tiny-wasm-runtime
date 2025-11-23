@@ -1023,6 +1023,7 @@ pub const Parser = struct {
         }
 
         var offset: wasm_core.types.InitExpression = .{ .i32_const = 0 };
+        var mem_idx: u32 = 0;
 
         // Check for (memory idx) or (offset ...) or (i32.const ...)
         while (self.current_token == .left_paren) {
@@ -1034,8 +1035,14 @@ pub const Parser = struct {
             try self.advance();
 
             if (std.mem.eql(u8, instr_name, "memory")) {
-                // Skip memory index
-                if (self.current_token == .number or self.current_token == .identifier) {
+                // Parse memory index
+                if (self.current_token == .number) {
+                    mem_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                    try self.advance();
+                } else if (self.current_token == .identifier) {
+                    if (self.builder.memory_names.get(self.current_token.identifier)) |idx| {
+                        mem_idx = idx;
+                    }
                     try self.advance();
                 }
                 try self.expectRightParen();
@@ -1137,7 +1144,7 @@ pub const Parser = struct {
             .init = try data_list.toOwnedSlice(self.allocator),
             .mode = .{
                 .active = .{
-                    .mem_idx = 0,
+                    .mem_idx = mem_idx,
                     .offset = offset,
                 },
             },
