@@ -64,6 +64,9 @@ pub const InitExpression = union(enum) {
 
     global_get: GlobalIdx,
 
+    // multiple instructions (for extended constant expressions)
+    instructions: []const Instruction,
+
     // pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
     //     switch (self) {
     //         inline else => |val| try writer.print("{}", .{val}),

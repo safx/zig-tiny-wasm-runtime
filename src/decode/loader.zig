@@ -193,7 +193,7 @@ pub const ModuleLoader = struct {
         return .{ .limits = try self.limits() };
     }
 
-    fn global(self: *Self) Error!types.Global {
+    fn global(self: *Self) (Error || error{OutOfMemory})!types.Global {
         const gtype = try self.globalType();
         const exp = try self.initExpr();
         return .{ .type = gtype, .init = exp };
@@ -365,13 +365,59 @@ pub const ModuleLoader = struct {
         return .{ .mutability = m, .value_type = vtype };
     }
 
-    fn initExpr(self: *Self) Error!types.InitExpression {
+    fn initExpr(self: *Self) (Error || error{OutOfMemory})!types.InitExpression {
+        const start_pos = self.reader.position;
         const op = try self.reader.readU8();
-        const value = try self.initExprValue(op);
-        const end = try self.reader.readU8();
-        if (end != 0x0b)
-            return Error.EndOpcodeExpected;
-        return value;
+        
+        // Check if this is a simple single-instruction constant expression
+        const is_simple = switch (op) {
+            opcode2int(.i32_const),
+            opcode2int(.i64_const),
+            opcode2int(.f32_const),
+            opcode2int(.f64_const),
+            opcode2int(.global_get),
+            0xd0, // ref.null
+            0xd2, // ref.func
+            opcode2int(.simd_prefix),
+            => true,
+            else => false,
+        };
+        
+        if (is_simple) {
+            const value = try self.initExprValue(op);
+            const end = try self.reader.readU8();
+            if (end != 0x0b)
+                return Error.EndOpcodeExpected;
+            return value;
+        }
+        
+        // Complex expression with multiple instructions
+        self.reader.position = start_pos;
+        const code_start = self.reader.position;
+        
+        // Find the end opcode
+        var depth: u32 = 0;
+        while (true) {
+            const byte = try self.reader.readU8();
+            if (byte == 0x0b) { // end
+                if (depth == 0) break;
+                depth -= 1;
+            } else if (byte == 0x02 or byte == 0x03 or byte == 0x04) { // block/loop/if
+                depth += 1;
+            }
+        }
+        
+        const code_end = self.reader.position - 1; // exclude end opcode
+        const code_len = code_end - code_start;
+        
+        self.reader.position = code_start;
+        const code_buf = try self.reader.readBytes(code_len);
+        _ = try self.reader.readU8(); // consume end opcode
+        
+        var decoder = Decoder.new();
+        const instrs = try decoder.parseAll(code_buf, self.allocator);
+        
+        return .{ .instructions = instrs };
     }
 
     fn opcode2int(op: std.wasm.Opcode) u32 {

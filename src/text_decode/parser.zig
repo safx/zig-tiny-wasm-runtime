@@ -222,30 +222,22 @@ pub const Parser = struct {
 
                 // Parse offset
                 if (self.current_token == .left_paren) {
+                    const saved_pos2 = self.lexer.pos;
+                    const saved_char2 = self.lexer.current_char;
+                    const saved_token2 = self.current_token;
+
                     try self.advance();
                     if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "offset")) {
                         try self.advance();
-                        if (self.current_token == .left_paren) {
-                            try self.advance();
-                            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
-                                try self.advance();
-                                if (self.current_token == .number) {
-                                    const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
-                                    offset = .{ .i32_const = val };
-                                    try self.advance();
-                                }
-                                try self.expectRightParen();
-                            }
-                        }
-                        try self.expectRightParen();
-                    } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
-                        try self.advance();
-                        if (self.current_token == .number) {
-                            const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
-                            offset = .{ .i32_const = val };
-                            try self.advance();
-                        }
-                        try self.expectRightParen();
+                        offset = try self.parseInitExpression();
+                        try self.expectRightParen(); // close offset
+                        try self.expectRightParen(); // close outer paren
+                    } else {
+                        // Restore and parse as init expression
+                        self.lexer.pos = saved_pos2;
+                        self.lexer.current_char = saved_char2;
+                        self.current_token = saved_token2;
+                        offset = try self.parseInitExpression();
                     }
                 }
 
@@ -253,52 +245,13 @@ pub const Parser = struct {
             } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "offset")) {
                 // (offset (i32.const 0))
                 try self.advance();
-                if (self.current_token == .left_paren) {
-                    try self.advance();
-                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
-                        try self.advance();
-                        if (self.current_token == .number) {
-                            const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
-                            offset = .{ .i32_const = val };
-                            try self.advance();
-                        }
-                        try self.expectRightParen();
-                    } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "global.get")) {
-                        try self.advance();
-                        const val: u32 = if (self.current_token == .number)
-                            try std.fmt.parseInt(u32, self.current_token.number, 0)
-                        else
-                            0;
-                        offset = .{ .global_get = val };
-                        try self.advance();
-                        try self.expectRightParen();
-                    }
-                }
-                try self.expectRightParen();
-                mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
-            } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
-                // Direct offset expression: (i32.const 0)
-                try self.advance();
-                if (self.current_token == .number) {
-                    const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
-                    offset = .{ .i32_const = val };
-                    try self.advance();
-                }
-                try self.expectRightParen();
-                mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
-            } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "global.get")) {
-                // Direct offset expression: (global.get 0)
-                try self.advance();
-                const val: u32 = if (self.current_token == .number)
-                    try std.fmt.parseInt(u32, self.current_token.number, 0)
-                else
-                    0;
-                offset = .{ .global_get = val };
-                try self.advance();
-                try self.expectRightParen();
+                offset = try self.parseInitExpression();
+                try self.expectRightParen(); // close offset
+                try self.expectRightParen(); // close outer paren
                 mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
             } else {
-                // Not table or offset, restore
+                // Direct offset expression or other
+                // Restore and let it be handled as passive
                 self.lexer.pos = saved_pos;
                 self.lexer.current_char = saved_char;
                 self.current_token = saved_token;
@@ -585,41 +538,7 @@ pub const Parser = struct {
         var init_expr: wasm_core.types.InitExpression = .{ .i32_const = 0 };
 
         if (self.current_token == .left_paren) {
-            try self.advance();
-            if (self.current_token == .identifier) {
-                const instr = self.current_token.identifier;
-                try self.advance();
-
-                if (std.mem.eql(u8, instr, "i32.const")) {
-                    if (self.current_token == .number) {
-                        const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
-                        init_expr = .{ .i32_const = val };
-                        try self.advance();
-                    }
-                } else if (std.mem.eql(u8, instr, "i64.const")) {
-                    if (self.current_token == .number) {
-                        const val = try std.fmt.parseInt(i64, self.current_token.number, 0);
-                        init_expr = .{ .i64_const = val };
-                        try self.advance();
-                    }
-                } else if (std.mem.eql(u8, instr, "f32.const")) {
-                    if (self.current_token == .number) {
-                        const val = try numeric_parser.parseFloat(f32, self.current_token.number);
-                        init_expr = .{ .f32_const = val };
-                        try self.advance();
-                    }
-                } else if (std.mem.eql(u8, instr, "f64.const")) {
-                    if (self.current_token == .number) {
-                        const val = try numeric_parser.parseFloat(f64, self.current_token.number);
-                        init_expr = .{ .f64_const = val };
-                        try self.advance();
-                    }
-                } else if (std.mem.eql(u8, instr, "v128.const")) {
-                    const result = try self.parseV128Const();
-                    init_expr = .{ .v128_const = result };
-                }
-            }
-            try self.expectRightParen();
+            init_expr = try self.parseInitExpression();
         }
 
         const global_idx: u32 = @intCast(builder.globals.items.len);
@@ -1109,16 +1028,26 @@ pub const Parser = struct {
         var offset: wasm_core.types.InitExpression = .{ .i32_const = 0 };
         var mem_idx: u32 = 0;
 
-        // Check for (memory idx) or (offset ...) or (i32.const ...)
+        // Check for (memory idx) or (offset ...) or offset expression
         while (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+
             try self.advance(); // consume '('
 
-            if (self.current_token != .identifier) break;
+            if (self.current_token != .identifier) {
+                // Restore
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+                break;
+            }
 
             const instr_name = self.current_token.identifier;
-            try self.advance();
 
             if (std.mem.eql(u8, instr_name, "memory")) {
+                try self.advance();
                 // Parse memory index
                 if (self.current_token == .number) {
                     mem_idx = try std.fmt.parseInt(u32, self.current_token.number, 0);
@@ -1131,85 +1060,17 @@ pub const Parser = struct {
                 }
                 try self.expectRightParen();
             } else if (std.mem.eql(u8, instr_name, "offset")) {
-                // Parse (offset (i32.const ...))
-                if (self.current_token == .left_paren) {
-                    try self.advance();
-                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
-                        try self.advance();
-                        if (self.current_token == .number) {
-                            const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
-                            offset = .{ .i32_const = val };
-                            try self.advance();
-                        }
-                    }
-                    try self.expectRightParen();
-                }
-                try self.expectRightParen();
-                break;
-            } else if (std.mem.eql(u8, instr_name, "i32.const")) {
-                if (self.current_token == .number) {
-                    const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
-                    offset = .{ .i32_const = val };
-                    try self.advance();
-                }
-                try self.expectRightParen();
-                break;
-            } else if (std.mem.eql(u8, instr_name, "i64.const")) {
-                if (self.current_token == .number) {
-                    const val = try std.fmt.parseInt(i64, self.current_token.number, 0);
-                    offset = .{ .i64_const = val };
-                    try self.advance();
-                }
-                try self.expectRightParen();
-                break;
-            } else if (std.mem.eql(u8, instr_name, "global.get")) {
-                if (self.current_token == .number) {
-                    const val = try std.fmt.parseInt(u32, self.current_token.number, 10);
-                    offset = .{ .global_get = val };
-                    try self.advance();
-                } else if (self.current_token == .identifier) {
-                    // Named global - skip for now (would need name resolution)
-                    try self.advance();
-                }
-                try self.expectRightParen();
-                break;
-            } else if (std.mem.eql(u8, instr_name, "i32.add")) {
-                // Parse (i32.add (i32.const a) (i32.const b)) -> a + b
-                var val1: i32 = 0;
-                var val2: i32 = 0;
-
-                // Parse first operand
-                if (self.current_token == .left_paren) {
-                    try self.advance();
-                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
-                        try self.advance();
-                        if (self.current_token == .number) {
-                            val1 = try std.fmt.parseInt(i32, self.current_token.number, 0);
-                            try self.advance();
-                        }
-                    }
-                    try self.expectRightParen();
-                }
-
-                // Parse second operand
-                if (self.current_token == .left_paren) {
-                    try self.advance();
-                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "i32.const")) {
-                        try self.advance();
-                        if (self.current_token == .number) {
-                            val2 = try std.fmt.parseInt(i32, self.current_token.number, 0);
-                            try self.advance();
-                        }
-                    }
-                    try self.expectRightParen();
-                }
-
-                offset = .{ .i32_const = val1 + val2 };
-                try self.expectRightParen();
+                try self.advance();
+                offset = try self.parseInitExpression();
+                try self.expectRightParen(); // close offset
                 break;
             } else {
-                std.debug.print("Warning: Unknown instruction in data offset at line {d}\n", .{self.lexer.line});
-                return TextDecodeError.UnexpectedToken;
+                // Restore and parse as init expression
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+                offset = try self.parseInitExpression();
+                break;
             }
         }
 
@@ -1641,6 +1502,120 @@ pub const Parser = struct {
             return TextDecodeError.UnexpectedToken;
         }
         try self.advance();
+    }
+
+    /// Parse init expression for globals, data, and element offsets
+    fn parseInitExpression(self: *Parser) !wasm_core.types.InitExpression {
+        var instrs = std.ArrayList(wasm_core.types.Instruction){};
+        defer instrs.deinit(self.allocator);
+
+        // Parse instructions until we hit right paren or string
+        while (self.current_token != .right_paren and self.current_token != .eof and self.current_token != .string) {
+            if (self.current_token == .left_paren) {
+                try self.advance();
+                if (self.current_token == .identifier) {
+                    const instr_name = self.current_token.identifier;
+                    try self.advance();
+
+                    if (std.mem.eql(u8, instr_name, "i32.const")) {
+                        if (self.current_token == .number) {
+                            const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                            try instrs.append(self.allocator, .{ .i32_const = val });
+                            try self.advance();
+                        }
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, instr_name, "i64.const")) {
+                        if (self.current_token == .number) {
+                            const val = try std.fmt.parseInt(i64, self.current_token.number, 0);
+                            try instrs.append(self.allocator, .{ .i64_const = val });
+                            try self.advance();
+                        }
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, instr_name, "f32.const")) {
+                        if (self.current_token == .number) {
+                            const val = try numeric_parser.parseFloat(f32, self.current_token.number);
+                            try instrs.append(self.allocator, .{ .f32_const = val });
+                            try self.advance();
+                        }
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, instr_name, "f64.const")) {
+                        if (self.current_token == .number) {
+                            const val = try numeric_parser.parseFloat(f64, self.current_token.number);
+                            try instrs.append(self.allocator, .{ .f64_const = val });
+                            try self.advance();
+                        }
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, instr_name, "global.get")) {
+                        if (self.current_token == .number) {
+                            const val = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                            try instrs.append(self.allocator, .{ .global_get = val });
+                            try self.advance();
+                        } else if (self.current_token == .identifier) {
+                            // TODO: Named global resolution
+                            try self.advance();
+                        }
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, instr_name, "i32.add") or 
+                               std.mem.eql(u8, instr_name, "i32.sub") or 
+                               std.mem.eql(u8, instr_name, "i32.mul") or
+                               std.mem.eql(u8, instr_name, "i64.add") or 
+                               std.mem.eql(u8, instr_name, "i64.sub") or 
+                               std.mem.eql(u8, instr_name, "i64.mul")) {
+                        // Recursively parse operands
+                        const sub_expr = try self.parseInitExpression();
+                        // Flatten sub-expression instructions
+                        switch (sub_expr) {
+                            .instructions => |sub_instrs| {
+                                try instrs.appendSlice(self.allocator, sub_instrs);
+                            },
+                            .i32_const => |v| try instrs.append(self.allocator, .{ .i32_const = v }),
+                            .i64_const => |v| try instrs.append(self.allocator, .{ .i64_const = v }),
+                            .f32_const => |v| try instrs.append(self.allocator, .{ .f32_const = v }),
+                            .f64_const => |v| try instrs.append(self.allocator, .{ .f64_const = v }),
+                            .global_get => |v| try instrs.append(self.allocator, .{ .global_get = v }),
+                            else => {},
+                        }
+                        
+                        // Add the operation
+                        if (std.mem.eql(u8, instr_name, "i32.add")) {
+                            try instrs.append(self.allocator, .i32_add);
+                        } else if (std.mem.eql(u8, instr_name, "i32.sub")) {
+                            try instrs.append(self.allocator, .i32_sub);
+                        } else if (std.mem.eql(u8, instr_name, "i32.mul")) {
+                            try instrs.append(self.allocator, .i32_mul);
+                        } else if (std.mem.eql(u8, instr_name, "i64.add")) {
+                            try instrs.append(self.allocator, .i64_add);
+                        } else if (std.mem.eql(u8, instr_name, "i64.sub")) {
+                            try instrs.append(self.allocator, .i64_sub);
+                        } else if (std.mem.eql(u8, instr_name, "i64.mul")) {
+                            try instrs.append(self.allocator, .i64_mul);
+                        }
+                        
+                        try self.expectRightParen();
+                    } else {
+                        try self.expectRightParen();
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        // If single instruction, return as simple init expression
+        if (instrs.items.len == 1) {
+            const instr = instrs.items[0];
+            return switch (instr) {
+                .i32_const => |v| .{ .i32_const = v },
+                .i64_const => |v| .{ .i64_const = v },
+                .f32_const => |v| .{ .f32_const = v },
+                .f64_const => |v| .{ .f64_const = v },
+                .global_get => |v| .{ .global_get = v },
+                else => .{ .instructions = try self.allocator.dupe(wasm_core.types.Instruction, instrs.items) },
+            };
+        }
+
+        // Multiple instructions
+        return .{ .instructions = try self.allocator.dupe(wasm_core.types.Instruction, instrs.items) };
     }
 
     /// Fix block/loop/if end positions after parsing

@@ -1110,10 +1110,60 @@ fn validateInitExpression(c: Context, init_expr: InitExpression, expected_type: 
             const g = try c.getGlobal(idx);
             break :blk g.value_type == expected_type;
         },
+        .instructions => |instrs| blk: {
+            const result_type = try validateConstExprInstructions(c, instrs);
+            break :blk result_type == expected_type;
+        },
     };
 
     if (!ok)
         return Error.TypeMismatch;
+}
+
+fn validateConstExprInstructions(c: Context, instrs: []const Instruction) Error!ValueType {
+    var type_stack: [8]ValueType = undefined;
+    var sp: usize = 0;
+
+    for (instrs) |instr| {
+        switch (instr) {
+            .i32_const => {
+                type_stack[sp] = .i32;
+                sp += 1;
+            },
+            .i64_const => {
+                type_stack[sp] = .i64;
+                sp += 1;
+            },
+            .f32_const => {
+                type_stack[sp] = .f32;
+                sp += 1;
+            },
+            .f64_const => {
+                type_stack[sp] = .f64;
+                sp += 1;
+            },
+            .global_get => |idx| {
+                const g = try c.getGlobal(idx);
+                type_stack[sp] = g.value_type;
+                sp += 1;
+            },
+            .i32_add, .i32_sub, .i32_mul => {
+                if (sp < 2 or type_stack[sp - 1] != .i32 or type_stack[sp - 2] != .i32)
+                    return Error.TypeMismatch;
+                sp -= 1;
+            },
+            .i64_add, .i64_sub, .i64_mul => {
+                if (sp < 2 or type_stack[sp - 1] != .i64 or type_stack[sp - 2] != .i64)
+                    return Error.TypeMismatch;
+                sp -= 1;
+            },
+            .end => break,
+            else => return Error.TypeMismatch,
+        }
+    }
+
+    if (sp != 1) return Error.TypeMismatch;
+    return type_stack[0];
 }
 
 fn valueTypeOf(comptime ty: type) ValueType {

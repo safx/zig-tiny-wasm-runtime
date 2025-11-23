@@ -15,4 +15,7 @@ pub const Error = error{
     UnknownImport,
     CallStackExhausted,
     OtherError,
+    InvalidConstExpr,
+    StackUnderflow,
+    TypeMismatch,
 };

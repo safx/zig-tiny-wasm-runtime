@@ -3,6 +3,7 @@ const core = @import("wasm-core");
 const local_types = @import("./types.zig");
 const decode = @import("wasm-decode");
 pub const Error = @import("./errors.zig").Error;
+const const_expr = @import("./const_expr.zig");
 
 // Type aliases for convenience
 const Instruction = core.types.Instruction;
@@ -241,8 +242,13 @@ pub const Instance = struct {
         const vals = try self.allocator.alloc(Value, module.globals.len);
         defer self.allocator.free(vals);
         for (module.globals, 0..) |global, i| {
-            try self.execOneInstruction(instractionFromInitExpr(global.init));
-            vals[i] = self.stack.pop().value;
+            vals[i] = switch (global.init) {
+                .instructions => |instrs| try const_expr.evaluateConstExpr(instrs, &.{}),
+                else => blk: {
+                    try self.execOneInstruction(instractionFromInitExpr(global.init));
+                    break :blk self.stack.pop().value;
+                },
+            };
         }
 
         // 9: Get `ref*`
@@ -252,8 +258,13 @@ pub const Instance = struct {
             // no need to free because refs[i] are assigned to ModuleInst
             refs[i] = try self.allocator.alloc(RefValue, element.init.len);
             for (element.init, 0..) |e, j| {
-                try self.execOneInstruction(instractionFromInitExpr(e));
-                const value = self.stack.pop().value;
+                const value = switch (e) {
+                    .instructions => |instrs| try const_expr.evaluateConstExpr(instrs, &.{}),
+                    else => blk: {
+                        try self.execOneInstruction(instractionFromInitExpr(e));
+                        break :blk self.stack.pop().value;
+                    },
+                };
                 const val: RefValue = switch (value) {
                     .func_ref => |v| .{ .func_ref = v },
                     .extern_ref => |v| .{ .extern_ref = v },
@@ -285,7 +296,13 @@ pub const Instance = struct {
             switch (elem.mode) {
                 .active => |active_type| {
                     const n = elem.init.len;
-                    try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
+                    switch (active_type.offset) {
+                        .instructions => |instrs| {
+                            const val = try const_expr.evaluateConstExpr(instrs, self.store.globals.items);
+                            try self.stack.push(.{ .value = val });
+                        },
+                        else => try self.execOneInstruction(instractionFromInitExpr(active_type.offset)),
+                    }
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
                     try self.execOneInstruction(.{
@@ -307,7 +324,13 @@ pub const Instance = struct {
             switch (data.mode) {
                 .active => |active_type| {
                     const n = data.init.len;
-                    try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
+                    switch (active_type.offset) {
+                        .instructions => |instrs| {
+                            const val = try const_expr.evaluateConstExpr(instrs, self.store.globals.items);
+                            try self.stack.push(.{ .value = val });
+                        },
+                        else => try self.execOneInstruction(instractionFromInitExpr(active_type.offset)),
+                    }
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
                     if (mod_inst.mem_addrs.len > active_type.mem_idx) {
@@ -1988,6 +2011,7 @@ pub fn instractionFromInitExpr(init_expr: InitExpression) Instruction {
         .ref_null => |ref_type| .{ .ref_null = ref_type },
         .ref_func => |func_idx| .{ .ref_func = func_idx },
         .global_get => |global_idx| .{ .global_get = global_idx },
+        .instructions => unreachable, // handled separately
     };
 }
 
