@@ -2154,6 +2154,98 @@ pub const Parser = struct {
             return .i64_extend32_s;
         }
 
+        // v128 memory instructions
+        else if (std.mem.eql(u8, instr_name, "v128.load")) {
+            return .{ .v128_load = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load8x8_s")) {
+            return .{ .v128_load8x8_s = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load8x8_u")) {
+            return .{ .v128_load8x8_u = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load16x4_s")) {
+            return .{ .v128_load16x4_s = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load16x4_u")) {
+            return .{ .v128_load16x4_u = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load32x2_s")) {
+            return .{ .v128_load32x2_s = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load32x2_u")) {
+            return .{ .v128_load32x2_u = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load8_splat")) {
+            return .{ .v128_load8_splat = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load16_splat")) {
+            return .{ .v128_load16_splat = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load32_splat")) {
+            return .{ .v128_load32_splat = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load64_splat")) {
+            return .{ .v128_load64_splat = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.store")) {
+            return .{ .v128_store = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load8_lane")) {
+            return .{ .v128_load8_lane = try self.parseMemArgWithLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load16_lane")) {
+            return .{ .v128_load16_lane = try self.parseMemArgWithLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load32_lane")) {
+            return .{ .v128_load32_lane = try self.parseMemArgWithLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load64_lane")) {
+            return .{ .v128_load64_lane = try self.parseMemArgWithLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "v128.store8_lane")) {
+            return .{ .v128_store8_lane = try self.parseMemArgWithLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "v128.store16_lane")) {
+            return .{ .v128_store16_lane = try self.parseMemArgWithLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "v128.store32_lane")) {
+            return .{ .v128_store32_lane = try self.parseMemArgWithLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "v128.store64_lane")) {
+            return .{ .v128_store64_lane = try self.parseMemArgWithLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load32_zero")) {
+            return .{ .v128_load32_zero = try self.parseMemArg() };
+        } else if (std.mem.eql(u8, instr_name, "v128.load64_zero")) {
+            return .{ .v128_load64_zero = try self.parseMemArg() };
+        }
+
+        // Relaxed SIMD instructions (WebAssembly 2.0)
+        else if (std.mem.eql(u8, instr_name, "i8x16.relaxed_swizzle")) {
+            return .i8x16_relaxed_swizzle;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_trunc_f32x4_s")) {
+            return .i32x4_relaxed_trunc_f32x4_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_trunc_f32x4_u")) {
+            return .i32x4_relaxed_trunc_f32x4_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_trunc_f64x2_s_zero")) {
+            return .i32x4_relaxed_trunc_f64x2_s_zero;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_trunc_f64x2_u_zero")) {
+            return .i32x4_relaxed_trunc_f64x2_u_zero;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.relaxed_madd")) {
+            return .f32x4_relaxed_madd;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.relaxed_nmadd")) {
+            return .f32x4_relaxed_nmadd;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.relaxed_madd")) {
+            return .f64x2_relaxed_madd;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.relaxed_nmadd")) {
+            return .f64x2_relaxed_nmadd;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.relaxed_laneselect")) {
+            return .i8x16_relaxed_laneselect;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.relaxed_laneselect")) {
+            return .i16x8_relaxed_laneselect;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_laneselect")) {
+            return .i32x4_relaxed_laneselect;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.relaxed_laneselect")) {
+            return .i64x2_relaxed_laneselect;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.relaxed_min")) {
+            return .f32x4_relaxed_min;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.relaxed_max")) {
+            return .f32x4_relaxed_max;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.relaxed_min")) {
+            return .f64x2_relaxed_min;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.relaxed_max")) {
+            return .f64x2_relaxed_max;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.relaxed_q15mulr_s")) {
+            return .i16x8_relaxed_q15mulr_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.relaxed_dot_i8x16_i7x16_s")) {
+            return .i16x8_relaxed_dot_i8x16_i7x16_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_dot_i8x16_i7x16_add_s")) {
+            return .i32x4_relaxed_dot_i8x16_i7x16_add_s;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.relaxed_dot_bf16x8_add_f32x4")) {
+            return .f32x4_relaxed_dot_bf16x8_add_f32x4;
+        }
+
         // Skip non-instruction keywords
         if (std.mem.eql(u8, instr_name, "type") or
             std.mem.eql(u8, instr_name, "param") or
@@ -2376,6 +2468,39 @@ pub const Parser = struct {
         return wasm_core.types.Instruction.MemArg{
             .@"align" = alignment,
             .offset = offset,
+        };
+    }
+
+    /// Parse memory argument with lane index (offset, align, and lane)
+    fn parseMemArgWithLaneIdx(self: *Parser) !wasm_core.types.Instruction.MemArgWithLaneIdx {
+        var offset: u32 = 0;
+        var alignment: u32 = 0;
+        var lane_idx: u8 = 0;
+
+        // Parse optional offset=N and align=N
+        while (self.current_token == .identifier) {
+            const id = self.current_token.identifier;
+            if (std.mem.startsWith(u8, id, "offset=")) {
+                offset = try std.fmt.parseInt(u32, id[7..], 0);
+                try self.advance();
+            } else if (std.mem.startsWith(u8, id, "align=")) {
+                alignment = try std.fmt.parseInt(u32, id[6..], 0);
+                try self.advance();
+            } else {
+                break;
+            }
+        }
+
+        // Parse lane index (required)
+        if (self.current_token == .number) {
+            lane_idx = try std.fmt.parseInt(u8, self.current_token.number, 0);
+            try self.advance();
+        }
+
+        return wasm_core.types.Instruction.MemArgWithLaneIdx{
+            .@"align" = alignment,
+            .offset = offset,
+            .lane_idx = lane_idx,
         };
     }
 
