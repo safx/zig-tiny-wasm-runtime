@@ -2201,6 +2201,53 @@ pub const Parser = struct {
             return .{ .v128_load64_zero = try self.parseMemArg() };
         }
 
+        // v128 element manipulation instructions
+        else if (std.mem.eql(u8, instr_name, "i8x16.shuffle")) {
+            return .{ .i8x16_shuffle = try self.parseLaneIdx16() };
+        } else if (std.mem.eql(u8, instr_name, "i8x16.swizzle")) {
+            return .i8x16_swizzle;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.splat")) {
+            return .i8x16_splat;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.splat")) {
+            return .i16x8_splat;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.splat")) {
+            return .i32x4_splat;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.splat")) {
+            return .i64x2_splat;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.splat")) {
+            return .f32x4_splat;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.splat")) {
+            return .f64x2_splat;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.extract_lane_s")) {
+            return .{ .i8x16_extract_lane_s = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "i8x16.extract_lane_u")) {
+            return .{ .i8x16_extract_lane_u = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "i8x16.replace_lane")) {
+            return .{ .i8x16_replace_lane = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "i16x8.extract_lane_s")) {
+            return .{ .i16x8_extract_lane_s = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "i16x8.extract_lane_u")) {
+            return .{ .i16x8_extract_lane_u = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "i16x8.replace_lane")) {
+            return .{ .i16x8_replace_lane = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "i32x4.extract_lane")) {
+            return .{ .i32x4_extract_lane = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "i32x4.replace_lane")) {
+            return .{ .i32x4_replace_lane = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "i64x2.extract_lane")) {
+            return .{ .i64x2_extract_lane = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "i64x2.replace_lane")) {
+            return .{ .i64x2_replace_lane = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "f32x4.extract_lane")) {
+            return .{ .f32x4_extract_lane = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "f32x4.replace_lane")) {
+            return .{ .f32x4_replace_lane = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "f64x2.extract_lane")) {
+            return .{ .f64x2_extract_lane = try self.parseLaneIdx() };
+        } else if (std.mem.eql(u8, instr_name, "f64x2.replace_lane")) {
+            return .{ .f64x2_replace_lane = try self.parseLaneIdx() };
+        }
+
         // Relaxed SIMD instructions (WebAssembly 2.0)
         else if (std.mem.eql(u8, instr_name, "i8x16.relaxed_swizzle")) {
             return .i8x16_relaxed_swizzle;
@@ -2502,6 +2549,31 @@ pub const Parser = struct {
             .offset = offset,
             .lane_idx = lane_idx,
         };
+    }
+
+    /// Parse single lane index
+    fn parseLaneIdx(self: *Parser) !u8 {
+        if (self.current_token == .number) {
+            const idx = try std.fmt.parseInt(u8, self.current_token.number, 0);
+            try self.advance();
+            return idx;
+        }
+        return TextDecodeError.InvalidNumber;
+    }
+
+    /// Parse 16 lane indices for i8x16.shuffle
+    fn parseLaneIdx16(self: *Parser) ![16]u8 {
+        var indices: [16]u8 = undefined;
+        var i: usize = 0;
+        while (i < 16) : (i += 1) {
+            if (self.current_token == .number) {
+                indices[i] = try std.fmt.parseInt(u8, self.current_token.number, 0);
+                try self.advance();
+            } else {
+                return TextDecodeError.InvalidNumber;
+            }
+        }
+        return indices;
     }
 
     /// Parse float
