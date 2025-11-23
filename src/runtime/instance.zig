@@ -2566,7 +2566,6 @@ test opFloatNearest {
 test "Relaxed SIMD: i8x16.relaxed_swizzle" {
     const allocator = std.testing.allocator;
     var instance = Instance.new(allocator, false);
-    
 
     // Push test vectors
     const v1: @Vector(16, u8) = .{ 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 };
@@ -2586,7 +2585,6 @@ test "Relaxed SIMD: i8x16.relaxed_swizzle" {
 test "Relaxed SIMD: f32x4.relaxed_madd" {
     const allocator = std.testing.allocator;
     var instance = Instance.new(allocator, false);
-    
 
     const a: @Vector(4, f32) = .{ 2.0, 3.0, 4.0, 5.0 };
     const b: @Vector(4, f32) = .{ 10.0, 20.0, 30.0, 40.0 };
@@ -2607,7 +2605,6 @@ test "Relaxed SIMD: f32x4.relaxed_madd" {
 test "Relaxed SIMD: f32x4.relaxed_nmadd" {
     const allocator = std.testing.allocator;
     var instance = Instance.new(allocator, false);
-    
 
     const a: @Vector(4, f32) = .{ 2.0, 3.0, 4.0, 5.0 };
     const b: @Vector(4, f32) = .{ 10.0, 20.0, 30.0, 40.0 };
@@ -2628,7 +2625,6 @@ test "Relaxed SIMD: f32x4.relaxed_nmadd" {
 test "Relaxed SIMD: i32x4.relaxed_laneselect" {
     const allocator = std.testing.allocator;
     var instance = Instance.new(allocator, false);
-    
 
     const a: @Vector(4, u32) = .{ 0xAAAAAAAA, 0xBBBBBBBB, 0xCCCCCCCC, 0xDDDDDDDD };
     const b: @Vector(4, u32) = .{ 0x11111111, 0x22222222, 0x33333333, 0x44444444 };
@@ -2649,7 +2645,6 @@ test "Relaxed SIMD: i32x4.relaxed_laneselect" {
 test "Relaxed SIMD: i16x8.relaxed_q15mulr_s" {
     const allocator = std.testing.allocator;
     var instance = Instance.new(allocator, false);
-    
 
     const a: @Vector(8, i16) = .{ 16384, 8192, 4096, 2048, 1024, 512, 256, 128 };
     const b: @Vector(8, i16) = .{ 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384 };
@@ -2667,7 +2662,6 @@ test "Relaxed SIMD: i16x8.relaxed_q15mulr_s" {
 test "Relaxed SIMD: i16x8.relaxed_dot_i8x16_i7x16_s" {
     const allocator = std.testing.allocator;
     var instance = Instance.new(allocator, false);
-    
 
     const a: @Vector(16, i8) = .{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
     const b: @Vector(16, i8) = .{ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 };
@@ -2686,7 +2680,6 @@ test "Relaxed SIMD: i16x8.relaxed_dot_i8x16_i7x16_s" {
 test "Relaxed SIMD: i32x4.relaxed_trunc_f32x4_s" {
     const allocator = std.testing.allocator;
     var instance = Instance.new(allocator, false);
-    
 
     const v: @Vector(4, f32) = .{ 1.5, -2.7, 100.9, -200.1 };
     try instance.stack.pushValueAs(@Vector(4, f32), v);

@@ -22,6 +22,7 @@ pub const ModuleBuilder = struct {
     exports: std.ArrayList(wasm_core.types.Export),
     func_names: std.StringHashMap(u32),
     memory_names: std.StringHashMap(u32),
+    type_names: std.StringHashMap(u32),
 
     pub fn init(allocator: std.mem.Allocator) ModuleBuilder {
         return ModuleBuilder{
@@ -38,6 +39,7 @@ pub const ModuleBuilder = struct {
             .exports = std.ArrayList(wasm_core.types.Export){},
             .func_names = std.StringHashMap(u32).init(allocator),
             .memory_names = std.StringHashMap(u32).init(allocator),
+            .type_names = std.StringHashMap(u32).init(allocator),
         };
     }
 
@@ -72,6 +74,7 @@ pub const ModuleBuilder = struct {
         self.exports.deinit(self.allocator);
         self.func_names.deinit();
         self.memory_names.deinit();
+        self.type_names.deinit();
     }
 
     pub fn clear(self: *ModuleBuilder) void {
@@ -86,6 +89,7 @@ pub const ModuleBuilder = struct {
         self.exports.clearRetainingCapacity();
         self.func_names.clearRetainingCapacity();
         self.memory_names.clearRetainingCapacity();
+        self.type_names.clearRetainingCapacity();
         self.start = null;
     }
 };
@@ -97,6 +101,7 @@ pub const Parser = struct {
     input: []const u8,
     // Name resolution for current function
     local_names: std.StringHashMap(u32),
+    label_stack: std.ArrayList(?[]const u8),
     builder: *ModuleBuilder,
 
     pub fn init(allocator: std.mem.Allocator, input: []const u8, builder: *ModuleBuilder) !Parser {
@@ -109,6 +114,7 @@ pub const Parser = struct {
             .allocator = allocator,
             .input = input,
             .local_names = std.StringHashMap(u32).init(allocator),
+            .label_stack = std.ArrayList(?[]const u8){},
             .builder = builder,
         };
     }
@@ -403,8 +409,10 @@ pub const Parser = struct {
     }
 
     fn parseType(self: *Parser, builder: *ModuleBuilder) !void {
-        // Skip optional type name
+        // Parse optional type name
+        var type_name: ?[]const u8 = null;
         if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
+            type_name = self.current_token.identifier;
             try self.advance();
         }
 
@@ -456,11 +464,17 @@ pub const Parser = struct {
 
         try self.expectRightParen(); // close (func ...)
 
+        const type_idx: u32 = @intCast(builder.types.items.len);
         const func_type = wasm_core.types.FuncType{
             .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, params.items),
             .result_types = try self.allocator.dupe(wasm_core.types.ValueType, results.items),
         };
         try builder.types.append(self.allocator, func_type);
+        
+        // Register type name if present
+        if (type_name) |name| {
+            try builder.type_names.put(name, type_idx);
+        }
     }
 
     fn parseGlobal(self: *Parser, builder: *ModuleBuilder) !void {
@@ -1262,6 +1276,10 @@ pub const Parser = struct {
     fn parseFunction(self: *Parser, builder: *ModuleBuilder) !void {
         // Parse function: (func [name] [(export "name")] [(param ...)] [(result ...)] [...body])
 
+        // Clear function-local state
+        self.local_names.clearRetainingCapacity();
+        self.label_stack.clearRetainingCapacity();
+
         var func_name: ?[]const u8 = null;
         var export_name: ?[]const u8 = null;
         var params: std.ArrayList(wasm_core.types.ValueType) = .{};
@@ -1490,7 +1508,7 @@ pub const Parser = struct {
             try self.advance();
         }
 
-        // Check if next token is '(' followed by 'result'
+        // Check if next token is '(' followed by 'result' or 'type'
         if (self.current_token != .left_paren) {
             return .empty;
         }
@@ -1502,21 +1520,27 @@ pub const Parser = struct {
 
         try self.advance(); // consume '('
 
-        // Skip (type ...) if present
+        // Parse (type ...) if present
         if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
             try self.advance(); // consume 'type'
-            if (self.current_token == .identifier) {
-                try self.advance(); // skip type identifier
+            
+            var type_idx: u32 = 0;
+            if (self.current_token == .number) {
+                type_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                try self.advance();
+            } else if (self.current_token == .identifier) {
+                // Resolve type name
+                if (self.builder.type_names.get(self.current_token.identifier)) |idx| {
+                    type_idx = idx;
+                }
+                try self.advance();
             }
+            
             if (self.current_token == .right_paren) {
                 try self.advance();
             }
-
-            // Check for (result ...) or (param ...) after (type ...)
-            if (self.current_token != .left_paren) {
-                return .empty;
-            }
-            try self.advance(); // consume '('
+            
+            return .{ .type_index = type_idx };
         }
 
         // Skip (param ...) if present
@@ -1635,9 +1659,41 @@ pub const Parser = struct {
                 try self.parseSExpression(instructions);
                 try self.expectRightParen();
             } else if (self.current_token == .identifier) {
+                // Check if this is a block/loop/if instruction and extract label name
+                const instr_name = self.current_token.identifier;
+                const is_block_instr = std.mem.eql(u8, instr_name, "block") or
+                    std.mem.eql(u8, instr_name, "loop") or
+                    std.mem.eql(u8, instr_name, "if");
+
+                var label_name: ?[]const u8 = null;
+                if (is_block_instr) {
+                    // Peek ahead to check for label name
+                    const saved_pos = self.lexer.pos;
+                    const saved_char = self.lexer.current_char;
+                    const saved_token = self.current_token;
+
+                    try self.advance(); // skip instruction name
+                    if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                        label_name = self.current_token.identifier;
+                    }
+
+                    // Restore position
+                    self.lexer.pos = saved_pos;
+                    self.lexer.current_char = saved_char;
+                    self.current_token = saved_token;
+
+                    // Push label to stack
+                    try self.label_stack.append(self.allocator, label_name);
+                }
+
                 // Bare instruction like nop or i32.add
                 if (try self.parseInstruction()) |instr| {
                     try instructions.append(self.allocator, instr);
+
+                    // Pop label stack on 'end' instruction
+                    if (std.meta.activeTag(instr) == .end and self.label_stack.items.len > 0) {
+                        _ = self.label_stack.pop();
+                    }
                 }
             } else {
                 std.debug.print("Error: Unexpected token in instruction sequence at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
@@ -1668,10 +1724,22 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, instr_name, "unreachable")) {
             return .@"unreachable";
         } else if (std.mem.eql(u8, instr_name, "block")) {
+            // Skip optional label name
+            if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                try self.advance();
+            }
             return .{ .block = .{ .type = try self.parseBlockType(), .end = 0 } };
         } else if (std.mem.eql(u8, instr_name, "loop")) {
+            // Skip optional label name
+            if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                try self.advance();
+            }
             return .{ .loop = .{ .type = try self.parseBlockType(), .end = 0 } };
         } else if (std.mem.eql(u8, instr_name, "if")) {
+            // Skip optional label name
+            if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                try self.advance();
+            }
             return .{ .@"if" = .{ .type = try self.parseBlockType(), .@"else" = null, .end = 0 } };
         } else if (std.mem.eql(u8, instr_name, "else")) {
             return .@"else";
@@ -1683,9 +1751,9 @@ pub const Parser = struct {
 
         // Branch instructions
         else if (std.mem.eql(u8, instr_name, "br")) {
-            return .{ .br = try self.parseU32OrIdentifier() };
+            return .{ .br = try self.parseLabelIndex() };
         } else if (std.mem.eql(u8, instr_name, "br_if")) {
-            return .{ .br_if = try self.parseU32OrIdentifier() };
+            return .{ .br_if = try self.parseLabelIndex() };
         } else if (std.mem.eql(u8, instr_name, "br_table")) {
             // Parse br_table: (br_table label1 label2 ... default)
             var label_idxs = std.ArrayList(u32){};
@@ -1693,7 +1761,7 @@ pub const Parser = struct {
 
             // Parse all label indices (last one is the default)
             while (self.current_token == .number or self.current_token == .identifier) {
-                const idx = try self.parseU32OrIdentifier();
+                const idx = try self.parseLabelIndex();
                 try label_idxs.append(self.allocator, idx);
             }
 
@@ -1774,7 +1842,19 @@ pub const Parser = struct {
                 try self.advance(); // consume '('
                 if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
                     try self.advance(); // consume 'type'
-                    type_idx = try self.parseU32OrIdentifier();
+                    
+                    // Parse type index or name
+                    if (self.current_token == .number) {
+                        type_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                        try self.advance();
+                    } else if (self.current_token == .identifier) {
+                        // Resolve type name
+                        if (self.builder.type_names.get(self.current_token.identifier)) |idx| {
+                            type_idx = idx;
+                        }
+                        try self.advance();
+                    }
+                    
                     try self.expectRightParen();
                 } else {
                     std.debug.print("Error: parseCallIndirect: Unexpected token at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
@@ -2885,11 +2965,45 @@ pub const Parser = struct {
 
     /// Parse S-expression recursively: (instr arg1 arg2 ...)
     fn parseSExpression(self: *Parser, instructions: *std.ArrayList(wasm_core.types.Instruction)) !void {
+        // Check if this is a block/loop/if instruction and extract label name
+        var label_name: ?[]const u8 = null;
+        var is_block_instr = false;
+        if (self.current_token == .identifier) {
+            const instr_name = self.current_token.identifier;
+            is_block_instr = std.mem.eql(u8, instr_name, "block") or
+                std.mem.eql(u8, instr_name, "loop") or
+                std.mem.eql(u8, instr_name, "if");
+
+            if (is_block_instr) {
+                // Peek ahead to check for label name
+                const saved_pos = self.lexer.pos;
+                const saved_char = self.lexer.current_char;
+                const saved_token = self.current_token;
+
+                try self.advance(); // skip instruction name
+                if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                    label_name = self.current_token.identifier;
+                }
+
+                // Restore position
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+
+                // Push label to stack
+                try self.label_stack.append(self.allocator, label_name);
+            }
+        }
+
         // Parse the instruction
         const instr = try self.parseInstruction() orelse {
             // Skip to closing paren for non-instruction keywords
             while (self.current_token != .right_paren and self.current_token != .eof) {
                 try self.advance();
+            }
+            // Pop label if we pushed one
+            if (is_block_instr and self.label_stack.items.len > 0) {
+                _ = self.label_stack.pop();
             }
             return;
         };
@@ -2916,6 +3030,10 @@ pub const Parser = struct {
 
             // Add 'end' instruction
             try instructions.append(self.allocator, .end);
+            // Pop label stack
+            if (self.label_stack.items.len > 0) {
+                _ = self.label_stack.pop();
+            }
             return;
         }
 
@@ -2941,6 +3059,10 @@ pub const Parser = struct {
 
             // Add 'end' instruction
             try instructions.append(self.allocator, .end);
+            // Pop label stack
+            if (self.label_stack.items.len > 0) {
+                _ = self.label_stack.pop();
+            }
             return;
         }
 
@@ -3033,6 +3155,10 @@ pub const Parser = struct {
 
             // Add 'end' instruction
             try instructions.append(self.allocator, .end);
+            // Pop label stack
+            if (self.label_stack.items.len > 0) {
+                _ = self.label_stack.pop();
+            }
             return;
         }
 
@@ -3045,6 +3171,34 @@ pub const Parser = struct {
 
         // Add parent instruction last (children are already added, so order is correct)
         try instructions.append(self.allocator, instr);
+    }
+
+    /// Parse label index for br/br_if instructions
+    fn parseLabelIndex(self: *Parser) !u32 {
+        if (self.current_token == .number) {
+            const num = try std.fmt.parseInt(u32, self.current_token.number, 10);
+            try self.advance();
+            return num;
+        } else if (self.current_token == .identifier) {
+            const id = self.current_token.identifier;
+            try self.advance();
+            // Search label stack from top (innermost) to bottom (outermost)
+            var depth: u32 = 0;
+            var i = self.label_stack.items.len;
+            while (i > 0) {
+                i -= 1;
+                if (self.label_stack.items[i]) |label_name| {
+                    if (std.mem.eql(u8, label_name, id)) {
+                        return depth;
+                    }
+                }
+                depth += 1;
+            }
+            // If not found, return 0 as fallback
+            return 0;
+        }
+        std.debug.print("Error: parseLabelIndex: Unexpected token at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
+        return TextDecodeError.UnexpectedToken;
     }
 
     /// Parse u32 or identifier (for indices)
