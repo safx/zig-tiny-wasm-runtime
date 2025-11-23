@@ -2357,6 +2357,272 @@ pub const Parser = struct {
             return .f64x2_ge;
         }
 
+        // v128 logical operations
+        else if (std.mem.eql(u8, instr_name, "v128.not")) {
+            return .v128_not;
+        } else if (std.mem.eql(u8, instr_name, "v128.and")) {
+            return .v128_and;
+        } else if (std.mem.eql(u8, instr_name, "v128.andnot")) {
+            return .v128_andnot;
+        } else if (std.mem.eql(u8, instr_name, "v128.or")) {
+            return .v128_or;
+        } else if (std.mem.eql(u8, instr_name, "v128.xor")) {
+            return .v128_xor;
+        } else if (std.mem.eql(u8, instr_name, "v128.bitselect")) {
+            return .v128_bitselect;
+        }
+
+        // v128 test instructions
+        else if (std.mem.eql(u8, instr_name, "v128.any_true")) {
+            return .v128_any_true;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.all_true")) {
+            return .i8x16_all_true;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.all_true")) {
+            return .i16x8_all_true;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.all_true")) {
+            return .i32x4_all_true;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.all_true")) {
+            return .i64x2_all_true;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.bitmask")) {
+            return .i8x16_bitmask;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.bitmask")) {
+            return .i16x8_bitmask;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.bitmask")) {
+            return .i32x4_bitmask;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.bitmask")) {
+            return .i64x2_bitmask;
+        }
+
+        // v128 integer arithmetic - unary operations
+        else if (std.mem.eql(u8, instr_name, "i8x16.abs")) {
+            return .i8x16_abs;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.abs")) {
+            return .i16x8_abs;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.abs")) {
+            return .i32x4_abs;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.abs")) {
+            return .i64x2_abs;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.neg")) {
+            return .i8x16_neg;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.neg")) {
+            return .i16x8_neg;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.neg")) {
+            return .i32x4_neg;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.neg")) {
+            return .i64x2_neg;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.popcnt")) {
+            return .i8x16_popcnt;
+        }
+        // shift operations
+        else if (std.mem.eql(u8, instr_name, "i8x16.shl")) {
+            return .i8x16_shl;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.shl")) {
+            return .i16x8_shl;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.shl")) {
+            return .i32x4_shl;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.shl")) {
+            return .i64x2_shl;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.shr_s")) {
+            return .i8x16_shr_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.shr_s")) {
+            return .i16x8_shr_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.shr_s")) {
+            return .i32x4_shr_s;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.shr_s")) {
+            return .i64x2_shr_s;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.shr_u")) {
+            return .i8x16_shr_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.shr_u")) {
+            return .i16x8_shr_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.shr_u")) {
+            return .i32x4_shr_u;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.shr_u")) {
+            return .i64x2_shr_u;
+        }
+        // add/sub operations
+        else if (std.mem.eql(u8, instr_name, "i8x16.add")) {
+            return .i8x16_add;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.add")) {
+            return .i16x8_add;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.add")) {
+            return .i32x4_add;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.add")) {
+            return .i64x2_add;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.sub")) {
+            return .i8x16_sub;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.sub")) {
+            return .i16x8_sub;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.sub")) {
+            return .i32x4_sub;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.sub")) {
+            return .i64x2_sub;
+        }
+        // saturating add/sub
+        else if (std.mem.eql(u8, instr_name, "i8x16.add_sat_s")) {
+            return .i8x16_add_sat_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.add_sat_s")) {
+            return .i16x8_add_sat_s;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.add_sat_u")) {
+            return .i8x16_add_sat_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.add_sat_u")) {
+            return .i16x8_add_sat_u;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.sub_sat_s")) {
+            return .i8x16_sub_sat_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.sub_sat_s")) {
+            return .i16x8_sub_sat_s;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.sub_sat_u")) {
+            return .i8x16_sub_sat_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.sub_sat_u")) {
+            return .i16x8_sub_sat_u;
+        }
+        // mul operations
+        else if (std.mem.eql(u8, instr_name, "i16x8.mul")) {
+            return .i16x8_mul;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.mul")) {
+            return .i32x4_mul;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.mul")) {
+            return .i64x2_mul;
+        }
+        // min/max operations
+        else if (std.mem.eql(u8, instr_name, "i8x16.min_s")) {
+            return .i8x16_min_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.min_s")) {
+            return .i16x8_min_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.min_s")) {
+            return .i32x4_min_s;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.min_u")) {
+            return .i8x16_min_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.min_u")) {
+            return .i16x8_min_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.min_u")) {
+            return .i32x4_min_u;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.max_s")) {
+            return .i8x16_max_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.max_s")) {
+            return .i16x8_max_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.max_s")) {
+            return .i32x4_max_s;
+        } else if (std.mem.eql(u8, instr_name, "i8x16.max_u")) {
+            return .i8x16_max_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.max_u")) {
+            return .i16x8_max_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.max_u")) {
+            return .i32x4_max_u;
+        }
+        // avgr operations
+        else if (std.mem.eql(u8, instr_name, "i8x16.avgr_u")) {
+            return .i8x16_avgr_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.avgr_u")) {
+            return .i16x8_avgr_u;
+        }
+        // special operations
+        else if (std.mem.eql(u8, instr_name, "i16x8.q15mulr_sat_s")) {
+            return .i16x8_q15mulr_sat_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.dot_i16x8_s")) {
+            return .i32x4_dot_i16x8_s;
+        }
+        // extmul operations
+        else if (std.mem.eql(u8, instr_name, "i16x8.extmul_low_i8x16_s")) {
+            return .i16x8_extmul_low_i8x16_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.extmul_high_i8x16_s")) {
+            return .i16x8_extmul_high_i8x16_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.extmul_low_i8x16_u")) {
+            return .i16x8_extmul_low_i8x16_u;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.extmul_high_i8x16_u")) {
+            return .i16x8_extmul_high_i8x16_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.extmul_low_i16x8_s")) {
+            return .i32x4_extmul_low_i16x8_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.extmul_high_i16x8_s")) {
+            return .i32x4_extmul_high_i16x8_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.extmul_low_i16x8_u")) {
+            return .i32x4_extmul_low_i16x8_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.extmul_high_i16x8_u")) {
+            return .i32x4_extmul_high_i16x8_u;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.extmul_low_i32x4_s")) {
+            return .i64x2_extmul_low_i32x4_s;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.extmul_high_i32x4_s")) {
+            return .i64x2_extmul_high_i32x4_s;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.extmul_low_i32x4_u")) {
+            return .i64x2_extmul_low_i32x4_u;
+        } else if (std.mem.eql(u8, instr_name, "i64x2.extmul_high_i32x4_u")) {
+            return .i64x2_extmul_high_i32x4_u;
+        }
+        // extadd_pairwise operations
+        else if (std.mem.eql(u8, instr_name, "i16x8.extadd_pairwise_i8x16_s")) {
+            return .i16x8_extadd_pairwise_i8x16_s;
+        } else if (std.mem.eql(u8, instr_name, "i16x8.extadd_pairwise_i8x16_u")) {
+            return .i16x8_extadd_pairwise_i8x16_u;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.extadd_pairwise_i16x8_s")) {
+            return .i32x4_extadd_pairwise_i16x8_s;
+        } else if (std.mem.eql(u8, instr_name, "i32x4.extadd_pairwise_i16x8_u")) {
+            return .i32x4_extadd_pairwise_i16x8_u;
+        }
+
+        // v128 floating-point arithmetic - unary operations
+        else if (std.mem.eql(u8, instr_name, "f32x4.abs")) {
+            return .f32x4_abs;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.abs")) {
+            return .f64x2_abs;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.neg")) {
+            return .f32x4_neg;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.neg")) {
+            return .f64x2_neg;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.sqrt")) {
+            return .f32x4_sqrt;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.sqrt")) {
+            return .f64x2_sqrt;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.ceil")) {
+            return .f32x4_ceil;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.ceil")) {
+            return .f64x2_ceil;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.floor")) {
+            return .f32x4_floor;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.floor")) {
+            return .f64x2_floor;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.trunc")) {
+            return .f32x4_trunc;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.trunc")) {
+            return .f64x2_trunc;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.nearest")) {
+            return .f32x4_nearest;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.nearest")) {
+            return .f64x2_nearest;
+        }
+        // binary operations
+        else if (std.mem.eql(u8, instr_name, "f32x4.add")) {
+            return .f32x4_add;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.add")) {
+            return .f64x2_add;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.sub")) {
+            return .f32x4_sub;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.sub")) {
+            return .f64x2_sub;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.mul")) {
+            return .f32x4_mul;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.mul")) {
+            return .f64x2_mul;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.div")) {
+            return .f32x4_div;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.div")) {
+            return .f64x2_div;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.min")) {
+            return .f32x4_min;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.min")) {
+            return .f64x2_min;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.max")) {
+            return .f32x4_max;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.max")) {
+            return .f64x2_max;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.pmin")) {
+            return .f32x4_pmin;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.pmin")) {
+            return .f64x2_pmin;
+        } else if (std.mem.eql(u8, instr_name, "f32x4.pmax")) {
+            return .f32x4_pmax;
+        } else if (std.mem.eql(u8, instr_name, "f64x2.pmax")) {
+            return .f64x2_pmax;
+        }
+
         // Relaxed SIMD instructions (WebAssembly 2.0)
         else if (std.mem.eql(u8, instr_name, "i8x16.relaxed_swizzle")) {
             return .i8x16_relaxed_swizzle;
