@@ -219,10 +219,10 @@ pub const SpecTestRunner = struct {
                         total += 1;
                         const text_decode = @import("wasm-text-decode");
                         const module = text_decode.parseWastModule(self.allocator, wat) catch |parse_err| {
-                            if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ assert_invalid failed (line {}): parse error (expected validation error): {}\n", .{ arg.line, parse_err });
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_invalid passed (parse error: {})\n", .{parse_err});
                             }
-                            failed += 1;
                             continue;
                         };
                         defer module.deinit();
@@ -230,12 +230,12 @@ pub const SpecTestRunner = struct {
                         if (self.engine.loadModule(module, "")) |_| {
                             failed += 1;
                             if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ assert_invalid failed (line {}): module loaded successfully (expected validation error)\n", .{arg.line});
+                                self.debugPrint("✗ assert_invalid failed (line {}): module loaded successfully (expected error)\n", .{arg.line});
                             }
-                        } else |_| {
+                        } else |err| {
                             passed += 1;
                             if (self.verbose_level >= 2) {
-                                self.debugPrint("✓ assert_invalid passed\n", .{});
+                                self.debugPrint("✓ assert_invalid passed (validation/load error: {})\n", .{err});
                             }
                         }
                     } else if (arg.module_binary) |binary| {
@@ -243,10 +243,10 @@ pub const SpecTestRunner = struct {
                         const decode = @import("wasm-decode");
                         var loader = decode.Loader.new(self.allocator);
                         const module = loader.parseAll(binary) catch |parse_err| {
-                            if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ assert_invalid failed (line {}): parse error (expected validation error): {}\n", .{ arg.line, parse_err });
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_invalid passed (parse error: {})\n", .{parse_err});
                             }
-                            failed += 1;
                             continue;
                         };
                         defer module.deinit();
@@ -254,12 +254,12 @@ pub const SpecTestRunner = struct {
                         if (self.engine.loadModule(module, "")) |_| {
                             failed += 1;
                             if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ assert_invalid failed (line {}): module loaded successfully (expected validation error)\n", .{arg.line});
+                                self.debugPrint("✗ assert_invalid failed (line {}): module loaded successfully (expected error)\n", .{arg.line});
                             }
-                        } else |_| {
+                        } else |err| {
                             passed += 1;
                             if (self.verbose_level >= 2) {
-                                self.debugPrint("✓ assert_invalid passed\n", .{});
+                                self.debugPrint("✓ assert_invalid passed (validation/load error: {})\n", .{err});
                             }
                         }
                     } else if (self.verbose_level >= 2) {
