@@ -21,6 +21,7 @@ pub const ModuleBuilder = struct {
     imports: std.ArrayList(wasm_core.types.Import),
     exports: std.ArrayList(wasm_core.types.Export),
     func_names: std.StringHashMap(u32),
+    memory_names: std.StringHashMap(u32),
 
     pub fn init(allocator: std.mem.Allocator) ModuleBuilder {
         return ModuleBuilder{
@@ -36,6 +37,7 @@ pub const ModuleBuilder = struct {
             .imports = std.ArrayList(wasm_core.types.Import){},
             .exports = std.ArrayList(wasm_core.types.Export){},
             .func_names = std.StringHashMap(u32).init(allocator),
+            .memory_names = std.StringHashMap(u32).init(allocator),
         };
     }
 
@@ -69,6 +71,7 @@ pub const ModuleBuilder = struct {
         self.imports.deinit(self.allocator);
         self.exports.deinit(self.allocator);
         self.func_names.deinit();
+        self.memory_names.deinit();
     }
 
     pub fn clear(self: *ModuleBuilder) void {
@@ -82,6 +85,7 @@ pub const ModuleBuilder = struct {
         self.imports.clearRetainingCapacity();
         self.exports.clearRetainingCapacity();
         self.func_names.clearRetainingCapacity();
+        self.memory_names.clearRetainingCapacity();
         self.start = null;
     }
 };
@@ -844,8 +848,10 @@ pub const Parser = struct {
 
     fn parseMemory(self: *Parser, builder: *ModuleBuilder) !void {
         // Optional memory name (e.g., $mem0)
+        var memory_name: ?[]const u8 = null;
         if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
-            try self.advance(); // skip the name
+            memory_name = self.current_token.identifier;
+            try self.advance();
         }
 
         // Check if it's an import
@@ -990,6 +996,11 @@ pub const Parser = struct {
 
         const mem_idx: u32 = @intCast(builder.memories.items.len);
         try builder.memories.append(builder.allocator, memory_type);
+
+        // Register memory name if present
+        if (memory_name) |name| {
+            try builder.memory_names.put(name, mem_idx);
+        }
 
         // Add export if present
         if (export_name) |name| {
@@ -2990,6 +3001,22 @@ pub const Parser = struct {
     fn parseMemArg(self: *Parser) !wasm_core.types.Instruction.MemArg {
         var offset: u32 = 0;
         var alignment: u32 = 0;
+        var mem_idx: u32 = 0;
+
+        // Parse optional memory index (e.g., $mem1 or 1)
+        if (self.current_token == .identifier) {
+            const id = self.current_token.identifier;
+            if (!std.mem.startsWith(u8, id, "offset=") and !std.mem.startsWith(u8, id, "align=")) {
+                // This is a memory index
+                if (self.builder.memory_names.get(id)) |idx| {
+                    mem_idx = idx;
+                }
+                try self.advance();
+            }
+        } else if (self.current_token == .number) {
+            mem_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
+            try self.advance();
+        }
 
         // Parse optional offset=N and align=N
         while (self.current_token == .identifier) {
@@ -3008,6 +3035,7 @@ pub const Parser = struct {
         return wasm_core.types.Instruction.MemArg{
             .@"align" = alignment,
             .offset = offset,
+            .mem_idx = mem_idx,
         };
     }
 
