@@ -199,7 +199,55 @@ pub const SpecTestRunner = struct {
                         }
                     }
                 },
-                .assert_invalid, .assert_malformed, .assert_unlinkable, .assert_uninstantiable => {
+                .assert_invalid => |arg| {
+                    if (arg.module_data) |wat| {
+                        total += 1;
+                        const text_decode = @import("wasm-text-decode");
+                        const module = text_decode.parseWastModule(self.allocator, wat) catch |parse_err| {
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ assert_invalid failed (line {}): parse error (expected validation error): {}\n", .{ arg.line, parse_err });
+                            }
+                            failed += 1;
+                            continue;
+                        };
+                        defer module.deinit();
+                        
+                        if (self.engine.loadModule(module, "")) |_| {
+                            failed += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ assert_invalid failed (line {}): module loaded successfully (expected validation error)\n", .{arg.line});
+                            }
+                        } else |_| {
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_invalid passed\n", .{});
+                            }
+                        }
+                    } else if (self.verbose_level >= 2) {
+                        self.debugPrint("✓ assert_invalid (skipped - no module data)\n", .{});
+                    }
+                },
+                .assert_malformed => |arg| {
+                    if (arg.module_data) |wat| {
+                        total += 1;
+                        const text_decode = @import("wasm-text-decode");
+                        if (text_decode.parseWastModule(self.allocator, wat)) |module| {
+                            defer module.deinit();
+                            failed += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ assert_malformed failed (line {}): module parsed successfully (expected parse error)\n", .{arg.line});
+                            }
+                        } else |_| {
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_malformed passed\n", .{});
+                            }
+                        }
+                    } else if (self.verbose_level >= 2) {
+                        self.debugPrint("✓ assert_malformed (skipped - no module data)\n", .{});
+                    }
+                },
+                .assert_unlinkable, .assert_uninstantiable => {
                     total += 1;
                     passed += 1;
                     if (self.verbose_level >= 2) {

@@ -172,6 +172,7 @@ pub const AssertExhaustionCommandArg = struct {
 pub const AssertMalformedCommandArg = struct {
     line: u32,
     file_name: []const u8,
+    module_data: ?[]const u8, // WAT source text
     error_text: []const u8, // Error string from test file
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
@@ -182,6 +183,7 @@ pub const AssertMalformedCommandArg = struct {
 pub const AssertInvalidCommandArg = struct {
     line: u32,
     file_name: []const u8,
+    module_data: ?[]const u8, // WAT source text
     error_text: []const u8, // Error string from test file
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {

@@ -63,11 +63,11 @@ fn commandFromJson(json: std.json.Value, allocator: std.mem.Allocator) !Command 
     } else if (strcmp(cmd_type, "assert_malformed")) {
         const file_name = try allocator.dupe(u8, obj.get("filename").?.string);
         const text = try allocator.dupe(u8, obj.get("text").?.string);
-        return .{ .assert_malformed = .{ .line = line, .file_name = file_name, .error_text = text } };
+        return .{ .assert_malformed = .{ .line = line, .file_name = file_name, .module_data = null, .error_text = text } };
     } else if (strcmp(cmd_type, "assert_invalid")) {
         const file_name = try allocator.dupe(u8, obj.get("filename").?.string);
         const text = try allocator.dupe(u8, obj.get("text").?.string);
-        return .{ .assert_invalid = .{ .line = line, .file_name = file_name, .error_text = text } };
+        return .{ .assert_invalid = .{ .line = line, .file_name = file_name, .module_data = null, .error_text = text } };
     } else if (strcmp(cmd_type, "assert_unlinkable")) {
         const file_name = try allocator.dupe(u8, obj.get("filename").?.string);
         const text = try allocator.dupe(u8, obj.get("text").?.string);

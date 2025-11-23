@@ -3347,17 +3347,42 @@ pub const Parser = struct {
             return TextDecodeError.UnexpectedToken;
         }
 
-        // Skip the module section
-        var depth: u32 = 1;
         try self.advance();
 
-        while (depth > 0 and self.current_token != .eof) {
-            if (self.current_token == .left_paren) {
-                depth += 1;
-            } else if (self.current_token == .right_paren) {
-                depth -= 1;
-            }
+        // Check for "quote" format
+        var module_text: []const u8 = "";
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "quote")) {
+            // module quote format: collect string literals
             try self.advance();
+            var text_parts = std.ArrayList(u8){};
+            defer text_parts.deinit(self.allocator);
+            
+            try text_parts.appendSlice(self.allocator, "(module");
+            while (self.current_token == .string) {
+                try text_parts.append(self.allocator, ' ');
+                try text_parts.appendSlice(self.allocator, self.current_token.string);
+                try self.advance();
+            }
+            try text_parts.append(self.allocator, ')');
+            
+            module_text = try text_parts.toOwnedSlice(self.allocator);
+            try self.expectToken(.right_paren);
+        } else {
+            // Regular module format: extract text
+            const module_start = self.lexer.pos;
+            var depth: u32 = 1;
+
+            while (depth > 0 and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    depth += 1;
+                } else if (self.current_token == .right_paren) {
+                    depth -= 1;
+                }
+                try self.advance();
+            }
+
+            const module_end = self.lexer.pos;
+            module_text = try self.allocator.dupe(u8, self.lexer.input[module_start..module_end]);
         }
 
         // Parse failure message
@@ -3373,6 +3398,104 @@ pub const Parser = struct {
             .assert_invalid = .{
                 .line = line,
                 .file_name = try self.allocator.dupe(u8, ""),
+                .module_data = module_text,
+                .error_text = failure,
+            },
+        };
+    }
+
+    /// Parse assert_malformed: (assert_malformed (module ...) "message")
+    fn parseAssertMalformed(self: *Parser) !spec_types.command.Command {
+        const line = self.lexer.line;
+        // current token is "assert_malformed"
+        try self.advance();
+
+        // Expect (module ...)
+        try self.expectToken(.left_paren);
+
+        if (self.current_token != .identifier or !std.mem.eql(u8, self.current_token.identifier, "module")) {
+            std.debug.print("Error: parseAssertMalformed: Unexpected token at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
+            return TextDecodeError.UnexpectedToken;
+        }
+
+        try self.advance();
+
+        // Check for "quote" or "binary" format
+        var module_text: ?[]const u8 = null;
+        if (self.current_token == .identifier) {
+            const format_type = self.current_token.identifier;
+            if (std.mem.eql(u8, format_type, "quote")) {
+                // module quote format: collect string literals
+                try self.advance();
+                var text_parts = std.ArrayList(u8){};
+                defer text_parts.deinit(self.allocator);
+                
+                try text_parts.appendSlice(self.allocator, "(module");
+                while (self.current_token == .string) {
+                    try text_parts.append(self.allocator, ' ');
+                    try text_parts.appendSlice(self.allocator, self.current_token.string);
+                    try self.advance();
+                }
+                try text_parts.append(self.allocator, ')');
+                
+                module_text = try text_parts.toOwnedSlice(self.allocator);
+                try self.expectToken(.right_paren);
+            } else if (std.mem.eql(u8, format_type, "binary")) {
+                // module binary format: skip (not supported)
+                try self.advance();
+                while (self.current_token == .string) {
+                    try self.advance();
+                }
+                try self.expectToken(.right_paren);
+            } else {
+                // Regular module format: extract text
+                const module_start = self.lexer.pos;
+                var depth: u32 = 1;
+
+                while (depth > 0 and self.current_token != .eof) {
+                    if (self.current_token == .left_paren) {
+                        depth += 1;
+                    } else if (self.current_token == .right_paren) {
+                        depth -= 1;
+                    }
+                    try self.advance();
+                }
+
+                const module_end = self.lexer.pos;
+                module_text = try self.allocator.dupe(u8, self.lexer.input[module_start..module_end]);
+            }
+        } else {
+            // Regular module format: extract text
+            const module_start = self.lexer.pos;
+            var depth: u32 = 1;
+
+            while (depth > 0 and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    depth += 1;
+                } else if (self.current_token == .right_paren) {
+                    depth -= 1;
+                }
+                try self.advance();
+            }
+
+            const module_end = self.lexer.pos;
+            module_text = try self.allocator.dupe(u8, self.lexer.input[module_start..module_end]);
+        }
+
+        // Parse failure message
+        if (self.current_token != .string) {
+            return TextDecodeError.UnexpectedToken;
+        }
+        const failure = try self.allocator.dupe(u8, self.current_token.string);
+        try self.advance();
+
+        try self.expectToken(.right_paren);
+
+        return spec_types.command.Command{
+            .assert_malformed = .{
+                .line = line,
+                .file_name = try self.allocator.dupe(u8, ""),
+                .module_data = module_text,
                 .error_text = failure,
             },
         };
@@ -3692,6 +3815,9 @@ pub fn parseWastScript(allocator: std.mem.Allocator, input: []const u8) ![]spec_
         } else if (std.mem.eql(u8, cmd_name, "assert_invalid")) {
             const cmd = try parser.parseAssertInvalid();
             try commands.append(allocator, cmd);
+        } else if (std.mem.eql(u8, cmd_name, "assert_malformed")) {
+            const cmd = try parser.parseAssertMalformed();
+            try commands.append(allocator, cmd);
         } else if (std.mem.eql(u8, cmd_name, "register")) {
             const cmd = try parser.parseRegister();
             try commands.append(allocator, cmd);
@@ -3729,7 +3855,13 @@ pub fn freeCommand(allocator: std.mem.Allocator, cmd: *spec_types.command.Comman
         },
         .assert_invalid => |ai| {
             allocator.free(ai.file_name);
+            if (ai.module_data) |data| allocator.free(data);
             allocator.free(ai.error_text);
+        },
+        .assert_malformed => |am| {
+            allocator.free(am.file_name);
+            if (am.module_data) |data| allocator.free(data);
+            allocator.free(am.error_text);
         },
         else => {},
     }
