@@ -1607,6 +1607,46 @@ pub const Parser = struct {
         else if (std.mem.eql(u8, instr_name, "drop")) {
             return .drop;
         } else if (std.mem.eql(u8, instr_name, "select")) {
+            // Check for optional (result ...)
+            // We need to peek ahead to see if it's (result ...) without consuming tokens
+            const next = try self.peekToken();
+            if (next == .left_paren) {
+                // Save lexer state to peek further
+                const saved_pos = self.lexer.pos;
+                const saved_char = self.lexer.current_char;
+                
+                // Peek past the '('
+                _ = try self.lexer.nextToken(); // consume '(' in lexer
+                const after_paren = try self.lexer.peekToken();
+                
+                // Restore lexer state
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                
+                // Check if it's 'result'
+                if (after_paren == .identifier and std.mem.eql(u8, after_paren.identifier, "result")) {
+                    // It's (result ...), so parse it
+                    try self.advance(); // consume '('
+                    try self.advance(); // consume 'result'
+
+                    var types = std.ArrayList(wasm_core.types.ValueType){};
+                    defer types.deinit(self.allocator);
+
+                    while (self.current_token != .right_paren and self.current_token != .eof) {
+                        if (try self.parseValueType()) |vtype| {
+                            try types.append(self.allocator, vtype);
+                        } else {
+                            break;
+                        }
+                    }
+
+                    try self.expectRightParen();
+
+                    const types_slice = try self.allocator.dupe(wasm_core.types.ValueType, types.items);
+                    return .{ .selectv = types_slice };
+                }
+                // Not (result ...), so it's a plain select followed by another S-expression
+            }
             return .select;
         }
 
