@@ -1121,7 +1121,7 @@ pub const Parser = struct {
             if (std.mem.eql(u8, instr_name, "memory")) {
                 // Parse memory index
                 if (self.current_token == .number) {
-                    mem_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                    mem_idx = try std.fmt.parseInt(u32, self.current_token.number, 0);
                     try self.advance();
                 } else if (self.current_token == .identifier) {
                     if (self.builder.memory_names.get(self.current_token.identifier)) |idx| {
@@ -1208,7 +1208,7 @@ pub const Parser = struct {
                 try self.expectRightParen();
                 break;
             } else {
-                std.debug.print("Error: Unknown instruction in data offset: {s}\n", .{self.current_token.identifier});
+                std.debug.print("Warning: Unknown instruction in data offset at line {d}\n", .{self.lexer.line});
                 return TextDecodeError.UnexpectedToken;
             }
         }
@@ -1857,11 +1857,11 @@ pub const Parser = struct {
         else if (std.mem.eql(u8, instr_name, "call")) {
             return .{ .call = try self.parseU32OrIdentifier() };
         } else if (std.mem.eql(u8, instr_name, "call_indirect")) {
-            // Parse (type idx) and optional (table idx)
+            // Parse (type idx) or inline (param)/(result) and optional (table idx)
             var type_idx: u32 = 0;
             var table_idx: u32 = 0;
 
-            // Expect (type idx)
+            // Expect (type idx) or (param)/(result)
             if (self.current_token == .left_paren) {
                 try self.advance(); // consume '('
                 if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
@@ -1880,12 +1880,33 @@ pub const Parser = struct {
                     }
                     
                     try self.expectRightParen();
+                } else if (self.current_token == .identifier and 
+                          (std.mem.eql(u8, self.current_token.identifier, "param") or 
+                           std.mem.eql(u8, self.current_token.identifier, "result"))) {
+                    // Inline function type - parse as BlockType and create a type
+                    self.lexer.pos -= 1; // backtrack before '('
+                    self.lexer.current_char = '(';
+                    self.current_token = .left_paren;
+                    
+                    const block_type = try self.parseBlockType();
+                    if (block_type == .type_index) {
+                        type_idx = block_type.type_index;
+                    } else {
+                        // Create a new type for this inline signature
+                        const func_type = switch (block_type) {
+                            .empty => wasm_core.types.FuncType{ .parameter_types = &.{}, .result_types = &.{} },
+                            .value_type => |vt| wasm_core.types.FuncType{ .parameter_types = &.{}, .result_types = &.{vt} },
+                            .type_index => unreachable,
+                        };
+                        type_idx = @intCast(self.builder.types.items.len);
+                        try self.builder.types.append(self.allocator, func_type);
+                    }
                 } else {
-                    std.debug.print("Error: parseCallIndirect: Unexpected token at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
+                    std.debug.print("Warning: parseCallIndirect: Unexpected token at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
                     return TextDecodeError.UnexpectedToken;
                 }
             } else {
-                std.debug.print("Error: parseCallIndirect: Expected '(' for type declaration at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
+                std.debug.print("Warning: parseCallIndirect: Expected '(' for type declaration at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
                 return TextDecodeError.UnexpectedToken;
             }
 
