@@ -848,27 +848,27 @@ pub const Instance = struct {
             .f64x2_convert_low_i32x4_u => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, u32), opConvert),
 
             // Relaxed SIMD instructions
-            .i8x16_relaxed_swizzle => unreachable,
-            .i32x4_relaxed_trunc_f32x4_s => unreachable,
-            .i32x4_relaxed_trunc_f32x4_u => unreachable,
-            .i32x4_relaxed_trunc_f64x2_s_zero => unreachable,
-            .i32x4_relaxed_trunc_f64x2_u_zero => unreachable,
-            .f32x4_relaxed_madd => unreachable,
-            .f32x4_relaxed_nmadd => unreachable,
-            .f64x2_relaxed_madd => unreachable,
-            .f64x2_relaxed_nmadd => unreachable,
-            .i8x16_relaxed_laneselect => unreachable,
-            .i16x8_relaxed_laneselect => unreachable,
-            .i32x4_relaxed_laneselect => unreachable,
-            .i64x2_relaxed_laneselect => unreachable,
-            .f32x4_relaxed_min => unreachable,
-            .f32x4_relaxed_max => unreachable,
-            .f64x2_relaxed_min => unreachable,
-            .f64x2_relaxed_max => unreachable,
-            .i16x8_relaxed_q15mulr_s => unreachable,
-            .i16x8_relaxed_dot_i8x16_i7x16_s => unreachable,
-            .i32x4_relaxed_dot_i8x16_i7x16_add_s => unreachable,
-            .f32x4_relaxed_dot_bf16x8_add_f32x4 => unreachable,
+            .i8x16_relaxed_swizzle => try self.swizzle(),
+            .i32x4_relaxed_trunc_f32x4_s => try self.vCvtOpEx(@Vector(4, i32), @Vector(4, f32), opTruncSat),
+            .i32x4_relaxed_trunc_f32x4_u => try self.vCvtOpEx(@Vector(4, u32), @Vector(4, f32), opTruncSat),
+            .i32x4_relaxed_trunc_f64x2_s_zero => try self.vCvtOpZeroEx(@Vector(4, i32), @Vector(2, f64), opTruncSat),
+            .i32x4_relaxed_trunc_f64x2_u_zero => try self.vCvtOpZeroEx(@Vector(4, u32), @Vector(2, f64), opTruncSat),
+            .f32x4_relaxed_madd => try self.vRelaxedMadd(@Vector(4, f32)),
+            .f32x4_relaxed_nmadd => try self.vRelaxedNmadd(@Vector(4, f32)),
+            .f64x2_relaxed_madd => try self.vRelaxedMadd(@Vector(2, f64)),
+            .f64x2_relaxed_nmadd => try self.vRelaxedNmadd(@Vector(2, f64)),
+            .i8x16_relaxed_laneselect => try self.vRelaxedLaneselect(@Vector(16, u8)),
+            .i16x8_relaxed_laneselect => try self.vRelaxedLaneselect(@Vector(8, u16)),
+            .i32x4_relaxed_laneselect => try self.vRelaxedLaneselect(@Vector(4, u32)),
+            .i64x2_relaxed_laneselect => try self.vRelaxedLaneselect(@Vector(2, u64)),
+            .f32x4_relaxed_min => try self.vBinTryOpEx(@Vector(4, f32), opFloatMin),
+            .f32x4_relaxed_max => try self.vBinTryOpEx(@Vector(4, f32), opFloatMax),
+            .f64x2_relaxed_min => try self.vBinTryOpEx(@Vector(2, f64), opFloatMin),
+            .f64x2_relaxed_max => try self.vBinTryOpEx(@Vector(2, f64), opFloatMax),
+            .i16x8_relaxed_q15mulr_s => try self.vRelaxedQ15mulr(),
+            .i16x8_relaxed_dot_i8x16_i7x16_s => try self.vRelaxedDotI8x16(),
+            .i32x4_relaxed_dot_i8x16_i7x16_add_s => try self.vRelaxedDotI8x16Add(),
+            .f32x4_relaxed_dot_bf16x8_add_f32x4 => try self.vRelaxedDotBf16(),
         }
         return .none;
     }
@@ -1600,6 +1600,104 @@ pub const Instance = struct {
         const v1 = self.stack.pop().value.as(u128);
         const result = (v1 & v3) | (v2 & ~v3);
         try self.stack.pushValueAs(u128, result);
+    }
+
+    /// Relaxed SIMD: madd (a * b + c)
+    inline fn vRelaxedMadd(self: *Self, comptime T: type) Error!void {
+        const c = self.stack.pop().value.asVec(T);
+        const b = self.stack.pop().value.asVec(T);
+        const a = self.stack.pop().value.asVec(T);
+        const result = a * b + c;
+        try self.stack.pushValueAs(T, result);
+    }
+
+    /// Relaxed SIMD: nmadd (-(a * b) + c)
+    inline fn vRelaxedNmadd(self: *Self, comptime T: type) Error!void {
+        const c = self.stack.pop().value.asVec(T);
+        const b = self.stack.pop().value.asVec(T);
+        const a = self.stack.pop().value.asVec(T);
+        const result = -(a * b) + c;
+        try self.stack.pushValueAs(T, result);
+    }
+
+    /// Relaxed SIMD: laneselect (bitwise select per lane)
+    inline fn vRelaxedLaneselect(self: *Self, comptime T: type) Error!void {
+        const C = std.meta.Child(T);
+        const IntT = @Vector(@typeInfo(T).vector.len, std.meta.Int(.unsigned, @bitSizeOf(C)));
+        const c = self.stack.pop().value.asVec(T);
+        const b = self.stack.pop().value.asVec(T);
+        const a = self.stack.pop().value.asVec(T);
+        const mask: IntT = @bitCast(c);
+        const a_bits: IntT = @bitCast(a);
+        const b_bits: IntT = @bitCast(b);
+        const result_bits = (a_bits & mask) | (b_bits & ~mask);
+        const result: T = @bitCast(result_bits);
+        try self.stack.pushValueAs(T, result);
+    }
+
+    /// Relaxed SIMD: i16x8.relaxed_q15mulr_s
+    inline fn vRelaxedQ15mulr(self: *Self) Error!void {
+        const b = self.stack.pop().value.asVec(@Vector(8, i16));
+        const a = self.stack.pop().value.asVec(@Vector(8, i16));
+        var result: @Vector(8, i16) = undefined;
+        inline for (0..8) |i| {
+            const prod: i32 = @as(i32, a[i]) * @as(i32, b[i]);
+            result[i] = @intCast((prod + 0x4000) >> 15);
+        }
+        try self.stack.pushValueAs(@Vector(8, i16), result);
+    }
+
+    /// Relaxed SIMD: i16x8.relaxed_dot_i8x16_i7x16_s
+    inline fn vRelaxedDotI8x16(self: *Self) Error!void {
+        const b = self.stack.pop().value.asVec(@Vector(16, i8));
+        const a = self.stack.pop().value.asVec(@Vector(16, i8));
+        var result: @Vector(8, i16) = undefined;
+        inline for (0..8) |i| {
+            const idx = i * 2;
+            const prod1: i16 = @as(i16, a[idx]) * @as(i16, b[idx]);
+            const prod2: i16 = @as(i16, a[idx + 1]) * @as(i16, b[idx + 1]);
+            result[i] = prod1 + prod2;
+        }
+        try self.stack.pushValueAs(@Vector(8, i16), result);
+    }
+
+    /// Relaxed SIMD: i32x4.relaxed_dot_i8x16_i7x16_add_s
+    inline fn vRelaxedDotI8x16Add(self: *Self) Error!void {
+        const c = self.stack.pop().value.asVec(@Vector(4, i32));
+        const b = self.stack.pop().value.asVec(@Vector(16, i8));
+        const a = self.stack.pop().value.asVec(@Vector(16, i8));
+        var result: @Vector(4, i32) = undefined;
+        inline for (0..4) |i| {
+            const idx = i * 4;
+            var sum: i32 = 0;
+            inline for (0..4) |j| {
+                sum += @as(i32, a[idx + j]) * @as(i32, b[idx + j]);
+            }
+            result[i] = sum + c[i];
+        }
+        try self.stack.pushValueAs(@Vector(4, i32), result);
+    }
+
+    /// Relaxed SIMD: f32x4.relaxed_dot_bf16x8_add_f32x4
+    inline fn vRelaxedDotBf16(self: *Self) Error!void {
+        const c = self.stack.pop().value.asVec(@Vector(4, f32));
+        const b = self.stack.pop().value.asVec(@Vector(8, u16));
+        const a = self.stack.pop().value.asVec(@Vector(8, u16));
+        var result: @Vector(4, f32) = undefined;
+        inline for (0..4) |i| {
+            const idx = i * 2;
+            const a1 = bf16ToF32(a[idx]);
+            const b1 = bf16ToF32(b[idx]);
+            const a2 = bf16ToF32(a[idx + 1]);
+            const b2 = bf16ToF32(b[idx + 1]);
+            result[i] = a1 * b1 + a2 * b2 + c[i];
+        }
+        try self.stack.pushValueAs(@Vector(4, f32), result);
+    }
+
+    inline fn bf16ToF32(bf16: u16) f32 {
+        const bits: u32 = @as(u32, bf16) << 16;
+        return @bitCast(bits);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-any-true
@@ -2463,4 +2561,141 @@ test opFloatNearest {
     try expectEqual(@as(f32, 4.0), opFloatNearest(f32, 4.5));
     try expectEqual(@as(f32, 8388609.0), opFloatNearest(f32, 8388609.0));
     try expectEqual(@as(f64, 123456789.0), opFloatNearest(f64, 123456789.01234567));
+}
+
+test "Relaxed SIMD: i8x16.relaxed_swizzle" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+    
+
+    // Push test vectors
+    const v1: @Vector(16, u8) = .{ 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 };
+    const v2: @Vector(16, u8) = .{ 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30 };
+    try instance.stack.pushValueAs(@Vector(16, u8), v1);
+    try instance.stack.pushValueAs(@Vector(16, u8), v2);
+
+    try instance.swizzle();
+
+    const result = instance.stack.pop().value.asVec(@Vector(16, u8));
+    try std.testing.expectEqual(@as(u8, 10), result[0]); // v1[0]
+    try std.testing.expectEqual(@as(u8, 12), result[1]); // v1[2]
+    try std.testing.expectEqual(@as(u8, 14), result[2]); // v1[4]
+    try std.testing.expectEqual(@as(u8, 0), result[8]); // out of bounds -> 0
+}
+
+test "Relaxed SIMD: f32x4.relaxed_madd" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+    
+
+    const a: @Vector(4, f32) = .{ 2.0, 3.0, 4.0, 5.0 };
+    const b: @Vector(4, f32) = .{ 10.0, 20.0, 30.0, 40.0 };
+    const c: @Vector(4, f32) = .{ 1.0, 2.0, 3.0, 4.0 };
+    try instance.stack.pushValueAs(@Vector(4, f32), a);
+    try instance.stack.pushValueAs(@Vector(4, f32), b);
+    try instance.stack.pushValueAs(@Vector(4, f32), c);
+
+    try instance.vRelaxedMadd(@Vector(4, f32));
+
+    const result = instance.stack.pop().value.asVec(@Vector(4, f32));
+    try std.testing.expectEqual(@as(f32, 21.0), result[0]); // 2*10+1
+    try std.testing.expectEqual(@as(f32, 62.0), result[1]); // 3*20+2
+    try std.testing.expectEqual(@as(f32, 123.0), result[2]); // 4*30+3
+    try std.testing.expectEqual(@as(f32, 204.0), result[3]); // 5*40+4
+}
+
+test "Relaxed SIMD: f32x4.relaxed_nmadd" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+    
+
+    const a: @Vector(4, f32) = .{ 2.0, 3.0, 4.0, 5.0 };
+    const b: @Vector(4, f32) = .{ 10.0, 20.0, 30.0, 40.0 };
+    const c: @Vector(4, f32) = .{ 1.0, 2.0, 3.0, 4.0 };
+    try instance.stack.pushValueAs(@Vector(4, f32), a);
+    try instance.stack.pushValueAs(@Vector(4, f32), b);
+    try instance.stack.pushValueAs(@Vector(4, f32), c);
+
+    try instance.vRelaxedNmadd(@Vector(4, f32));
+
+    const result = instance.stack.pop().value.asVec(@Vector(4, f32));
+    try std.testing.expectEqual(@as(f32, -19.0), result[0]); // -(2*10)+1
+    try std.testing.expectEqual(@as(f32, -58.0), result[1]); // -(3*20)+2
+    try std.testing.expectEqual(@as(f32, -117.0), result[2]); // -(4*30)+3
+    try std.testing.expectEqual(@as(f32, -196.0), result[3]); // -(5*40)+4
+}
+
+test "Relaxed SIMD: i32x4.relaxed_laneselect" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+    
+
+    const a: @Vector(4, u32) = .{ 0xAAAAAAAA, 0xBBBBBBBB, 0xCCCCCCCC, 0xDDDDDDDD };
+    const b: @Vector(4, u32) = .{ 0x11111111, 0x22222222, 0x33333333, 0x44444444 };
+    const mask: @Vector(4, u32) = .{ 0xFFFFFFFF, 0x00000000, 0xFF00FF00, 0x0F0F0F0F };
+    try instance.stack.pushValueAs(@Vector(4, u32), a);
+    try instance.stack.pushValueAs(@Vector(4, u32), b);
+    try instance.stack.pushValueAs(@Vector(4, u32), mask);
+
+    try instance.vRelaxedLaneselect(@Vector(4, u32));
+
+    const result = instance.stack.pop().value.asVec(@Vector(4, u32));
+    try std.testing.expectEqual(@as(u32, 0xAAAAAAAA), result[0]); // all from a
+    try std.testing.expectEqual(@as(u32, 0x22222222), result[1]); // all from b
+    try std.testing.expectEqual(@as(u32, 0xCC33CC33), result[2]); // mixed
+    try std.testing.expectEqual(@as(u32, 0x4D4D4D4D), result[3]); // mixed
+}
+
+test "Relaxed SIMD: i16x8.relaxed_q15mulr_s" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+    
+
+    const a: @Vector(8, i16) = .{ 16384, 8192, 4096, 2048, 1024, 512, 256, 128 };
+    const b: @Vector(8, i16) = .{ 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384 };
+    try instance.stack.pushValueAs(@Vector(8, i16), a);
+    try instance.stack.pushValueAs(@Vector(8, i16), b);
+
+    try instance.vRelaxedQ15mulr();
+
+    const result = instance.stack.pop().value.asVec(@Vector(8, i16));
+    try std.testing.expectEqual(@as(i16, 8192), result[0]); // (16384*16384+0x4000)>>15
+    try std.testing.expectEqual(@as(i16, 4096), result[1]);
+    try std.testing.expectEqual(@as(i16, 2048), result[2]);
+}
+
+test "Relaxed SIMD: i16x8.relaxed_dot_i8x16_i7x16_s" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+    
+
+    const a: @Vector(16, i8) = .{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+    const b: @Vector(16, i8) = .{ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 };
+    try instance.stack.pushValueAs(@Vector(16, i8), a);
+    try instance.stack.pushValueAs(@Vector(16, i8), b);
+
+    try instance.vRelaxedDotI8x16();
+
+    const result = instance.stack.pop().value.asVec(@Vector(8, i16));
+    try std.testing.expectEqual(@as(i16, 6), result[0]); // 1*2 + 2*2
+    try std.testing.expectEqual(@as(i16, 14), result[1]); // 3*2 + 4*2
+    try std.testing.expectEqual(@as(i16, 22), result[2]); // 5*2 + 6*2
+    try std.testing.expectEqual(@as(i16, 30), result[3]); // 7*2 + 8*2
+}
+
+test "Relaxed SIMD: i32x4.relaxed_trunc_f32x4_s" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+    
+
+    const v: @Vector(4, f32) = .{ 1.5, -2.7, 100.9, -200.1 };
+    try instance.stack.pushValueAs(@Vector(4, f32), v);
+
+    try instance.vCvtOpEx(@Vector(4, i32), @Vector(4, f32), opTruncSat);
+
+    const result = instance.stack.pop().value.asVec(@Vector(4, i32));
+    try std.testing.expectEqual(@as(i32, 1), result[0]);
+    try std.testing.expectEqual(@as(i32, -2), result[1]);
+    try std.testing.expectEqual(@as(i32, 100), result[2]);
+    try std.testing.expectEqual(@as(i32, -200), result[3]);
 }
