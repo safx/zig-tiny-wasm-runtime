@@ -3245,11 +3245,14 @@ pub const Parser = struct {
         } else if (self.current_token == .identifier) {
             const id = self.current_token.identifier;
             try self.advance();
-            // Resolve named index - check locals first, then functions
+            // Resolve named index - check locals first, then functions, then memories
             if (self.local_names.get(id)) |idx| {
                 return idx;
             }
             if (self.builder.func_names.get(id)) |idx| {
+                return idx;
+            }
+            if (self.builder.memory_names.get(id)) |idx| {
                 return idx;
             }
             // If not found, return 0 as fallback
@@ -4253,6 +4256,17 @@ pub fn parseWastScript(allocator: std.mem.Allocator, input: []const u8) ![]spec_
             try commands.append(allocator, cmd);
         } else if (std.mem.eql(u8, cmd_name, "register")) {
             const cmd = try parser.parseRegister();
+            try commands.append(allocator, cmd);
+        } else if (std.mem.eql(u8, cmd_name, "invoke")) {
+            try parser.advance(); // consume 'invoke'
+            const action = try parser.parseInvoke();
+            try parser.expectToken(.right_paren);
+            const cmd = spec_types.command.Command{
+                .action = .{
+                    .action = .{ .invoke = action },
+                    .line = parser.lexer.line,
+                },
+            };
             try commands.append(allocator, cmd);
         } else {
             try parser.skipToClosingParen();

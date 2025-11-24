@@ -1431,22 +1431,17 @@ pub const Instance = struct {
     inline fn opMemoryFill(self: *Self, mem_idx: u32) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[mem_idx];
-        const mem_inst = self.store.mems.items[mem_addr];
+        const mem_inst = &self.store.mems.items[mem_addr];
 
-        var n: u32 = self.stack.pop().value.asU32();
-        const val = self.stack.pop();
-        var d: u32 = self.stack.pop().value.asU32();
+        const n: u32 = self.stack.pop().value.asU32();
+        const val: u8 = @truncate(self.stack.pop().value.asU32());
+        const d: u32 = self.stack.pop().value.asU32();
 
         const d_plus_n, const overflow = @addWithOverflow(d, n);
         if (overflow == 1 or d_plus_n > mem_inst.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        while (n > 0) : (n -= 1) {
-            try self.stack.pushValueAs(u32, d);
-            try self.stack.push(val);
-            try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx } });
-            d += 1;
-        }
+        @memset(mem_inst.data[d..d_plus_n], val);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-copy

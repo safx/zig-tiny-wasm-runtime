@@ -131,10 +131,10 @@ pub const SpecTestRunner = struct {
                         self.debugPrint("Module quote (skipped)\n", .{});
                     }
                 },
-                .action => {
-                    if (self.verbose_level >= 2) {
-                        self.debugPrint("Action (skipped)\n", .{});
-                    }
+                .action => |*a| {
+                    if (self.doAction(&a.action, current_module, &registered_modules)) |results| {
+                        self.allocator.free(results);
+                    } else |_| {}
                 },
                 .assert_return => |*a| {
                     total += 1;
