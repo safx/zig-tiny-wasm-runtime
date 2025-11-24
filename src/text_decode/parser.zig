@@ -1919,12 +1919,23 @@ pub const Parser = struct {
         else if (std.mem.eql(u8, instr_name, "call")) {
             return .{ .call = try self.parseU32OrIdentifier() };
         } else if (std.mem.eql(u8, instr_name, "call_indirect")) {
-            // Parse (type idx) or inline (param)/(result) and optional (table idx)
+            // Parse optional table name, (type idx) or inline (param)/(result)
             var type_idx: u32 = 0;
             var table_idx: u32 = 0;
 
-            // Expect (type idx) or (param)/(result)
+            // Check for table name or number first: call_indirect $table (type ...)
+            if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
+                table_idx = try self.parseU32OrIdentifier();
+            } else if (self.current_token == .number) {
+                table_idx = try self.parseU32OrIdentifier();
+            }
+
+            // Check for (type idx) or (param)/(result) or (table idx)
             if (self.current_token == .left_paren) {
+                const saved_lexer_pos = self.lexer.pos;
+                const saved_lexer_char = self.lexer.current_char;
+                const saved_token = self.current_token;
+                
                 try self.advance(); // consume '('
                 if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
                     try self.advance(); // consume 'type'
@@ -1946,9 +1957,9 @@ pub const Parser = struct {
                           (std.mem.eql(u8, self.current_token.identifier, "param") or 
                            std.mem.eql(u8, self.current_token.identifier, "result"))) {
                     // Inline function type - parse as BlockType and create a type
-                    self.lexer.pos -= 1; // backtrack before '('
-                    self.lexer.current_char = '(';
-                    self.current_token = .left_paren;
+                    self.lexer.pos = saved_lexer_pos;
+                    self.lexer.current_char = saved_lexer_char;
+                    self.current_token = saved_token;
                     
                     const block_type = try self.parseBlockType();
                     if (block_type == .type_index) {
@@ -1963,17 +1974,21 @@ pub const Parser = struct {
                         type_idx = @intCast(self.builder.types.items.len);
                         try self.builder.types.append(self.allocator, func_type);
                     }
+                } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "table")) {
+                    // (table idx) without type specification - use type 0
+                    try self.advance(); // consume 'table'
+                    table_idx = try self.parseU32OrIdentifier();
+                    try self.expectRightParen();
                 } else {
-                    std.debug.print("Warning: parseCallIndirect: Unexpected token at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
-                    return TextDecodeError.UnexpectedToken;
+                    // No type specification, restore and use type 0
+                    self.lexer.pos = saved_lexer_pos;
+                    self.lexer.current_char = saved_lexer_char;
+                    self.current_token = saved_token;
                 }
-            } else {
-                std.debug.print("Warning: parseCallIndirect: Expected '(' for type declaration at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
-                return TextDecodeError.UnexpectedToken;
             }
 
-            // Optional (table idx)
-            if (self.current_token == .left_paren) {
+            // Optional (table idx) if not already parsed
+            if (table_idx == 0 and self.current_token == .left_paren) {
                 const saved_lexer_pos = self.lexer.pos;
                 const saved_lexer_char = self.lexer.current_char;
                 const saved_token = self.current_token;
