@@ -1171,6 +1171,7 @@ pub const Parser = struct {
             if (next == .identifier) {
                 const keyword = next.identifier;
                 const is_attribute = std.mem.eql(u8, keyword, "export") or
+                    std.mem.eql(u8, keyword, "import") or
                     std.mem.eql(u8, keyword, "param") or
                     std.mem.eql(u8, keyword, "result") or
                     std.mem.eql(u8, keyword, "local");
@@ -1196,6 +1197,93 @@ pub const Parser = struct {
                     try self.advance();
                 }
                 try self.expectRightParen();
+            } else if (std.mem.eql(u8, keyword, "import")) {
+                // Inline import: (func $name (import "mod" "name") ...)
+                // Convert to regular import and return early
+                try self.advance(); // consume 'import'
+                
+                var module_name: []const u8 = "";
+                var field_name: []const u8 = "";
+                
+                if (self.current_token == .string) {
+                    module_name = self.current_token.string;
+                    try self.advance();
+                }
+                if (self.current_token == .string) {
+                    field_name = self.current_token.string;
+                    try self.advance();
+                }
+                try self.expectRightParen();
+                
+                // Continue parsing params/results after import
+                while (self.current_token == .left_paren) {
+                    const next_tok = try self.peekToken();
+                    if (next_tok == .identifier) {
+                        const kw = next_tok.identifier;
+                        if (!std.mem.eql(u8, kw, "param") and !std.mem.eql(u8, kw, "result")) {
+                            break;
+                        }
+                    } else break;
+                    
+                    try self.advance(); // consume '('
+                    const kw = self.current_token.identifier;
+                    
+                    if (std.mem.eql(u8, kw, "param")) {
+                        try self.advance();
+                        while (self.current_token != .right_paren and self.current_token != .eof) {
+                            if (self.current_token == .identifier) {
+                                const type_name = self.current_token.identifier;
+                                if (type_name.len > 0 and type_name[0] == '$') {
+                                    const param_idx: u32 = @intCast(params.items.len);
+                                    try self.local_names.put(type_name, param_idx);
+                                    try self.advance();
+                                    continue;
+                                }
+                            }
+                            if (try self.parseValueType()) |vtype| {
+                                try params.append(self.allocator, vtype);
+                            } else {
+                                try self.advance();
+                            }
+                        }
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, kw, "result")) {
+                        try self.advance();
+                        while (self.current_token != .right_paren and self.current_token != .eof) {
+                            if (try self.parseValueType()) |vtype| {
+                                try results.append(self.allocator, vtype);
+                            } else {
+                                try self.advance();
+                            }
+                        }
+                        try self.expectRightParen();
+                    }
+                }
+                
+                // Create function type and add import
+                const func_type = wasm_core.types.FuncType{
+                    .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, params.items),
+                    .result_types = try self.allocator.dupe(wasm_core.types.ValueType, results.items),
+                };
+                const type_idx: u32 = @intCast(builder.types.items.len);
+                try builder.types.append(self.allocator, func_type);
+                
+                const import_desc = wasm_core.types.ImportDesc{
+                    .function = type_idx,
+                };
+                const import = wasm_core.types.Import{
+                    .module_name = try self.allocator.dupe(u8, module_name),
+                    .name = try self.allocator.dupe(u8, field_name),
+                    .desc = import_desc,
+                };
+                try builder.imports.append(self.allocator, import);
+                
+                if (func_name) |name| {
+                    const func_idx: u32 = @intCast(builder.imports.items.len - 1);
+                    try builder.func_names.put(name, func_idx);
+                }
+                
+                return;
             } else if (std.mem.eql(u8, keyword, "param")) {
                 try self.advance(); // consume 'param'
                 // Parse parameter types
