@@ -1814,1293 +1814,797 @@ pub const Parser = struct {
         };
 
         // Control instructions
-        if (opcode == .nop) {
-            return .nop;
-        } else if (opcode == .@"unreachable") {
-            return .@"unreachable";
-        } else if (opcode == .block) {
-            // Skip optional label name
-            if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
-                try self.advance();
-            }
-            return .{ .block = .{ .type = try self.parseBlockType(), .end = 0 } };
-        } else if (opcode == .loop) {
-            // Skip optional label name
-            if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
-                try self.advance();
-            }
-            return .{ .loop = .{ .type = try self.parseBlockType(), .end = 0 } };
-        } else if (opcode == .@"if") {
-            // Skip optional label name
-            if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
-                try self.advance();
-            }
-            return .{ .@"if" = .{ .type = try self.parseBlockType(), .@"else" = null, .end = 0 } };
-        } else if (opcode == .@"else") {
-            return .@"else";
-        } else if (opcode == .end) {
-            return .end;
-        } else if (opcode == .@"return") {
-            return .@"return";
-        }
-
-        // Branch instructions
-        else if (opcode == .br) {
-            return .{ .br = try self.parseLabelIndex() };
-        } else if (opcode == .br_if) {
-            return .{ .br_if = try self.parseLabelIndex() };
-        } else if (opcode == .br_table) {
-            // Parse br_table: (br_table label1 label2 ... default)
-            var label_idxs = std.ArrayList(u32){};
-            defer label_idxs.deinit(self.allocator);
-
-            // Parse all label indices (last one is the default)
-            while (self.current_token == .number or self.current_token == .identifier) {
-                const idx = try self.parseLabelIndex();
-                try label_idxs.append(self.allocator, idx);
-            }
-
-            // Last label is the default, others are the table
-            if (label_idxs.items.len == 0) {
-                return TextDecodeError.InvalidFormat;
-            }
-
-            const default_label = label_idxs.items[label_idxs.items.len - 1];
-            const table_labels = if (label_idxs.items.len > 1)
-                try self.allocator.dupe(u32, label_idxs.items[0 .. label_idxs.items.len - 1])
-            else
-                &[_]u32{};
-
-            return .{ .br_table = .{
-                .label_idxs = table_labels,
-                .default_label_idx = default_label,
-            } };
-        }
-
-        // Parametric instructions
-        else if (opcode == .drop) {
-            return .drop;
-        } else if (opcode == .select) {
-            // Check for optional (result ...)
-            // We need to peek ahead to see if it's (result ...) without consuming tokens
-            const next = try self.peekToken();
-            if (next == .left_paren) {
-                // Save lexer state to peek further
-                const saved_pos = self.lexer.pos;
-                const saved_char = self.lexer.current_char;
-
-                // Peek past the '('
-                _ = try self.lexer.nextToken(); // consume '(' in lexer
-                const after_paren = try self.lexer.peekToken();
-
-                // Restore lexer state
-                self.lexer.pos = saved_pos;
-                self.lexer.current_char = saved_char;
-
-                // Check if it's 'result'
-                if (after_paren == .identifier and std.mem.eql(u8, after_paren.identifier, "result")) {
-                    // It's (result ...), so parse it
-                    try self.advance(); // consume '('
-                    try self.advance(); // consume 'result'
-
-                    var types = std.ArrayList(wasm_core.types.ValueType){};
-                    defer types.deinit(self.allocator);
-
-                    while (self.current_token != .right_paren and self.current_token != .eof) {
-                        if (try self.parseValueType()) |vtype| {
-                            try types.append(self.allocator, vtype);
-                        } else {
-                            break;
-                        }
-                    }
-
-                    try self.expectRightParen();
-
-                    const types_slice = try self.allocator.dupe(wasm_core.types.ValueType, types.items);
-                    return .{ .selectv = types_slice };
+        switch (opcode) {
+            .nop => return .nop,
+            .@"unreachable" => return .@"unreachable",
+            .block => {
+                // Skip optional label name
+                if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                    try self.advance();
                 }
-                // Not (result ...), so it's a plain select followed by another S-expression
-            }
-            return .select;
-        }
+                return .{ .block = .{ .type = try self.parseBlockType(), .end = 0 } };
+            },
+            .loop => {
+                // Skip optional label name
+                if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                    try self.advance();
+                }
+                return .{ .loop = .{ .type = try self.parseBlockType(), .end = 0 } };
+            },
+            .@"if" => {
+                // Skip optional label name
+                if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                    try self.advance();
+                }
+                return .{ .@"if" = .{ .type = try self.parseBlockType(), .@"else" = null, .end = 0 } };
+            },
+            .@"else" => return .@"else",
+            .end => return .end,
+            .@"return" => return .@"return",
 
-        // Call instructions
-        else if (opcode == .call) {
-            return .{ .call = try self.parseU32OrIdentifier() };
-        } else if (opcode == .call_indirect) {
-            // Parse optional table name, (type idx) or inline (param)/(result)
-            var type_idx: u32 = 0;
-            var table_idx: u32 = 0;
+            // Branch instructions
+            .br => return .{ .br = try self.parseLabelIndex() },
+            .br_if => return .{ .br_if = try self.parseLabelIndex() },
+            .br_table => {
+                // Parse br_table: (br_table label1 label2 ... default)
+                var label_idxs = std.ArrayList(u32){};
+                defer label_idxs.deinit(self.allocator);
 
-            // Check for table name or number first: call_indirect $table (type ...)
-            if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
-                table_idx = try self.parseU32OrIdentifier();
-            } else if (self.current_token == .number) {
-                table_idx = try self.parseU32OrIdentifier();
-            }
+                // Parse all label indices (last one is the default)
+                while (self.current_token == .number or self.current_token == .identifier) {
+                    const idx = try self.parseLabelIndex();
+                    try label_idxs.append(self.allocator, idx);
+                }
 
-            // Check for (type idx) or (param)/(result) or (table idx)
-            if (self.current_token == .left_paren) {
-                const saved_lexer_pos = self.lexer.pos;
-                const saved_lexer_char = self.lexer.current_char;
-                const saved_token = self.current_token;
+                // Last label is the default, others are the table
+                if (label_idxs.items.len == 0) {
+                    return TextDecodeError.InvalidFormat;
+                }
 
-                try self.advance(); // consume '('
-                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
-                    try self.advance(); // consume 'type'
+                const default_label = label_idxs.items[label_idxs.items.len - 1];
+                const table_labels = if (label_idxs.items.len > 1)
+                    try self.allocator.dupe(u32, label_idxs.items[0 .. label_idxs.items.len - 1])
+                else
+                    &[_]u32{};
 
-                    // Parse type index or name
-                    if (self.current_token == .number) {
-                        type_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
-                        try self.advance();
-                    } else if (self.current_token == .identifier) {
-                        // Resolve type name
-                        if (self.builder.type_names.get(self.current_token.identifier)) |idx| {
-                            type_idx = idx;
+                return .{ .br_table = .{
+                    .label_idxs = table_labels,
+                    .default_label_idx = default_label,
+                } };
+            },
+
+            // Parametric instructions
+            .drop => return .drop,
+            .select => {
+                // Check for optional (result ...)
+                // We need to peek ahead to see if it's (result ...) without consuming tokens
+                const next = try self.peekToken();
+                if (next == .left_paren) {
+                    // Save lexer state to peek further
+                    const saved_pos = self.lexer.pos;
+                    const saved_char = self.lexer.current_char;
+
+                    // Peek past the '('
+                    _ = try self.lexer.nextToken(); // consume '(' in lexer
+                    const after_paren = try self.lexer.peekToken();
+
+                    // Restore lexer state
+                    self.lexer.pos = saved_pos;
+                    self.lexer.current_char = saved_char;
+
+                    // Check if it's 'result'
+                    if (after_paren == .identifier and std.mem.eql(u8, after_paren.identifier, "result")) {
+                        // It's (result ...), so parse it
+                        try self.advance(); // consume '('
+                        try self.advance(); // consume 'result'
+
+                        var types = std.ArrayList(wasm_core.types.ValueType){};
+                        defer types.deinit(self.allocator);
+
+                        while (self.current_token != .right_paren and self.current_token != .eof) {
+                            if (try self.parseValueType()) |vtype| {
+                                try types.append(self.allocator, vtype);
+                            } else {
+                                break;
+                            }
                         }
-                        try self.advance();
+
+                        try self.expectRightParen();
+
+                        const types_slice = try self.allocator.dupe(wasm_core.types.ValueType, types.items);
+                        return .{ .selectv = types_slice };
                     }
+                    // Not (result ...), so it's a plain select followed by another S-expression
+                }
+                return .select;
+            },
+            .selectv => {
+                // Parse types for selectv
+                var types = std.ArrayList(wasm_core.types.ValueType){};
+                defer types.deinit(self.allocator);
 
-                    try self.expectRightParen();
-                } else if (self.current_token == .identifier and
-                    (std.mem.eql(u8, self.current_token.identifier, "param") or
-                        std.mem.eql(u8, self.current_token.identifier, "result")))
-                {
-                    // Inline function type - parse as BlockType and create a type
-                    self.lexer.pos = saved_lexer_pos;
-                    self.lexer.current_char = saved_lexer_char;
-                    self.current_token = saved_token;
-
-                    const block_type = try self.parseBlockType();
-                    if (block_type == .type_index) {
-                        type_idx = block_type.type_index;
+                while (self.current_token != .right_paren and self.current_token != .eof) {
+                    if (try self.parseValueType()) |vtype| {
+                        try types.append(self.allocator, vtype);
                     } else {
-                        // Create a new type for this inline signature
-                        const func_type = switch (block_type) {
-                            .empty => wasm_core.types.FuncType{ .parameter_types = &.{}, .result_types = &.{} },
-                            .value_type => |vt| wasm_core.types.FuncType{ .parameter_types = &.{}, .result_types = &.{vt} },
-                            .type_index => unreachable,
-                        };
-                        type_idx = @intCast(self.builder.types.items.len);
-                        try self.builder.types.append(self.allocator, func_type);
+                        break;
                     }
-                } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "table")) {
-                    // (table idx) without type specification - use type 0
-                    try self.advance(); // consume 'table'
+                }
+
+                const types_slice = try self.allocator.dupe(wasm_core.types.ValueType, types.items);
+                return .{ .selectv = types_slice };
+            },
+
+            // Call instructions
+            .call => return .{ .call = try self.parseU32OrIdentifier() },
+            .call_indirect => {
+                // Parse optional table name, (type idx) or inline (param)/(result)
+                var type_idx: u32 = 0;
+                var table_idx: u32 = 0;
+
+                // Check for table name or number first: call_indirect $table (type ...)
+                if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
                     table_idx = try self.parseU32OrIdentifier();
-                    try self.expectRightParen();
-                } else {
-                    // No type specification, restore and use type 0
-                    self.lexer.pos = saved_lexer_pos;
-                    self.lexer.current_char = saved_lexer_char;
-                    self.current_token = saved_token;
-                }
-            }
-
-            // Optional (table idx) if not already parsed
-            if (table_idx == 0 and self.current_token == .left_paren) {
-                const saved_lexer_pos = self.lexer.pos;
-                const saved_lexer_char = self.lexer.current_char;
-                const saved_token = self.current_token;
-
-                try self.advance(); // consume '('
-                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "table")) {
-                    try self.advance(); // consume 'table'
+                } else if (self.current_token == .number) {
                     table_idx = try self.parseU32OrIdentifier();
-                    try self.expectRightParen();
-                } else {
-                    // Not a table declaration, restore state
-                    self.lexer.pos = saved_lexer_pos;
-                    self.lexer.current_char = saved_lexer_char;
-                    self.current_token = saved_token;
                 }
-            }
 
-            return .{ .call_indirect = .{
-                .type_idx = type_idx,
-                .table_idx = table_idx,
-            } };
-        }
+                // Check for (type idx) or (param)/(result) or (table idx)
+                if (self.current_token == .left_paren) {
+                    const saved_lexer_pos = self.lexer.pos;
+                    const saved_lexer_char = self.lexer.current_char;
+                    const saved_token = self.current_token;
 
-        // reference instructions
-        else if (opcode == .ref_null) {
-            // Parse ref type (funcref or externref)
-            if (self.current_token == .identifier) {
-                if (std.mem.eql(u8, self.current_token.identifier, "funcref")) {
-                    try self.advance();
-                    return .{ .ref_null = .funcref };
-                } else if (std.mem.eql(u8, self.current_token.identifier, "externref")) {
-                    try self.advance();
-                    return .{ .ref_null = .externref };
-                } else if (std.mem.eql(u8, self.current_token.identifier, "func")) {
-                    try self.advance();
-                    return .{ .ref_null = .funcref };
-                } else if (std.mem.eql(u8, self.current_token.identifier, "extern")) {
-                    try self.advance();
-                    return .{ .ref_null = .externref };
+                    try self.advance(); // consume '('
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
+                        try self.advance(); // consume 'type'
+
+                        // Parse type index or name
+                        if (self.current_token == .number) {
+                            type_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                            try self.advance();
+                        } else if (self.current_token == .identifier) {
+                            // Resolve type name
+                            if (self.builder.type_names.get(self.current_token.identifier)) |idx| {
+                                type_idx = idx;
+                            }
+                            try self.advance();
+                        }
+
+                        try self.expectRightParen();
+                    } else if (self.current_token == .identifier and
+                        (std.mem.eql(u8, self.current_token.identifier, "param") or
+                            std.mem.eql(u8, self.current_token.identifier, "result")))
+                    {
+                        // Inline function type - parse as BlockType and create a type
+                        self.lexer.pos = saved_lexer_pos;
+                        self.lexer.current_char = saved_lexer_char;
+                        self.current_token = saved_token;
+
+                        const block_type = try self.parseBlockType();
+                        if (block_type == .type_index) {
+                            type_idx = block_type.type_index;
+                        } else {
+                            // Create a new type for this inline signature
+                            const func_type = switch (block_type) {
+                                .empty => wasm_core.types.FuncType{ .parameter_types = &.{}, .result_types = &.{} },
+                                .value_type => |vt| wasm_core.types.FuncType{ .parameter_types = &.{}, .result_types = &.{vt} },
+                                .type_index => unreachable,
+                            };
+                            type_idx = @intCast(self.builder.types.items.len);
+                            try self.builder.types.append(self.allocator, func_type);
+                        }
+                    } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "table")) {
+                        // (table idx) without type specification - use type 0
+                        try self.advance(); // consume 'table'
+                        table_idx = try self.parseU32OrIdentifier();
+                        try self.expectRightParen();
+                    } else {
+                        // No type specification, restore and use type 0
+                        self.lexer.pos = saved_lexer_pos;
+                        self.lexer.current_char = saved_lexer_char;
+                        self.current_token = saved_token;
+                    }
                 }
-            }
-            return .{ .ref_null = .funcref };
-        } else if (opcode == .ref_is_null) {
-            return .ref_is_null;
-        } else if (opcode == .ref_func) {
-            return .{ .ref_func = try self.parseU32OrIdentifier() };
-        }
 
-        // parametric instructions
-        else if (opcode == .drop) {
-            return .drop;
-        }
+                // Optional (table idx) if not already parsed
+                if (table_idx == 0 and self.current_token == .left_paren) {
+                    const saved_lexer_pos = self.lexer.pos;
+                    const saved_lexer_char = self.lexer.current_char;
+                    const saved_token = self.current_token;
 
-        // Variable instructions
-        else if (opcode == .local_get) {
-            return .{ .local_get = try self.parseU32OrIdentifier() };
-        } else if (opcode == .local_set) {
-            return .{ .local_set = try self.parseU32OrIdentifier() };
-        } else if (opcode == .local_tee) {
-            return .{ .local_tee = try self.parseU32OrIdentifier() };
-        } else if (opcode == .global_get) {
-            return .{ .global_get = try self.parseU32OrIdentifier() };
-        } else if (opcode == .global_set) {
-            return .{ .global_set = try self.parseU32OrIdentifier() };
-        }
-        // table instructions
-        else if (opcode == .table_get) {
-            const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
-                try self.parseU32OrIdentifier()
-            else
-                0;
-            return .{ .table_get = idx };
-        } else if (opcode == .table_set) {
-            const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
-                try self.parseU32OrIdentifier()
-            else
-                0;
-            return .{ .table_set = idx };
-        } else if (opcode == .table_size) {
-            const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
-                try self.parseU32OrIdentifier()
-            else
-                0;
-            return .{ .table_size = idx };
-        } else if (opcode == .table_grow) {
-            const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
-                try self.parseU32OrIdentifier()
-            else
-                0;
-            return .{ .table_grow = idx };
-        } else if (opcode == .table_fill) {
-            const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
-                try self.parseU32OrIdentifier()
-            else
-                0;
-            return .{ .table_fill = idx };
-        } else if (opcode == .table_copy) {
-            // Check if there are table indices
-            if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$"))) {
-                const dst = try self.parseU32OrIdentifier();
-                const src = try self.parseU32OrIdentifier();
+                    try self.advance(); // consume '('
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "table")) {
+                        try self.advance(); // consume 'table'
+                        table_idx = try self.parseU32OrIdentifier();
+                        try self.expectRightParen();
+                    } else {
+                        // Not a table declaration, restore state
+                        self.lexer.pos = saved_lexer_pos;
+                        self.lexer.current_char = saved_lexer_char;
+                        self.current_token = saved_token;
+                    }
+                }
+
+                return .{ .call_indirect = .{
+                    .type_idx = type_idx,
+                    .table_idx = table_idx,
+                } };
+            },
+
+            // reference instructions
+            .ref_null => {
+                // Parse ref type (funcref or externref)
+                if (self.current_token == .identifier) {
+                    if (std.mem.eql(u8, self.current_token.identifier, "funcref")) {
+                        try self.advance();
+                        return .{ .ref_null = .funcref };
+                    } else if (std.mem.eql(u8, self.current_token.identifier, "externref")) {
+                        try self.advance();
+                        return .{ .ref_null = .externref };
+                    } else if (std.mem.eql(u8, self.current_token.identifier, "func")) {
+                        try self.advance();
+                        return .{ .ref_null = .funcref };
+                    } else if (std.mem.eql(u8, self.current_token.identifier, "extern")) {
+                        try self.advance();
+                        return .{ .ref_null = .externref };
+                    }
+                }
+                return .{ .ref_null = .funcref };
+            },
+            .ref_is_null => return .ref_is_null,
+            .ref_func => return .{ .ref_func = try self.parseU32OrIdentifier() },
+
+            // Variable instructions
+            .local_get => return .{ .local_get = try self.parseU32OrIdentifier() },
+            .local_set => return .{ .local_set = try self.parseU32OrIdentifier() },
+            .local_tee => return .{ .local_tee = try self.parseU32OrIdentifier() },
+            .global_get => return .{ .global_get = try self.parseU32OrIdentifier() },
+            .global_set => return .{ .global_set = try self.parseU32OrIdentifier() },
+            // table instructions
+            .table_get => return .{ .table_get = try self.parseOptionalTableIdx() },
+            .table_set => return .{ .table_set = try self.parseOptionalTableIdx() },
+            .table_size => return .{ .table_size = try self.parseOptionalTableIdx() },
+            .table_grow => return .{ .table_grow = try self.parseOptionalTableIdx() },
+            .table_fill => return .{ .table_fill = try self.parseOptionalTableIdx() },
+            .table_copy => {
+                const dst = try self.parseOptionalTableIdx();
+                const src = try self.parseOptionalTableIdx();
                 return .{ .table_copy = .{ .table_idx_dst = dst, .table_idx_src = src } };
-            } else {
-                return .{ .table_copy = .{ .table_idx_dst = 0, .table_idx_src = 0 } };
-            }
-        } else if (opcode == .table_init) {
-            const first_idx = try self.parseU32OrIdentifier();
-            // Check if there's a second index (table elem) or just one (elem, table=0)
-            if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$"))) {
-                const second_idx = try self.parseU32OrIdentifier();
-                return .{ .table_init = .{ .table_idx = first_idx, .elem_idx = second_idx } };
-            } else {
-                return .{ .table_init = .{ .table_idx = 0, .elem_idx = first_idx } };
-            }
-        } else if (opcode == .elem_drop) {
-            return .{ .elem_drop = try self.parseU32OrIdentifier() };
-        }
+            },
+            .table_init => {
+                const first_idx = try self.parseU32OrIdentifier();
+                const second_idx = try self.parseOptionalTableIdx();
+                // If second index exists, first is table_idx; otherwise first is elem_idx
+                return if (second_idx != 0 or self.current_token == .number)
+                    .{ .table_init = .{ .table_idx = first_idx, .elem_idx = second_idx } }
+                else
+                    .{ .table_init = .{ .table_idx = 0, .elem_idx = first_idx } };
+            },
+            .elem_drop => return .{ .elem_drop = try self.parseU32OrIdentifier() },
 
-        // Memory instructions
-        else if (opcode == .i32_load) {
-            return .{ .i32_load = try self.parseMemArg() };
-        } else if (opcode == .i64_load) {
-            return .{ .i64_load = try self.parseMemArg() };
-        } else if (opcode == .f32_load) {
-            return .{ .f32_load = try self.parseMemArg() };
-        } else if (opcode == .f64_load) {
-            return .{ .f64_load = try self.parseMemArg() };
-        } else if (opcode == .i32_load8_s) {
-            return .{ .i32_load8_s = try self.parseMemArg() };
-        } else if (opcode == .i32_load8_u) {
-            return .{ .i32_load8_u = try self.parseMemArg() };
-        } else if (opcode == .i32_load16_s) {
-            return .{ .i32_load16_s = try self.parseMemArg() };
-        } else if (opcode == .i32_load16_u) {
-            return .{ .i32_load16_u = try self.parseMemArg() };
-        } else if (opcode == .i64_load8_s) {
-            return .{ .i64_load8_s = try self.parseMemArg() };
-        } else if (opcode == .i64_load8_u) {
-            return .{ .i64_load8_u = try self.parseMemArg() };
-        } else if (opcode == .i64_load16_s) {
-            return .{ .i64_load16_s = try self.parseMemArg() };
-        } else if (opcode == .i64_load16_u) {
-            return .{ .i64_load16_u = try self.parseMemArg() };
-        } else if (opcode == .i64_load32_s) {
-            return .{ .i64_load32_s = try self.parseMemArg() };
-        } else if (opcode == .i64_load32_u) {
-            return .{ .i64_load32_u = try self.parseMemArg() };
-        } else if (opcode == .i32_store) {
-            return .{ .i32_store = try self.parseMemArg() };
-        } else if (opcode == .i64_store) {
-            return .{ .i64_store = try self.parseMemArg() };
-        } else if (opcode == .f32_store) {
-            return .{ .f32_store = try self.parseMemArg() };
-        } else if (opcode == .f64_store) {
-            return .{ .f64_store = try self.parseMemArg() };
-        } else if (opcode == .i32_store8) {
-            return .{ .i32_store8 = try self.parseMemArg() };
-        } else if (opcode == .i32_store16) {
-            return .{ .i32_store16 = try self.parseMemArg() };
-        } else if (opcode == .i64_store8) {
-            return .{ .i64_store8 = try self.parseMemArg() };
-        } else if (opcode == .i64_store16) {
-            return .{ .i64_store16 = try self.parseMemArg() };
-        } else if (opcode == .i64_store32) {
-            return .{ .i64_store32 = try self.parseMemArg() };
-        } else if (opcode == .memory_size) {
-            const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
-                try self.parseU32OrIdentifier()
-            else
-                0;
-            return .{ .memory_size = mem_idx };
-        } else if (opcode == .memory_grow) {
-            const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
-                try self.parseU32OrIdentifier()
-            else
-                0;
-            return .{ .memory_grow = mem_idx };
-        } else if (opcode == .memory_init) {
-            const data_idx = try self.parseU32OrIdentifier();
-            const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
-                try self.parseU32OrIdentifier()
-            else
-                0;
-            return .{ .memory_init = .{ .data_idx = data_idx, .mem_idx = mem_idx } };
-        } else if (opcode == .memory_copy) {
-            const mem_idx_dst = if (self.current_token == .number or self.current_token == .identifier)
-                try self.parseU32OrIdentifier()
-            else
-                0;
-            const mem_idx_src = if (self.current_token == .number or self.current_token == .identifier)
-                try self.parseU32OrIdentifier()
-            else
-                0;
-            return .{ .memory_copy = .{ .mem_idx_dst = mem_idx_dst, .mem_idx_src = mem_idx_src } };
-        } else if (opcode == .memory_fill) {
-            const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
-                try self.parseU32OrIdentifier()
-            else
-                0;
-            return .{ .memory_fill = mem_idx };
-        } else if (opcode == .data_drop) {
-            return .{ .data_drop = try self.parseU32OrIdentifier() };
-        }
+            // Memory instructions
+            .i32_load => return .{ .i32_load = try self.parseMemArg() },
+            .i64_load => return .{ .i64_load = try self.parseMemArg() },
+            .f32_load => return .{ .f32_load = try self.parseMemArg() },
+            .f64_load => return .{ .f64_load = try self.parseMemArg() },
+            .i32_load8_s => return .{ .i32_load8_s = try self.parseMemArg() },
+            .i32_load8_u => return .{ .i32_load8_u = try self.parseMemArg() },
+            .i32_load16_s => return .{ .i32_load16_s = try self.parseMemArg() },
+            .i32_load16_u => return .{ .i32_load16_u = try self.parseMemArg() },
+            .i64_load8_s => return .{ .i64_load8_s = try self.parseMemArg() },
+            .i64_load8_u => return .{ .i64_load8_u = try self.parseMemArg() },
+            .i64_load16_s => return .{ .i64_load16_s = try self.parseMemArg() },
+            .i64_load16_u => return .{ .i64_load16_u = try self.parseMemArg() },
+            .i64_load32_s => return .{ .i64_load32_s = try self.parseMemArg() },
+            .i64_load32_u => return .{ .i64_load32_u = try self.parseMemArg() },
+            .i32_store => return .{ .i32_store = try self.parseMemArg() },
+            .i64_store => return .{ .i64_store = try self.parseMemArg() },
+            .f32_store => return .{ .f32_store = try self.parseMemArg() },
+            .f64_store => return .{ .f64_store = try self.parseMemArg() },
+            .i32_store8 => return .{ .i32_store8 = try self.parseMemArg() },
+            .i32_store16 => return .{ .i32_store16 = try self.parseMemArg() },
+            .i64_store8 => return .{ .i64_store8 = try self.parseMemArg() },
+            .i64_store16 => return .{ .i64_store16 = try self.parseMemArg() },
+            .i64_store32 => return .{ .i64_store32 = try self.parseMemArg() },
+            .memory_size => return .{ .memory_size = try self.parseOptionalMemIdx() },
+            .memory_grow => return .{ .memory_grow = try self.parseOptionalMemIdx() },
+            .memory_init => {
+                const data_idx = try self.parseU32OrIdentifier();
+                return .{ .memory_init = .{ .data_idx = data_idx, .mem_idx = try self.parseOptionalMemIdx() } };
+            },
+            .memory_copy => {
+                const mem_idx_dst = try self.parseOptionalMemIdx();
+                const mem_idx_src = try self.parseOptionalMemIdx();
+                return .{ .memory_copy = .{ .mem_idx_dst = mem_idx_dst, .mem_idx_src = mem_idx_src } };
+            },
+            .memory_fill => return .{ .memory_fill = try self.parseOptionalMemIdx() },
+            .data_drop => return .{ .data_drop = try self.parseU32OrIdentifier() },
 
-        // Numeric const instructions
-        else if (opcode == .i32_const) {
-            if (self.current_token != .number) {
-                return TextDecodeError.InvalidNumber;
-            }
-            const val = try numeric_parser.parseInteger(i32, self.current_token.number);
-            try self.advance();
-            return .{ .i32_const = val };
-        } else if (opcode == .i64_const) {
-            if (self.current_token != .number) {
-                return TextDecodeError.InvalidNumber;
-            }
-            const val = try numeric_parser.parseInteger(i64, self.current_token.number);
-            try self.advance();
-            return .{ .i64_const = val };
-        } else if (opcode == .f32_const) {
-            return .{ .f32_const = try self.parseFloat(f32) };
-        } else if (opcode == .f64_const) {
-            return .{ .f64_const = try self.parseFloat(f64) };
-        } else if (opcode == .v128_const) {
-            const result = try self.parseV128Const();
-            return .{ .v128_const = result };
-        }
+            // Numeric const instructions
+            .i32_const => {
+                if (self.current_token != .number) {
+                    return TextDecodeError.InvalidNumber;
+                }
+                const val = try numeric_parser.parseInteger(i32, self.current_token.number);
+                try self.advance();
+                return .{ .i32_const = val };
+            },
+            .i64_const => {
+                if (self.current_token != .number) {
+                    return TextDecodeError.InvalidNumber;
+                }
+                const val = try numeric_parser.parseInteger(i64, self.current_token.number);
+                try self.advance();
+                return .{ .i64_const = val };
+            },
+            .f32_const => return .{ .f32_const = try self.parseFloat(f32) },
+            .f64_const => return .{ .f64_const = try self.parseFloat(f64) },
+            .v128_const => {
+                const result = try self.parseV128Const();
+                return .{ .v128_const = result };
+            },
 
-        // i32 comparison
-        else if (opcode == .i32_eqz) {
-            return .i32_eqz;
-        } else if (opcode == .i32_eq) {
-            return .i32_eq;
-        } else if (opcode == .i32_ne) {
-            return .i32_ne;
-        } else if (opcode == .i32_lt_s) {
-            return .i32_lt_s;
-        } else if (opcode == .i32_lt_u) {
-            return .i32_lt_u;
-        } else if (opcode == .i32_gt_s) {
-            return .i32_gt_s;
-        } else if (opcode == .i32_gt_u) {
-            return .i32_gt_u;
-        } else if (opcode == .i32_le_s) {
-            return .i32_le_s;
-        } else if (opcode == .i32_le_u) {
-            return .i32_le_u;
-        } else if (opcode == .i32_ge_s) {
-            return .i32_ge_s;
-        } else if (opcode == .i32_ge_u) {
-            return .i32_ge_u;
-        }
+            // i32 comparison
+            .i32_eqz => return .i32_eqz,
+            .i32_eq => return .i32_eq,
+            .i32_ne => return .i32_ne,
+            .i32_lt_s => return .i32_lt_s,
+            .i32_lt_u => return .i32_lt_u,
+            .i32_gt_s => return .i32_gt_s,
+            .i32_gt_u => return .i32_gt_u,
+            .i32_le_s => return .i32_le_s,
+            .i32_le_u => return .i32_le_u,
+            .i32_ge_s => return .i32_ge_s,
+            .i32_ge_u => return .i32_ge_u,
 
-        // i64 comparison
-        else if (opcode == .i64_eqz) {
-            return .i64_eqz;
-        } else if (opcode == .i64_eq) {
-            return .i64_eq;
-        } else if (opcode == .i64_ne) {
-            return .i64_ne;
-        } else if (opcode == .i64_lt_s) {
-            return .i64_lt_s;
-        } else if (opcode == .i64_lt_u) {
-            return .i64_lt_u;
-        } else if (opcode == .i64_gt_s) {
-            return .i64_gt_s;
-        } else if (opcode == .i64_gt_u) {
-            return .i64_gt_u;
-        } else if (opcode == .i64_le_s) {
-            return .i64_le_s;
-        } else if (opcode == .i64_le_u) {
-            return .i64_le_u;
-        } else if (opcode == .i64_ge_s) {
-            return .i64_ge_s;
-        } else if (opcode == .i64_ge_u) {
-            return .i64_ge_u;
-        }
+            // i64 comparison
+            .i64_eqz => return .i64_eqz,
+            .i64_eq => return .i64_eq,
+            .i64_ne => return .i64_ne,
+            .i64_lt_s => return .i64_lt_s,
+            .i64_lt_u => return .i64_lt_u,
+            .i64_gt_s => return .i64_gt_s,
+            .i64_gt_u => return .i64_gt_u,
+            .i64_le_s => return .i64_le_s,
+            .i64_le_u => return .i64_le_u,
+            .i64_ge_s => return .i64_ge_s,
+            .i64_ge_u => return .i64_ge_u,
 
-        // f32 comparison
-        else if (opcode == .f32_eq) {
-            return .f32_eq;
-        } else if (opcode == .f32_ne) {
-            return .f32_ne;
-        } else if (opcode == .f32_lt) {
-            return .f32_lt;
-        } else if (opcode == .f32_gt) {
-            return .f32_gt;
-        } else if (opcode == .f32_le) {
-            return .f32_le;
-        } else if (opcode == .f32_ge) {
-            return .f32_ge;
-        }
+            // f32 comparison
+            .f32_eq => return .f32_eq,
+            .f32_ne => return .f32_ne,
+            .f32_lt => return .f32_lt,
+            .f32_gt => return .f32_gt,
+            .f32_le => return .f32_le,
+            .f32_ge => return .f32_ge,
 
-        // f64 comparison
-        else if (opcode == .f64_eq) {
-            return .f64_eq;
-        } else if (opcode == .f64_ne) {
-            return .f64_ne;
-        } else if (opcode == .f64_lt) {
-            return .f64_lt;
-        } else if (opcode == .f64_gt) {
-            return .f64_gt;
-        } else if (opcode == .f64_le) {
-            return .f64_le;
-        } else if (opcode == .f64_ge) {
-            return .f64_ge;
-        }
+            // f64 comparison
+            .f64_eq => return .f64_eq,
+            .f64_ne => return .f64_ne,
+            .f64_lt => return .f64_lt,
+            .f64_gt => return .f64_gt,
+            .f64_le => return .f64_le,
+            .f64_ge => return .f64_ge,
 
-        // i32 arithmetic
-        else if (opcode == .i32_clz) {
-            return .i32_clz;
-        } else if (opcode == .i32_ctz) {
-            return .i32_ctz;
-        } else if (opcode == .i32_popcnt) {
-            return .i32_popcnt;
-        } else if (opcode == .i32_add) {
-            return .i32_add;
-        } else if (opcode == .i32_sub) {
-            return .i32_sub;
-        } else if (opcode == .i32_mul) {
-            return .i32_mul;
-        } else if (opcode == .i32_div_s) {
-            return .i32_div_s;
-        } else if (opcode == .i32_div_u) {
-            return .i32_div_u;
-        } else if (opcode == .i32_rem_s) {
-            return .i32_rem_s;
-        } else if (opcode == .i32_rem_u) {
-            return .i32_rem_u;
-        } else if (opcode == .i32_and) {
-            return .i32_and;
-        } else if (opcode == .i32_or) {
-            return .i32_or;
-        } else if (opcode == .i32_xor) {
-            return .i32_xor;
-        } else if (opcode == .i32_shl) {
-            return .i32_shl;
-        } else if (opcode == .i32_shr_s) {
-            return .i32_shr_s;
-        } else if (opcode == .i32_shr_u) {
-            return .i32_shr_u;
-        } else if (opcode == .i32_rotl) {
-            return .i32_rotl;
-        } else if (opcode == .i32_rotr) {
-            return .i32_rotr;
-        }
+            // i32 arithmetic
+            .i32_clz => return .i32_clz,
+            .i32_ctz => return .i32_ctz,
+            .i32_popcnt => return .i32_popcnt,
+            .i32_add => return .i32_add,
+            .i32_sub => return .i32_sub,
+            .i32_mul => return .i32_mul,
+            .i32_div_s => return .i32_div_s,
+            .i32_div_u => return .i32_div_u,
+            .i32_rem_s => return .i32_rem_s,
+            .i32_rem_u => return .i32_rem_u,
+            .i32_and => return .i32_and,
+            .i32_or => return .i32_or,
+            .i32_xor => return .i32_xor,
+            .i32_shl => return .i32_shl,
+            .i32_shr_s => return .i32_shr_s,
+            .i32_shr_u => return .i32_shr_u,
+            .i32_rotl => return .i32_rotl,
+            .i32_rotr => return .i32_rotr,
 
-        // i64 arithmetic
-        else if (opcode == .i64_clz) {
-            return .i64_clz;
-        } else if (opcode == .i64_ctz) {
-            return .i64_ctz;
-        } else if (opcode == .i64_popcnt) {
-            return .i64_popcnt;
-        } else if (opcode == .i64_add) {
-            return .i64_add;
-        } else if (opcode == .i64_sub) {
-            return .i64_sub;
-        } else if (opcode == .i64_mul) {
-            return .i64_mul;
-        } else if (opcode == .i64_div_s) {
-            return .i64_div_s;
-        } else if (opcode == .i64_div_u) {
-            return .i64_div_u;
-        } else if (opcode == .i64_rem_s) {
-            return .i64_rem_s;
-        } else if (opcode == .i64_rem_u) {
-            return .i64_rem_u;
-        } else if (opcode == .i64_and) {
-            return .i64_and;
-        } else if (opcode == .i64_or) {
-            return .i64_or;
-        } else if (opcode == .i64_xor) {
-            return .i64_xor;
-        } else if (opcode == .i64_shl) {
-            return .i64_shl;
-        } else if (opcode == .i64_shr_s) {
-            return .i64_shr_s;
-        } else if (opcode == .i64_shr_u) {
-            return .i64_shr_u;
-        } else if (opcode == .i64_rotl) {
-            return .i64_rotl;
-        } else if (opcode == .i64_rotr) {
-            return .i64_rotr;
-        }
+            // i64 arithmetic
+            .i64_clz => return .i64_clz,
+            .i64_ctz => return .i64_ctz,
+            .i64_popcnt => return .i64_popcnt,
+            .i64_add => return .i64_add,
+            .i64_sub => return .i64_sub,
+            .i64_mul => return .i64_mul,
+            .i64_div_s => return .i64_div_s,
+            .i64_div_u => return .i64_div_u,
+            .i64_rem_s => return .i64_rem_s,
+            .i64_rem_u => return .i64_rem_u,
+            .i64_and => return .i64_and,
+            .i64_or => return .i64_or,
+            .i64_xor => return .i64_xor,
+            .i64_shl => return .i64_shl,
+            .i64_shr_s => return .i64_shr_s,
+            .i64_shr_u => return .i64_shr_u,
+            .i64_rotl => return .i64_rotl,
+            .i64_rotr => return .i64_rotr,
 
-        // f32 arithmetic
-        else if (opcode == .f32_abs) {
-            return .f32_abs;
-        } else if (opcode == .f32_neg) {
-            return .f32_neg;
-        } else if (opcode == .f32_ceil) {
-            return .f32_ceil;
-        } else if (opcode == .f32_floor) {
-            return .f32_floor;
-        } else if (opcode == .f32_trunc) {
-            return .f32_trunc;
-        } else if (opcode == .f32_nearest) {
-            return .f32_nearest;
-        } else if (opcode == .f32_sqrt) {
-            return .f32_sqrt;
-        } else if (opcode == .f32_add) {
-            return .f32_add;
-        } else if (opcode == .f32_sub) {
-            return .f32_sub;
-        } else if (opcode == .f32_mul) {
-            return .f32_mul;
-        } else if (opcode == .f32_div) {
-            return .f32_div;
-        } else if (opcode == .f32_min) {
-            return .f32_min;
-        } else if (opcode == .f32_max) {
-            return .f32_max;
-        } else if (opcode == .f32_copy_sign) {
-            return .f32_copy_sign;
-        }
+            // f32 arithmetic
+            .f32_abs => return .f32_abs,
+            .f32_neg => return .f32_neg,
+            .f32_ceil => return .f32_ceil,
+            .f32_floor => return .f32_floor,
+            .f32_trunc => return .f32_trunc,
+            .f32_nearest => return .f32_nearest,
+            .f32_sqrt => return .f32_sqrt,
+            .f32_add => return .f32_add,
+            .f32_sub => return .f32_sub,
+            .f32_mul => return .f32_mul,
+            .f32_div => return .f32_div,
+            .f32_min => return .f32_min,
+            .f32_max => return .f32_max,
+            .f32_copy_sign => return .f32_copy_sign,
 
-        // f64 arithmetic
-        else if (opcode == .f64_abs) {
-            return .f64_abs;
-        } else if (opcode == .f64_neg) {
-            return .f64_neg;
-        } else if (opcode == .f64_ceil) {
-            return .f64_ceil;
-        } else if (opcode == .f64_floor) {
-            return .f64_floor;
-        } else if (opcode == .f64_trunc) {
-            return .f64_trunc;
-        } else if (opcode == .f64_nearest) {
-            return .f64_nearest;
-        } else if (opcode == .f64_sqrt) {
-            return .f64_sqrt;
-        } else if (opcode == .f64_add) {
-            return .f64_add;
-        } else if (opcode == .f64_sub) {
-            return .f64_sub;
-        } else if (opcode == .f64_mul) {
-            return .f64_mul;
-        } else if (opcode == .f64_div) {
-            return .f64_div;
-        } else if (opcode == .f64_min) {
-            return .f64_min;
-        } else if (opcode == .f64_max) {
-            return .f64_max;
-        } else if (opcode == .f64_copy_sign) {
-            return .f64_copy_sign;
-        }
+            // f64 arithmetic
+            .f64_abs => return .f64_abs,
+            .f64_neg => return .f64_neg,
+            .f64_ceil => return .f64_ceil,
+            .f64_floor => return .f64_floor,
+            .f64_trunc => return .f64_trunc,
+            .f64_nearest => return .f64_nearest,
+            .f64_sqrt => return .f64_sqrt,
+            .f64_add => return .f64_add,
+            .f64_sub => return .f64_sub,
+            .f64_mul => return .f64_mul,
+            .f64_div => return .f64_div,
+            .f64_min => return .f64_min,
+            .f64_max => return .f64_max,
+            .f64_copy_sign => return .f64_copy_sign,
 
-        // Numeric conversion
-        else if (opcode == .i32_wrap_i64) {
-            return .i32_wrap_i64;
-        } else if (opcode == .i32_trunc_f32_s) {
-            return .i32_trunc_f32_s;
-        } else if (opcode == .i32_trunc_f32_u) {
-            return .i32_trunc_f32_u;
-        } else if (opcode == .i32_trunc_f64_s) {
-            return .i32_trunc_f64_s;
-        } else if (opcode == .i32_trunc_f64_u) {
-            return .i32_trunc_f64_u;
-        } else if (opcode == .i32_trunc_sat_f32_s) {
-            return .i32_trunc_sat_f32_s;
-        } else if (opcode == .i32_trunc_sat_f32_u) {
-            return .i32_trunc_sat_f32_u;
-        } else if (opcode == .i32_trunc_sat_f64_s) {
-            return .i32_trunc_sat_f64_s;
-        } else if (opcode == .i32_trunc_sat_f64_u) {
-            return .i32_trunc_sat_f64_u;
-        } else if (opcode == .i64_extend_i32_s) {
-            return .i64_extend_i32_s;
-        } else if (opcode == .i64_extend_i32_u) {
-            return .i64_extend_i32_u;
-        } else if (opcode == .i64_trunc_f32_s) {
-            return .i64_trunc_f32_s;
-        } else if (opcode == .i64_trunc_f32_u) {
-            return .i64_trunc_f32_u;
-        } else if (opcode == .i64_trunc_f64_s) {
-            return .i64_trunc_f64_s;
-        } else if (opcode == .i64_trunc_f64_u) {
-            return .i64_trunc_f64_u;
-        } else if (opcode == .i64_trunc_sat_f32_s) {
-            return .i64_trunc_sat_f32_s;
-        } else if (opcode == .i64_trunc_sat_f32_u) {
-            return .i64_trunc_sat_f32_u;
-        } else if (opcode == .i64_trunc_sat_f64_s) {
-            return .i64_trunc_sat_f64_s;
-        } else if (opcode == .i64_trunc_sat_f64_u) {
-            return .i64_trunc_sat_f64_u;
-        } else if (opcode == .f32_convert_i32_s) {
-            return .f32_convert_i32_s;
-        } else if (opcode == .f32_convert_i32_u) {
-            return .f32_convert_i32_u;
-        } else if (opcode == .f32_convert_i64_s) {
-            return .f32_convert_i64_s;
-        } else if (opcode == .f32_convert_i64_u) {
-            return .f32_convert_i64_u;
-        } else if (opcode == .f32_demote_f64) {
-            return .f32_demote_f64;
-        } else if (opcode == .f64_convert_i32_s) {
-            return .f64_convert_i32_s;
-        } else if (opcode == .f64_convert_i32_u) {
-            return .f64_convert_i32_u;
-        } else if (opcode == .f64_convert_i64_s) {
-            return .f64_convert_i64_s;
-        } else if (opcode == .f64_convert_i64_u) {
-            return .f64_convert_i64_u;
-        } else if (opcode == .f64_promote_f32) {
-            return .f64_promote_f32;
-        } else if (opcode == .i32_reinterpret_f32) {
-            return .i32_reinterpret_f32;
-        } else if (opcode == .i64_reinterpret_f64) {
-            return .i64_reinterpret_f64;
-        } else if (opcode == .f32_reinterpret_i32) {
-            return .f32_reinterpret_i32;
-        } else if (opcode == .f64_reinterpret_i64) {
-            return .f64_reinterpret_i64;
-        }
+            // Numeric conversion
+            .i32_wrap_i64 => return .i32_wrap_i64,
+            .i32_trunc_f32_s => return .i32_trunc_f32_s,
+            .i32_trunc_f32_u => return .i32_trunc_f32_u,
+            .i32_trunc_f64_s => return .i32_trunc_f64_s,
+            .i32_trunc_f64_u => return .i32_trunc_f64_u,
+            .i32_trunc_sat_f32_s => return .i32_trunc_sat_f32_s,
+            .i32_trunc_sat_f32_u => return .i32_trunc_sat_f32_u,
+            .i32_trunc_sat_f64_s => return .i32_trunc_sat_f64_s,
+            .i32_trunc_sat_f64_u => return .i32_trunc_sat_f64_u,
+            .i64_extend_i32_s => return .i64_extend_i32_s,
+            .i64_extend_i32_u => return .i64_extend_i32_u,
+            .i64_trunc_f32_s => return .i64_trunc_f32_s,
+            .i64_trunc_f32_u => return .i64_trunc_f32_u,
+            .i64_trunc_f64_s => return .i64_trunc_f64_s,
+            .i64_trunc_f64_u => return .i64_trunc_f64_u,
+            .i64_trunc_sat_f32_s => return .i64_trunc_sat_f32_s,
+            .i64_trunc_sat_f32_u => return .i64_trunc_sat_f32_u,
+            .i64_trunc_sat_f64_s => return .i64_trunc_sat_f64_s,
+            .i64_trunc_sat_f64_u => return .i64_trunc_sat_f64_u,
+            .f32_convert_i32_s => return .f32_convert_i32_s,
+            .f32_convert_i32_u => return .f32_convert_i32_u,
+            .f32_convert_i64_s => return .f32_convert_i64_s,
+            .f32_convert_i64_u => return .f32_convert_i64_u,
+            .f32_demote_f64 => return .f32_demote_f64,
+            .f64_convert_i32_s => return .f64_convert_i32_s,
+            .f64_convert_i32_u => return .f64_convert_i32_u,
+            .f64_convert_i64_s => return .f64_convert_i64_s,
+            .f64_convert_i64_u => return .f64_convert_i64_u,
+            .f64_promote_f32 => return .f64_promote_f32,
+            .i32_reinterpret_f32 => return .i32_reinterpret_f32,
+            .i64_reinterpret_f64 => return .i64_reinterpret_f64,
+            .f32_reinterpret_i32 => return .f32_reinterpret_i32,
+            .f64_reinterpret_i64 => return .f64_reinterpret_i64,
 
-        // Sign extension instructions (WebAssembly 2.0)
-        else if (opcode == .i32_extend8_s) {
-            return .i32_extend8_s;
-        } else if (opcode == .i32_extend16_s) {
-            return .i32_extend16_s;
-        } else if (opcode == .i64_extend8_s) {
-            return .i64_extend8_s;
-        } else if (opcode == .i64_extend16_s) {
-            return .i64_extend16_s;
-        } else if (opcode == .i64_extend32_s) {
-            return .i64_extend32_s;
-        }
+            // Sign extension instructions (WebAssembly 2.0)
+            .i32_extend8_s => return .i32_extend8_s,
+            .i32_extend16_s => return .i32_extend16_s,
+            .i64_extend8_s => return .i64_extend8_s,
+            .i64_extend16_s => return .i64_extend16_s,
+            .i64_extend32_s => return .i64_extend32_s,
 
-        // v128 memory instructions
-        else if (opcode == .v128_load) {
-            return .{ .v128_load = try self.parseMemArg() };
-        } else if (opcode == .v128_load8x8_s) {
-            return .{ .v128_load8x8_s = try self.parseMemArg() };
-        } else if (opcode == .v128_load8x8_u) {
-            return .{ .v128_load8x8_u = try self.parseMemArg() };
-        } else if (opcode == .v128_load16x4_s) {
-            return .{ .v128_load16x4_s = try self.parseMemArg() };
-        } else if (opcode == .v128_load16x4_u) {
-            return .{ .v128_load16x4_u = try self.parseMemArg() };
-        } else if (opcode == .v128_load32x2_s) {
-            return .{ .v128_load32x2_s = try self.parseMemArg() };
-        } else if (opcode == .v128_load32x2_u) {
-            return .{ .v128_load32x2_u = try self.parseMemArg() };
-        } else if (opcode == .v128_load8_splat) {
-            return .{ .v128_load8_splat = try self.parseMemArg() };
-        } else if (opcode == .v128_load16_splat) {
-            return .{ .v128_load16_splat = try self.parseMemArg() };
-        } else if (opcode == .v128_load32_splat) {
-            return .{ .v128_load32_splat = try self.parseMemArg() };
-        } else if (opcode == .v128_load64_splat) {
-            return .{ .v128_load64_splat = try self.parseMemArg() };
-        } else if (opcode == .v128_store) {
-            return .{ .v128_store = try self.parseMemArg() };
-        } else if (opcode == .v128_load8_lane) {
-            return .{ .v128_load8_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (opcode == .v128_load16_lane) {
-            return .{ .v128_load16_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (opcode == .v128_load32_lane) {
-            return .{ .v128_load32_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (opcode == .v128_load64_lane) {
-            return .{ .v128_load64_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (opcode == .v128_store8_lane) {
-            return .{ .v128_store8_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (opcode == .v128_store16_lane) {
-            return .{ .v128_store16_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (opcode == .v128_store32_lane) {
-            return .{ .v128_store32_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (opcode == .v128_store64_lane) {
-            return .{ .v128_store64_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (opcode == .v128_load32_zero) {
-            return .{ .v128_load32_zero = try self.parseMemArg() };
-        } else if (opcode == .v128_load64_zero) {
-            return .{ .v128_load64_zero = try self.parseMemArg() };
-        }
+            // v128 memory instructions
+            .v128_load => return .{ .v128_load = try self.parseMemArg() },
+            .v128_load8x8_s => return .{ .v128_load8x8_s = try self.parseMemArg() },
+            .v128_load8x8_u => return .{ .v128_load8x8_u = try self.parseMemArg() },
+            .v128_load16x4_s => return .{ .v128_load16x4_s = try self.parseMemArg() },
+            .v128_load16x4_u => return .{ .v128_load16x4_u = try self.parseMemArg() },
+            .v128_load32x2_s => return .{ .v128_load32x2_s = try self.parseMemArg() },
+            .v128_load32x2_u => return .{ .v128_load32x2_u = try self.parseMemArg() },
+            .v128_load8_splat => return .{ .v128_load8_splat = try self.parseMemArg() },
+            .v128_load16_splat => return .{ .v128_load16_splat = try self.parseMemArg() },
+            .v128_load32_splat => return .{ .v128_load32_splat = try self.parseMemArg() },
+            .v128_load64_splat => return .{ .v128_load64_splat = try self.parseMemArg() },
+            .v128_store => return .{ .v128_store = try self.parseMemArg() },
+            .v128_load8_lane => return .{ .v128_load8_lane = try self.parseMemArgWithLaneIdx() },
+            .v128_load16_lane => return .{ .v128_load16_lane = try self.parseMemArgWithLaneIdx() },
+            .v128_load32_lane => return .{ .v128_load32_lane = try self.parseMemArgWithLaneIdx() },
+            .v128_load64_lane => return .{ .v128_load64_lane = try self.parseMemArgWithLaneIdx() },
+            .v128_store8_lane => return .{ .v128_store8_lane = try self.parseMemArgWithLaneIdx() },
+            .v128_store16_lane => return .{ .v128_store16_lane = try self.parseMemArgWithLaneIdx() },
+            .v128_store32_lane => return .{ .v128_store32_lane = try self.parseMemArgWithLaneIdx() },
+            .v128_store64_lane => return .{ .v128_store64_lane = try self.parseMemArgWithLaneIdx() },
+            .v128_load32_zero => return .{ .v128_load32_zero = try self.parseMemArg() },
+            .v128_load64_zero => return .{ .v128_load64_zero = try self.parseMemArg() },
 
-        // v128 element manipulation instructions
-        else if (opcode == .i8x16_shuffle) {
-            return .{ .i8x16_shuffle = try self.parseLaneIdx16() };
-        } else if (opcode == .i8x16_swizzle) {
-            return .i8x16_swizzle;
-        } else if (opcode == .i8x16_splat) {
-            return .i8x16_splat;
-        } else if (opcode == .i16x8_splat) {
-            return .i16x8_splat;
-        } else if (opcode == .i32x4_splat) {
-            return .i32x4_splat;
-        } else if (opcode == .i64x2_splat) {
-            return .i64x2_splat;
-        } else if (opcode == .f32x4_splat) {
-            return .f32x4_splat;
-        } else if (opcode == .f64x2_splat) {
-            return .f64x2_splat;
-        } else if (opcode == .i8x16_extract_lane_s) {
-            return .{ .i8x16_extract_lane_s = try self.parseLaneIdx() };
-        } else if (opcode == .i8x16_extract_lane_u) {
-            return .{ .i8x16_extract_lane_u = try self.parseLaneIdx() };
-        } else if (opcode == .i8x16_replace_lane) {
-            return .{ .i8x16_replace_lane = try self.parseLaneIdx() };
-        } else if (opcode == .i16x8_extract_lane_s) {
-            return .{ .i16x8_extract_lane_s = try self.parseLaneIdx() };
-        } else if (opcode == .i16x8_extract_lane_u) {
-            return .{ .i16x8_extract_lane_u = try self.parseLaneIdx() };
-        } else if (opcode == .i16x8_replace_lane) {
-            return .{ .i16x8_replace_lane = try self.parseLaneIdx() };
-        } else if (opcode == .i32x4_extract_lane) {
-            return .{ .i32x4_extract_lane = try self.parseLaneIdx() };
-        } else if (opcode == .i32x4_replace_lane) {
-            return .{ .i32x4_replace_lane = try self.parseLaneIdx() };
-        } else if (opcode == .i64x2_extract_lane) {
-            return .{ .i64x2_extract_lane = try self.parseLaneIdx() };
-        } else if (opcode == .i64x2_replace_lane) {
-            return .{ .i64x2_replace_lane = try self.parseLaneIdx() };
-        } else if (opcode == .f32x4_extract_lane) {
-            return .{ .f32x4_extract_lane = try self.parseLaneIdx() };
-        } else if (opcode == .f32x4_replace_lane) {
-            return .{ .f32x4_replace_lane = try self.parseLaneIdx() };
-        } else if (opcode == .f64x2_extract_lane) {
-            return .{ .f64x2_extract_lane = try self.parseLaneIdx() };
-        } else if (opcode == .f64x2_replace_lane) {
-            return .{ .f64x2_replace_lane = try self.parseLaneIdx() };
-        }
+            // v128 element manipulation instructions
+            .i8x16_shuffle => return .{ .i8x16_shuffle = try self.parseLaneIdx16() },
+            .i8x16_swizzle => return .i8x16_swizzle,
+            .i8x16_splat => return .i8x16_splat,
+            .i16x8_splat => return .i16x8_splat,
+            .i32x4_splat => return .i32x4_splat,
+            .i64x2_splat => return .i64x2_splat,
+            .f32x4_splat => return .f32x4_splat,
+            .f64x2_splat => return .f64x2_splat,
+            .i8x16_extract_lane_s => return .{ .i8x16_extract_lane_s = try self.parseLaneIdx() },
+            .i8x16_extract_lane_u => return .{ .i8x16_extract_lane_u = try self.parseLaneIdx() },
+            .i8x16_replace_lane => return .{ .i8x16_replace_lane = try self.parseLaneIdx() },
+            .i16x8_extract_lane_s => return .{ .i16x8_extract_lane_s = try self.parseLaneIdx() },
+            .i16x8_extract_lane_u => return .{ .i16x8_extract_lane_u = try self.parseLaneIdx() },
+            .i16x8_replace_lane => return .{ .i16x8_replace_lane = try self.parseLaneIdx() },
+            .i32x4_extract_lane => return .{ .i32x4_extract_lane = try self.parseLaneIdx() },
+            .i32x4_replace_lane => return .{ .i32x4_replace_lane = try self.parseLaneIdx() },
+            .i64x2_extract_lane => return .{ .i64x2_extract_lane = try self.parseLaneIdx() },
+            .i64x2_replace_lane => return .{ .i64x2_replace_lane = try self.parseLaneIdx() },
+            .f32x4_extract_lane => return .{ .f32x4_extract_lane = try self.parseLaneIdx() },
+            .f32x4_replace_lane => return .{ .f32x4_replace_lane = try self.parseLaneIdx() },
+            .f64x2_extract_lane => return .{ .f64x2_extract_lane = try self.parseLaneIdx() },
+            .f64x2_replace_lane => return .{ .f64x2_replace_lane = try self.parseLaneIdx() },
 
-        // v128 comparison instructions - i8x16
-        else if (opcode == .i8x16_eq) {
-            return .i8x16_eq;
-        } else if (opcode == .i8x16_ne) {
-            return .i8x16_ne;
-        } else if (opcode == .i8x16_lt_s) {
-            return .i8x16_lt_s;
-        } else if (opcode == .i8x16_lt_u) {
-            return .i8x16_lt_u;
-        } else if (opcode == .i8x16_gt_s) {
-            return .i8x16_gt_s;
-        } else if (opcode == .i8x16_gt_u) {
-            return .i8x16_gt_u;
-        } else if (opcode == .i8x16_le_s) {
-            return .i8x16_le_s;
-        } else if (opcode == .i8x16_le_u) {
-            return .i8x16_le_u;
-        } else if (opcode == .i8x16_ge_s) {
-            return .i8x16_ge_s;
-        } else if (opcode == .i8x16_ge_u) {
-            return .i8x16_ge_u;
-        }
-        // i16x8
-        else if (opcode == .i16x8_eq) {
-            return .i16x8_eq;
-        } else if (opcode == .i16x8_ne) {
-            return .i16x8_ne;
-        } else if (opcode == .i16x8_lt_s) {
-            return .i16x8_lt_s;
-        } else if (opcode == .i16x8_lt_u) {
-            return .i16x8_lt_u;
-        } else if (opcode == .i16x8_gt_s) {
-            return .i16x8_gt_s;
-        } else if (opcode == .i16x8_gt_u) {
-            return .i16x8_gt_u;
-        } else if (opcode == .i16x8_le_s) {
-            return .i16x8_le_s;
-        } else if (opcode == .i16x8_le_u) {
-            return .i16x8_le_u;
-        } else if (opcode == .i16x8_ge_s) {
-            return .i16x8_ge_s;
-        } else if (opcode == .i16x8_ge_u) {
-            return .i16x8_ge_u;
-        }
-        // i32x4
-        else if (opcode == .i32x4_eq) {
-            return .i32x4_eq;
-        } else if (opcode == .i32x4_ne) {
-            return .i32x4_ne;
-        } else if (opcode == .i32x4_lt_s) {
-            return .i32x4_lt_s;
-        } else if (opcode == .i32x4_lt_u) {
-            return .i32x4_lt_u;
-        } else if (opcode == .i32x4_gt_s) {
-            return .i32x4_gt_s;
-        } else if (opcode == .i32x4_gt_u) {
-            return .i32x4_gt_u;
-        } else if (opcode == .i32x4_le_s) {
-            return .i32x4_le_s;
-        } else if (opcode == .i32x4_le_u) {
-            return .i32x4_le_u;
-        } else if (opcode == .i32x4_ge_s) {
-            return .i32x4_ge_s;
-        } else if (opcode == .i32x4_ge_u) {
-            return .i32x4_ge_u;
-        }
-        // i64x2
-        else if (opcode == .i64x2_eq) {
-            return .i64x2_eq;
-        } else if (opcode == .i64x2_ne) {
-            return .i64x2_ne;
-        } else if (opcode == .i64x2_lt_s) {
-            return .i64x2_lt_s;
-        } else if (opcode == .i64x2_gt_s) {
-            return .i64x2_gt_s;
-        } else if (opcode == .i64x2_le_s) {
-            return .i64x2_le_s;
-        } else if (opcode == .i64x2_ge_s) {
-            return .i64x2_ge_s;
-        }
-        // f32x4
-        else if (opcode == .f32x4_eq) {
-            return .f32x4_eq;
-        } else if (opcode == .f32x4_ne) {
-            return .f32x4_ne;
-        } else if (opcode == .f32x4_lt) {
-            return .f32x4_lt;
-        } else if (opcode == .f32x4_gt) {
-            return .f32x4_gt;
-        } else if (opcode == .f32x4_le) {
-            return .f32x4_le;
-        } else if (opcode == .f32x4_ge) {
-            return .f32x4_ge;
-        }
-        // f64x2
-        else if (opcode == .f64x2_eq) {
-            return .f64x2_eq;
-        } else if (opcode == .f64x2_ne) {
-            return .f64x2_ne;
-        } else if (opcode == .f64x2_lt) {
-            return .f64x2_lt;
-        } else if (opcode == .f64x2_gt) {
-            return .f64x2_gt;
-        } else if (opcode == .f64x2_le) {
-            return .f64x2_le;
-        } else if (opcode == .f64x2_ge) {
-            return .f64x2_ge;
-        }
+            // v128 comparison instructions - i8x16
+            .i8x16_eq => return .i8x16_eq,
+            .i8x16_ne => return .i8x16_ne,
+            .i8x16_lt_s => return .i8x16_lt_s,
+            .i8x16_lt_u => return .i8x16_lt_u,
+            .i8x16_gt_s => return .i8x16_gt_s,
+            .i8x16_gt_u => return .i8x16_gt_u,
+            .i8x16_le_s => return .i8x16_le_s,
+            .i8x16_le_u => return .i8x16_le_u,
+            .i8x16_ge_s => return .i8x16_ge_s,
+            .i8x16_ge_u => return .i8x16_ge_u,
 
-        // v128 logical operations
-        else if (opcode == .v128_not) {
-            return .v128_not;
-        } else if (opcode == .v128_and) {
-            return .v128_and;
-        } else if (opcode == .v128_andnot) {
-            return .v128_andnot;
-        } else if (opcode == .v128_or) {
-            return .v128_or;
-        } else if (opcode == .v128_xor) {
-            return .v128_xor;
-        } else if (opcode == .v128_bitselect) {
-            return .v128_bitselect;
-        }
+            // i16x8
+            .i16x8_eq => return .i16x8_eq,
+            .i16x8_ne => return .i16x8_ne,
+            .i16x8_lt_s => return .i16x8_lt_s,
+            .i16x8_lt_u => return .i16x8_lt_u,
+            .i16x8_gt_s => return .i16x8_gt_s,
+            .i16x8_gt_u => return .i16x8_gt_u,
+            .i16x8_le_s => return .i16x8_le_s,
+            .i16x8_le_u => return .i16x8_le_u,
+            .i16x8_ge_s => return .i16x8_ge_s,
+            .i16x8_ge_u => return .i16x8_ge_u,
 
-        // v128 test instructions
-        else if (opcode == .v128_any_true) {
-            return .v128_any_true;
-        } else if (opcode == .i8x16_all_true) {
-            return .i8x16_all_true;
-        } else if (opcode == .i16x8_all_true) {
-            return .i16x8_all_true;
-        } else if (opcode == .i32x4_all_true) {
-            return .i32x4_all_true;
-        } else if (opcode == .i64x2_all_true) {
-            return .i64x2_all_true;
-        } else if (opcode == .i8x16_bitmask) {
-            return .i8x16_bitmask;
-        } else if (opcode == .i16x8_bitmask) {
-            return .i16x8_bitmask;
-        } else if (opcode == .i32x4_bitmask) {
-            return .i32x4_bitmask;
-        } else if (opcode == .i64x2_bitmask) {
-            return .i64x2_bitmask;
-        }
+            // i32x4
+            .i32x4_eq => return .i32x4_eq,
+            .i32x4_ne => return .i32x4_ne,
+            .i32x4_lt_s => return .i32x4_lt_s,
+            .i32x4_lt_u => return .i32x4_lt_u,
+            .i32x4_gt_s => return .i32x4_gt_s,
+            .i32x4_gt_u => return .i32x4_gt_u,
+            .i32x4_le_s => return .i32x4_le_s,
+            .i32x4_le_u => return .i32x4_le_u,
+            .i32x4_ge_s => return .i32x4_ge_s,
+            .i32x4_ge_u => return .i32x4_ge_u,
 
-        // v128 integer arithmetic - unary operations
-        else if (opcode == .i8x16_abs) {
-            return .i8x16_abs;
-        } else if (opcode == .i16x8_abs) {
-            return .i16x8_abs;
-        } else if (opcode == .i32x4_abs) {
-            return .i32x4_abs;
-        } else if (opcode == .i64x2_abs) {
-            return .i64x2_abs;
-        } else if (opcode == .i8x16_neg) {
-            return .i8x16_neg;
-        } else if (opcode == .i16x8_neg) {
-            return .i16x8_neg;
-        } else if (opcode == .i32x4_neg) {
-            return .i32x4_neg;
-        } else if (opcode == .i64x2_neg) {
-            return .i64x2_neg;
-        } else if (opcode == .i8x16_popcnt) {
-            return .i8x16_popcnt;
-        }
-        // shift operations
-        else if (opcode == .i8x16_shl) {
-            return .i8x16_shl;
-        } else if (opcode == .i16x8_shl) {
-            return .i16x8_shl;
-        } else if (opcode == .i32x4_shl) {
-            return .i32x4_shl;
-        } else if (opcode == .i64x2_shl) {
-            return .i64x2_shl;
-        } else if (opcode == .i8x16_shr_s) {
-            return .i8x16_shr_s;
-        } else if (opcode == .i16x8_shr_s) {
-            return .i16x8_shr_s;
-        } else if (opcode == .i32x4_shr_s) {
-            return .i32x4_shr_s;
-        } else if (opcode == .i64x2_shr_s) {
-            return .i64x2_shr_s;
-        } else if (opcode == .i8x16_shr_u) {
-            return .i8x16_shr_u;
-        } else if (opcode == .i16x8_shr_u) {
-            return .i16x8_shr_u;
-        } else if (opcode == .i32x4_shr_u) {
-            return .i32x4_shr_u;
-        } else if (opcode == .i64x2_shr_u) {
-            return .i64x2_shr_u;
-        }
-        // add/sub operations
-        else if (opcode == .i8x16_add) {
-            return .i8x16_add;
-        } else if (opcode == .i16x8_add) {
-            return .i16x8_add;
-        } else if (opcode == .i32x4_add) {
-            return .i32x4_add;
-        } else if (opcode == .i64x2_add) {
-            return .i64x2_add;
-        } else if (opcode == .i8x16_sub) {
-            return .i8x16_sub;
-        } else if (opcode == .i16x8_sub) {
-            return .i16x8_sub;
-        } else if (opcode == .i32x4_sub) {
-            return .i32x4_sub;
-        } else if (opcode == .i64x2_sub) {
-            return .i64x2_sub;
-        }
-        // saturating add/sub
-        else if (opcode == .i8x16_add_sat_s) {
-            return .i8x16_add_sat_s;
-        } else if (opcode == .i16x8_add_sat_s) {
-            return .i16x8_add_sat_s;
-        } else if (opcode == .i8x16_add_sat_u) {
-            return .i8x16_add_sat_u;
-        } else if (opcode == .i16x8_add_sat_u) {
-            return .i16x8_add_sat_u;
-        } else if (opcode == .i8x16_sub_sat_s) {
-            return .i8x16_sub_sat_s;
-        } else if (opcode == .i16x8_sub_sat_s) {
-            return .i16x8_sub_sat_s;
-        } else if (opcode == .i8x16_sub_sat_u) {
-            return .i8x16_sub_sat_u;
-        } else if (opcode == .i16x8_sub_sat_u) {
-            return .i16x8_sub_sat_u;
-        }
-        // mul operations
-        else if (opcode == .i16x8_mul) {
-            return .i16x8_mul;
-        } else if (opcode == .i32x4_mul) {
-            return .i32x4_mul;
-        } else if (opcode == .i64x2_mul) {
-            return .i64x2_mul;
-        }
-        // min/max operations
-        else if (opcode == .i8x16_min_s) {
-            return .i8x16_min_s;
-        } else if (opcode == .i16x8_min_s) {
-            return .i16x8_min_s;
-        } else if (opcode == .i32x4_min_s) {
-            return .i32x4_min_s;
-        } else if (opcode == .i8x16_min_u) {
-            return .i8x16_min_u;
-        } else if (opcode == .i16x8_min_u) {
-            return .i16x8_min_u;
-        } else if (opcode == .i32x4_min_u) {
-            return .i32x4_min_u;
-        } else if (opcode == .i8x16_max_s) {
-            return .i8x16_max_s;
-        } else if (opcode == .i16x8_max_s) {
-            return .i16x8_max_s;
-        } else if (opcode == .i32x4_max_s) {
-            return .i32x4_max_s;
-        } else if (opcode == .i8x16_max_u) {
-            return .i8x16_max_u;
-        } else if (opcode == .i16x8_max_u) {
-            return .i16x8_max_u;
-        } else if (opcode == .i32x4_max_u) {
-            return .i32x4_max_u;
-        }
-        // avgr operations
-        else if (opcode == .i8x16_avgr_u) {
-            return .i8x16_avgr_u;
-        } else if (opcode == .i16x8_avgr_u) {
-            return .i16x8_avgr_u;
-        }
-        // special operations
-        else if (opcode == .i16x8_q15mulr_sat_s) {
-            return .i16x8_q15mulr_sat_s;
-        } else if (opcode == .i32x4_dot_i16x8_s) {
-            return .i32x4_dot_i16x8_s;
-        }
-        // extmul operations
-        else if (opcode == .i16x8_extmul_low_i8x16_s) {
-            return .i16x8_extmul_low_i8x16_s;
-        } else if (opcode == .i16x8_extmul_high_i8x16_s) {
-            return .i16x8_extmul_high_i8x16_s;
-        } else if (opcode == .i16x8_extmul_low_i8x16_u) {
-            return .i16x8_extmul_low_i8x16_u;
-        } else if (opcode == .i16x8_extmul_high_i8x16_u) {
-            return .i16x8_extmul_high_i8x16_u;
-        } else if (opcode == .i32x4_extmul_low_i16x8_s) {
-            return .i32x4_extmul_low_i16x8_s;
-        } else if (opcode == .i32x4_extmul_high_i16x8_s) {
-            return .i32x4_extmul_high_i16x8_s;
-        } else if (opcode == .i32x4_extmul_low_i16x8_u) {
-            return .i32x4_extmul_low_i16x8_u;
-        } else if (opcode == .i32x4_extmul_high_i16x8_u) {
-            return .i32x4_extmul_high_i16x8_u;
-        } else if (opcode == .i64x2_extmul_low_i32x4_s) {
-            return .i64x2_extmul_low_i32x4_s;
-        } else if (opcode == .i64x2_extmul_high_i32x4_s) {
-            return .i64x2_extmul_high_i32x4_s;
-        } else if (opcode == .i64x2_extmul_low_i32x4_u) {
-            return .i64x2_extmul_low_i32x4_u;
-        } else if (opcode == .i64x2_extmul_high_i32x4_u) {
-            return .i64x2_extmul_high_i32x4_u;
-        }
-        // extadd_pairwise operations
-        else if (opcode == .i16x8_extadd_pairwise_i8x16_s) {
-            return .i16x8_extadd_pairwise_i8x16_s;
-        } else if (opcode == .i16x8_extadd_pairwise_i8x16_u) {
-            return .i16x8_extadd_pairwise_i8x16_u;
-        } else if (opcode == .i32x4_extadd_pairwise_i16x8_s) {
-            return .i32x4_extadd_pairwise_i16x8_s;
-        } else if (opcode == .i32x4_extadd_pairwise_i16x8_u) {
-            return .i32x4_extadd_pairwise_i16x8_u;
-        }
+            // i64x2
+            .i64x2_eq => return .i64x2_eq,
+            .i64x2_ne => return .i64x2_ne,
+            .i64x2_lt_s => return .i64x2_lt_s,
+            .i64x2_gt_s => return .i64x2_gt_s,
+            .i64x2_le_s => return .i64x2_le_s,
+            .i64x2_ge_s => return .i64x2_ge_s,
 
-        // v128 floating-point arithmetic - unary operations
-        else if (opcode == .f32x4_abs) {
-            return .f32x4_abs;
-        } else if (opcode == .f64x2_abs) {
-            return .f64x2_abs;
-        } else if (opcode == .f32x4_neg) {
-            return .f32x4_neg;
-        } else if (opcode == .f64x2_neg) {
-            return .f64x2_neg;
-        } else if (opcode == .f32x4_sqrt) {
-            return .f32x4_sqrt;
-        } else if (opcode == .f64x2_sqrt) {
-            return .f64x2_sqrt;
-        } else if (opcode == .f32x4_ceil) {
-            return .f32x4_ceil;
-        } else if (opcode == .f64x2_ceil) {
-            return .f64x2_ceil;
-        } else if (opcode == .f32x4_floor) {
-            return .f32x4_floor;
-        } else if (opcode == .f64x2_floor) {
-            return .f64x2_floor;
-        } else if (opcode == .f32x4_trunc) {
-            return .f32x4_trunc;
-        } else if (opcode == .f64x2_trunc) {
-            return .f64x2_trunc;
-        } else if (opcode == .f32x4_nearest) {
-            return .f32x4_nearest;
-        } else if (opcode == .f64x2_nearest) {
-            return .f64x2_nearest;
-        }
-        // binary operations
-        else if (opcode == .f32x4_add) {
-            return .f32x4_add;
-        } else if (opcode == .f64x2_add) {
-            return .f64x2_add;
-        } else if (opcode == .f32x4_sub) {
-            return .f32x4_sub;
-        } else if (opcode == .f64x2_sub) {
-            return .f64x2_sub;
-        } else if (opcode == .f32x4_mul) {
-            return .f32x4_mul;
-        } else if (opcode == .f64x2_mul) {
-            return .f64x2_mul;
-        } else if (opcode == .f32x4_div) {
-            return .f32x4_div;
-        } else if (opcode == .f64x2_div) {
-            return .f64x2_div;
-        } else if (opcode == .f32x4_min) {
-            return .f32x4_min;
-        } else if (opcode == .f64x2_min) {
-            return .f64x2_min;
-        } else if (opcode == .f32x4_max) {
-            return .f32x4_max;
-        } else if (opcode == .f64x2_max) {
-            return .f64x2_max;
-        } else if (opcode == .f32x4_pmin) {
-            return .f32x4_pmin;
-        } else if (opcode == .f64x2_pmin) {
-            return .f64x2_pmin;
-        } else if (opcode == .f32x4_pmax) {
-            return .f32x4_pmax;
-        } else if (opcode == .f64x2_pmax) {
-            return .f64x2_pmax;
-        }
+            // f32x4
+            .f32x4_eq => return .f32x4_eq,
+            .f32x4_ne => return .f32x4_ne,
+            .f32x4_lt => return .f32x4_lt,
+            .f32x4_gt => return .f32x4_gt,
+            .f32x4_le => return .f32x4_le,
+            .f32x4_ge => return .f32x4_ge,
 
-        // v128 type conversion instructions
-        else if (opcode == .i32x4_trunc_sat_f32x4_s) {
-            return .i32x4_trunc_sat_f32x4_s;
-        } else if (opcode == .i32x4_trunc_sat_f32x4_u) {
-            return .i32x4_trunc_sat_f32x4_u;
-        } else if (opcode == .i32x4_trunc_sat_f64x2_s_zero) {
-            return .i32x4_trunc_sat_f64x2_s_zero;
-        } else if (opcode == .i32x4_trunc_sat_f64x2_u_zero) {
-            return .i32x4_trunc_sat_f64x2_u_zero;
-        } else if (opcode == .f32x4_convert_i32x4_s) {
-            return .f32x4_convert_i32x4_s;
-        } else if (opcode == .f32x4_convert_i32x4_u) {
-            return .f32x4_convert_i32x4_u;
-        } else if (opcode == .f64x2_convert_low_i32x4_s) {
-            return .f64x2_convert_low_i32x4_s;
-        } else if (opcode == .f64x2_convert_low_i32x4_u) {
-            return .f64x2_convert_low_i32x4_u;
-        } else if (opcode == .f32x4_demote_f64x2_zero) {
-            return .f32x4_demote_f64x2_zero;
-        } else if (opcode == .f64x2_promote_low_f32x4) {
-            return .f64x2_promote_low_f32x4;
-        } else if (opcode == .i8x16_narrow_i16x8_s) {
-            return .i8x16_narrow_i16x8_s;
-        } else if (opcode == .i8x16_narrow_i16x8_u) {
-            return .i8x16_narrow_i16x8_u;
-        } else if (opcode == .i16x8_narrow_i32x4_s) {
-            return .i16x8_narrow_i32x4_s;
-        } else if (opcode == .i16x8_narrow_i32x4_u) {
-            return .i16x8_narrow_i32x4_u;
-        } else if (opcode == .i16x8_extend_low_i8x16_s) {
-            return .i16x8_extend_low_i8x16_s;
-        } else if (opcode == .i16x8_extend_low_i8x16_u) {
-            return .i16x8_extend_low_i8x16_u;
-        } else if (opcode == .i16x8_extend_high_i8x16_s) {
-            return .i16x8_extend_high_i8x16_s;
-        } else if (opcode == .i16x8_extend_high_i8x16_u) {
-            return .i16x8_extend_high_i8x16_u;
-        } else if (opcode == .i32x4_extend_low_i16x8_s) {
-            return .i32x4_extend_low_i16x8_s;
-        } else if (opcode == .i32x4_extend_low_i16x8_u) {
-            return .i32x4_extend_low_i16x8_u;
-        } else if (opcode == .i32x4_extend_high_i16x8_s) {
-            return .i32x4_extend_high_i16x8_s;
-        } else if (opcode == .i32x4_extend_high_i16x8_u) {
-            return .i32x4_extend_high_i16x8_u;
-        } else if (opcode == .i64x2_extend_low_i32x4_s) {
-            return .i64x2_extend_low_i32x4_s;
-        } else if (opcode == .i64x2_extend_low_i32x4_u) {
-            return .i64x2_extend_low_i32x4_u;
-        } else if (opcode == .i64x2_extend_high_i32x4_s) {
-            return .i64x2_extend_high_i32x4_s;
-        } else if (opcode == .i64x2_extend_high_i32x4_u) {
-            return .i64x2_extend_high_i32x4_u;
-        }
+            // f64x2
+            .f64x2_eq => return .f64x2_eq,
+            .f64x2_ne => return .f64x2_ne,
+            .f64x2_lt => return .f64x2_lt,
+            .f64x2_gt => return .f64x2_gt,
+            .f64x2_le => return .f64x2_le,
+            .f64x2_ge => return .f64x2_ge,
 
-        // Relaxed SIMD instructions (WebAssembly 2.0)
-        else if (opcode == .i8x16_relaxed_swizzle) {
-            return .i8x16_relaxed_swizzle;
-        } else if (opcode == .i32x4_relaxed_trunc_f32x4_s) {
-            return .i32x4_relaxed_trunc_f32x4_s;
-        } else if (opcode == .i32x4_relaxed_trunc_f32x4_u) {
-            return .i32x4_relaxed_trunc_f32x4_u;
-        } else if (opcode == .i32x4_relaxed_trunc_f64x2_s_zero) {
-            return .i32x4_relaxed_trunc_f64x2_s_zero;
-        } else if (opcode == .i32x4_relaxed_trunc_f64x2_u_zero) {
-            return .i32x4_relaxed_trunc_f64x2_u_zero;
-        } else if (opcode == .f32x4_relaxed_madd) {
-            return .f32x4_relaxed_madd;
-        } else if (opcode == .f32x4_relaxed_nmadd) {
-            return .f32x4_relaxed_nmadd;
-        } else if (opcode == .f64x2_relaxed_madd) {
-            return .f64x2_relaxed_madd;
-        } else if (opcode == .f64x2_relaxed_nmadd) {
-            return .f64x2_relaxed_nmadd;
-        } else if (opcode == .i8x16_relaxed_laneselect) {
-            return .i8x16_relaxed_laneselect;
-        } else if (opcode == .i16x8_relaxed_laneselect) {
-            return .i16x8_relaxed_laneselect;
-        } else if (opcode == .i32x4_relaxed_laneselect) {
-            return .i32x4_relaxed_laneselect;
-        } else if (opcode == .i64x2_relaxed_laneselect) {
-            return .i64x2_relaxed_laneselect;
-        } else if (opcode == .f32x4_relaxed_min) {
-            return .f32x4_relaxed_min;
-        } else if (opcode == .f32x4_relaxed_max) {
-            return .f32x4_relaxed_max;
-        } else if (opcode == .f64x2_relaxed_min) {
-            return .f64x2_relaxed_min;
-        } else if (opcode == .f64x2_relaxed_max) {
-            return .f64x2_relaxed_max;
-        } else if (opcode == .i16x8_relaxed_q15mulr_s) {
-            return .i16x8_relaxed_q15mulr_s;
-        } else if (opcode == .i16x8_relaxed_dot_i8x16_i7x16_s) {
-            return .i16x8_relaxed_dot_i8x16_i7x16_s;
-        } else if (opcode == .i32x4_relaxed_dot_i8x16_i7x16_add_s) {
-            return .i32x4_relaxed_dot_i8x16_i7x16_add_s;
-        } else if (opcode == .f32x4_relaxed_dot_bf16x8_add_f32x4) {
-            return .f32x4_relaxed_dot_bf16x8_add_f32x4;
-        }
+            // v128 logical operations
+            .v128_not => return .v128_not,
+            .v128_and => return .v128_and,
+            .v128_andnot => return .v128_andnot,
+            .v128_or => return .v128_or,
+            .v128_xor => return .v128_xor,
+            .v128_bitselect => return .v128_bitselect,
 
-        // Unknown instruction
-        std.debug.print("Error: Unknown instruction: {s}\n", .{instr_name});
-        return TextDecodeError.UnexpectedToken;
+            // v128 test instructions
+            .v128_any_true => return .v128_any_true,
+            .i8x16_all_true => return .i8x16_all_true,
+            .i16x8_all_true => return .i16x8_all_true,
+            .i32x4_all_true => return .i32x4_all_true,
+            .i64x2_all_true => return .i64x2_all_true,
+            .i8x16_bitmask => return .i8x16_bitmask,
+            .i16x8_bitmask => return .i16x8_bitmask,
+            .i32x4_bitmask => return .i32x4_bitmask,
+            .i64x2_bitmask => return .i64x2_bitmask,
+
+            // v128 integer arithmetic - unary operations
+            .i8x16_abs => return .i8x16_abs,
+            .i16x8_abs => return .i16x8_abs,
+            .i32x4_abs => return .i32x4_abs,
+            .i64x2_abs => return .i64x2_abs,
+            .i8x16_neg => return .i8x16_neg,
+            .i16x8_neg => return .i16x8_neg,
+            .i32x4_neg => return .i32x4_neg,
+            .i64x2_neg => return .i64x2_neg,
+            .i8x16_popcnt => return .i8x16_popcnt,
+
+            // shift operations
+            .i8x16_shl => return .i8x16_shl,
+            .i16x8_shl => return .i16x8_shl,
+            .i32x4_shl => return .i32x4_shl,
+            .i64x2_shl => return .i64x2_shl,
+            .i8x16_shr_s => return .i8x16_shr_s,
+            .i16x8_shr_s => return .i16x8_shr_s,
+            .i32x4_shr_s => return .i32x4_shr_s,
+            .i64x2_shr_s => return .i64x2_shr_s,
+            .i8x16_shr_u => return .i8x16_shr_u,
+            .i16x8_shr_u => return .i16x8_shr_u,
+            .i32x4_shr_u => return .i32x4_shr_u,
+            .i64x2_shr_u => return .i64x2_shr_u,
+
+            // add/sub operations
+            .i8x16_add => return .i8x16_add,
+            .i16x8_add => return .i16x8_add,
+            .i32x4_add => return .i32x4_add,
+            .i64x2_add => return .i64x2_add,
+            .i8x16_sub => return .i8x16_sub,
+            .i16x8_sub => return .i16x8_sub,
+            .i32x4_sub => return .i32x4_sub,
+            .i64x2_sub => return .i64x2_sub,
+
+            // saturating add/sub
+            .i8x16_add_sat_s => return .i8x16_add_sat_s,
+            .i16x8_add_sat_s => return .i16x8_add_sat_s,
+            .i8x16_add_sat_u => return .i8x16_add_sat_u,
+            .i16x8_add_sat_u => return .i16x8_add_sat_u,
+            .i8x16_sub_sat_s => return .i8x16_sub_sat_s,
+            .i16x8_sub_sat_s => return .i16x8_sub_sat_s,
+            .i8x16_sub_sat_u => return .i8x16_sub_sat_u,
+            .i16x8_sub_sat_u => return .i16x8_sub_sat_u,
+
+            // mul operations
+            .i16x8_mul => return .i16x8_mul,
+            .i32x4_mul => return .i32x4_mul,
+            .i64x2_mul => return .i64x2_mul,
+
+            // min/max operations
+            .i8x16_min_s => return .i8x16_min_s,
+            .i16x8_min_s => return .i16x8_min_s,
+            .i32x4_min_s => return .i32x4_min_s,
+            .i8x16_min_u => return .i8x16_min_u,
+            .i16x8_min_u => return .i16x8_min_u,
+            .i32x4_min_u => return .i32x4_min_u,
+            .i8x16_max_s => return .i8x16_max_s,
+            .i16x8_max_s => return .i16x8_max_s,
+            .i32x4_max_s => return .i32x4_max_s,
+            .i8x16_max_u => return .i8x16_max_u,
+            .i16x8_max_u => return .i16x8_max_u,
+            .i32x4_max_u => return .i32x4_max_u,
+
+            // avgr operations
+            .i8x16_avgr_u => return .i8x16_avgr_u,
+            .i16x8_avgr_u => return .i16x8_avgr_u,
+
+            // special operations
+            .i16x8_q15mulr_sat_s => return .i16x8_q15mulr_sat_s,
+            .i32x4_dot_i16x8_s => return .i32x4_dot_i16x8_s,
+
+            // extmul operations
+            .i16x8_extmul_low_i8x16_s => return .i16x8_extmul_low_i8x16_s,
+            .i16x8_extmul_high_i8x16_s => return .i16x8_extmul_high_i8x16_s,
+            .i16x8_extmul_low_i8x16_u => return .i16x8_extmul_low_i8x16_u,
+            .i16x8_extmul_high_i8x16_u => return .i16x8_extmul_high_i8x16_u,
+            .i32x4_extmul_low_i16x8_s => return .i32x4_extmul_low_i16x8_s,
+            .i32x4_extmul_high_i16x8_s => return .i32x4_extmul_high_i16x8_s,
+            .i32x4_extmul_low_i16x8_u => return .i32x4_extmul_low_i16x8_u,
+            .i32x4_extmul_high_i16x8_u => return .i32x4_extmul_high_i16x8_u,
+            .i64x2_extmul_low_i32x4_s => return .i64x2_extmul_low_i32x4_s,
+            .i64x2_extmul_high_i32x4_s => return .i64x2_extmul_high_i32x4_s,
+            .i64x2_extmul_low_i32x4_u => return .i64x2_extmul_low_i32x4_u,
+            .i64x2_extmul_high_i32x4_u => return .i64x2_extmul_high_i32x4_u,
+
+            // extadd_pairwise operations
+            .i16x8_extadd_pairwise_i8x16_s => return .i16x8_extadd_pairwise_i8x16_s,
+            .i16x8_extadd_pairwise_i8x16_u => return .i16x8_extadd_pairwise_i8x16_u,
+            .i32x4_extadd_pairwise_i16x8_s => return .i32x4_extadd_pairwise_i16x8_s,
+            .i32x4_extadd_pairwise_i16x8_u => return .i32x4_extadd_pairwise_i16x8_u,
+
+            // v128 floating-point arithmetic - unary operations
+            .f32x4_abs => return .f32x4_abs,
+            .f64x2_abs => return .f64x2_abs,
+            .f32x4_neg => return .f32x4_neg,
+            .f64x2_neg => return .f64x2_neg,
+            .f32x4_sqrt => return .f32x4_sqrt,
+            .f64x2_sqrt => return .f64x2_sqrt,
+            .f32x4_ceil => return .f32x4_ceil,
+            .f64x2_ceil => return .f64x2_ceil,
+            .f32x4_floor => return .f32x4_floor,
+            .f64x2_floor => return .f64x2_floor,
+            .f32x4_trunc => return .f32x4_trunc,
+            .f64x2_trunc => return .f64x2_trunc,
+            .f32x4_nearest => return .f32x4_nearest,
+            .f64x2_nearest => return .f64x2_nearest,
+
+            // binary operations
+            .f32x4_add => return .f32x4_add,
+            .f64x2_add => return .f64x2_add,
+            .f32x4_sub => return .f32x4_sub,
+            .f64x2_sub => return .f64x2_sub,
+            .f32x4_mul => return .f32x4_mul,
+            .f64x2_mul => return .f64x2_mul,
+            .f32x4_div => return .f32x4_div,
+            .f64x2_div => return .f64x2_div,
+            .f32x4_min => return .f32x4_min,
+            .f64x2_min => return .f64x2_min,
+            .f32x4_max => return .f32x4_max,
+            .f64x2_max => return .f64x2_max,
+            .f32x4_pmin => return .f32x4_pmin,
+            .f64x2_pmin => return .f64x2_pmin,
+            .f32x4_pmax => return .f32x4_pmax,
+            .f64x2_pmax => return .f64x2_pmax,
+
+            // v128 type conversion instructions
+            .i32x4_trunc_sat_f32x4_s => return .i32x4_trunc_sat_f32x4_s,
+            .i32x4_trunc_sat_f32x4_u => return .i32x4_trunc_sat_f32x4_u,
+            .i32x4_trunc_sat_f64x2_s_zero => return .i32x4_trunc_sat_f64x2_s_zero,
+            .i32x4_trunc_sat_f64x2_u_zero => return .i32x4_trunc_sat_f64x2_u_zero,
+            .f32x4_convert_i32x4_s => return .f32x4_convert_i32x4_s,
+            .f32x4_convert_i32x4_u => return .f32x4_convert_i32x4_u,
+            .f64x2_convert_low_i32x4_s => return .f64x2_convert_low_i32x4_s,
+            .f64x2_convert_low_i32x4_u => return .f64x2_convert_low_i32x4_u,
+            .f32x4_demote_f64x2_zero => return .f32x4_demote_f64x2_zero,
+            .f64x2_promote_low_f32x4 => return .f64x2_promote_low_f32x4,
+            .i8x16_narrow_i16x8_s => return .i8x16_narrow_i16x8_s,
+            .i8x16_narrow_i16x8_u => return .i8x16_narrow_i16x8_u,
+            .i16x8_narrow_i32x4_s => return .i16x8_narrow_i32x4_s,
+            .i16x8_narrow_i32x4_u => return .i16x8_narrow_i32x4_u,
+            .i16x8_extend_low_i8x16_s => return .i16x8_extend_low_i8x16_s,
+            .i16x8_extend_low_i8x16_u => return .i16x8_extend_low_i8x16_u,
+            .i16x8_extend_high_i8x16_s => return .i16x8_extend_high_i8x16_s,
+            .i16x8_extend_high_i8x16_u => return .i16x8_extend_high_i8x16_u,
+            .i32x4_extend_low_i16x8_s => return .i32x4_extend_low_i16x8_s,
+            .i32x4_extend_low_i16x8_u => return .i32x4_extend_low_i16x8_u,
+            .i32x4_extend_high_i16x8_s => return .i32x4_extend_high_i16x8_s,
+            .i32x4_extend_high_i16x8_u => return .i32x4_extend_high_i16x8_u,
+            .i64x2_extend_low_i32x4_s => return .i64x2_extend_low_i32x4_s,
+            .i64x2_extend_low_i32x4_u => return .i64x2_extend_low_i32x4_u,
+            .i64x2_extend_high_i32x4_s => return .i64x2_extend_high_i32x4_s,
+            .i64x2_extend_high_i32x4_u => return .i64x2_extend_high_i32x4_u,
+
+            // Relaxed SIMD instructions (WebAssembly 2.0)
+            .i8x16_relaxed_swizzle => return .i8x16_relaxed_swizzle,
+            .i32x4_relaxed_trunc_f32x4_s => return .i32x4_relaxed_trunc_f32x4_s,
+            .i32x4_relaxed_trunc_f32x4_u => return .i32x4_relaxed_trunc_f32x4_u,
+            .i32x4_relaxed_trunc_f64x2_s_zero => return .i32x4_relaxed_trunc_f64x2_s_zero,
+            .i32x4_relaxed_trunc_f64x2_u_zero => return .i32x4_relaxed_trunc_f64x2_u_zero,
+            .f32x4_relaxed_madd => return .f32x4_relaxed_madd,
+            .f32x4_relaxed_nmadd => return .f32x4_relaxed_nmadd,
+            .f64x2_relaxed_madd => return .f64x2_relaxed_madd,
+            .f64x2_relaxed_nmadd => return .f64x2_relaxed_nmadd,
+            .i8x16_relaxed_laneselect => return .i8x16_relaxed_laneselect,
+            .i16x8_relaxed_laneselect => return .i16x8_relaxed_laneselect,
+            .i32x4_relaxed_laneselect => return .i32x4_relaxed_laneselect,
+            .i64x2_relaxed_laneselect => return .i64x2_relaxed_laneselect,
+            .f32x4_relaxed_min => return .f32x4_relaxed_min,
+            .f32x4_relaxed_max => return .f32x4_relaxed_max,
+            .f64x2_relaxed_min => return .f64x2_relaxed_min,
+            .f64x2_relaxed_max => return .f64x2_relaxed_max,
+            .i16x8_relaxed_q15mulr_s => return .i16x8_relaxed_q15mulr_s,
+            .i16x8_relaxed_dot_i8x16_i7x16_s => return .i16x8_relaxed_dot_i8x16_i7x16_s,
+            .i32x4_relaxed_dot_i8x16_i7x16_add_s => return .i32x4_relaxed_dot_i8x16_i7x16_add_s,
+            .f32x4_relaxed_dot_bf16x8_add_f32x4 => return .f32x4_relaxed_dot_bf16x8_add_f32x4,
+        }
     }
 
     /// Parse S-expression recursively: (instr arg1 arg2 ...)
@@ -3365,6 +2869,24 @@ pub const Parser = struct {
         }
         std.debug.print("Error: parseU32OrIdentifier: Unexpected token at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
         return TextDecodeError.UnexpectedToken;
+    }
+
+    /// Parse optional table index (number or $name), returns 0 if not present
+    fn parseOptionalTableIdx(self: *Parser) !u32 {
+        if (self.current_token == .number or
+            (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
+        {
+            return try self.parseU32OrIdentifier();
+        }
+        return 0;
+    }
+
+    /// Parse optional memory index (number or identifier), returns 0 if not present
+    fn parseOptionalMemIdx(self: *Parser) !u32 {
+        if (self.current_token == .number or self.current_token == .identifier) {
+            return try self.parseU32OrIdentifier();
+        }
+        return 0;
     }
 
     /// Parse memory argument (offset and align)
