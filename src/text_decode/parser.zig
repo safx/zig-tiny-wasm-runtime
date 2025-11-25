@@ -426,7 +426,7 @@ pub const Parser = struct {
             .result_types = try self.allocator.dupe(wasm_core.types.ValueType, results.items),
         };
         try builder.types.append(self.allocator, func_type);
-        
+
         // Register type name if present
         if (type_name) |name| {
             try builder.type_names.put(name, type_idx);
@@ -760,11 +760,11 @@ pub const Parser = struct {
             try self.advance();
             if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "elem")) {
                 try self.advance();
-                
+
                 // Parse element initializers
                 var init_list = std.ArrayList(wasm_core.types.InitExpression){};
                 defer init_list.deinit(self.allocator);
-                
+
                 while (self.current_token != .right_paren and self.current_token != .eof) {
                     if (self.current_token == .identifier) {
                         if (self.builder.func_names.get(self.current_token.identifier)) |idx| {
@@ -779,22 +779,22 @@ pub const Parser = struct {
                         break;
                     }
                 }
-                
+
                 try self.expectRightParen();
-                
+
                 // Update limits if not specified
                 if (min == 0 and max == null) {
                     min = @intCast(init_list.items.len);
                     max = min;
                 }
-                
+
                 // Create table
                 const table_idx: u32 = @intCast(builder.tables.items.len);
                 try builder.tables.append(self.allocator, .{
                     .ref_type = ref_type,
                     .limits = .{ .min = min, .max = max },
                 });
-                
+
                 // Create element segment
                 const offset = wasm_core.types.InitExpression{ .i32_const = 0 };
                 try builder.elements.append(self.allocator, .{
@@ -802,7 +802,7 @@ pub const Parser = struct {
                     .init = try self.allocator.dupe(wasm_core.types.InitExpression, init_list.items),
                     .mode = .{ .active = .{ .table_idx = table_idx, .offset = offset } },
                 });
-                
+
                 // Add export if present
                 if (export_name) |name| {
                     try builder.exports.append(self.allocator, .{
@@ -810,14 +810,14 @@ pub const Parser = struct {
                         .desc = .{ .table = table_idx },
                     });
                 }
-                
+
                 return;
             } else {
                 // Not elem, restore and skip
                 self.lexer.pos = saved_pos;
                 self.lexer.current_char = saved_char;
                 self.current_token = saved_token;
-                
+
                 var depth: u32 = 1;
                 try self.advance();
                 while (depth > 0 and self.current_token != .eof) {
@@ -1201,10 +1201,10 @@ pub const Parser = struct {
                 // Inline import: (func $name (import "mod" "name") ...)
                 // Convert to regular import and return early
                 try self.advance(); // consume 'import'
-                
+
                 var module_name: []const u8 = "";
                 var field_name: []const u8 = "";
-                
+
                 if (self.current_token == .string) {
                     module_name = self.current_token.string;
                     try self.advance();
@@ -1214,7 +1214,7 @@ pub const Parser = struct {
                     try self.advance();
                 }
                 try self.expectRightParen();
-                
+
                 // Continue parsing params/results after import
                 while (self.current_token == .left_paren) {
                     const next_tok = try self.peekToken();
@@ -1224,10 +1224,10 @@ pub const Parser = struct {
                             break;
                         }
                     } else break;
-                    
+
                     try self.advance(); // consume '('
                     const kw = self.current_token.identifier;
-                    
+
                     if (std.mem.eql(u8, kw, "param")) {
                         try self.advance();
                         while (self.current_token != .right_paren and self.current_token != .eof) {
@@ -1259,7 +1259,7 @@ pub const Parser = struct {
                         try self.expectRightParen();
                     }
                 }
-                
+
                 // Create function type and add import
                 const func_type = wasm_core.types.FuncType{
                     .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, params.items),
@@ -1267,7 +1267,7 @@ pub const Parser = struct {
                 };
                 const type_idx: u32 = @intCast(builder.types.items.len);
                 try builder.types.append(self.allocator, func_type);
-                
+
                 const import_desc = wasm_core.types.ImportDesc{
                     .function = type_idx,
                 };
@@ -1277,12 +1277,12 @@ pub const Parser = struct {
                     .desc = import_desc,
                 };
                 try builder.imports.append(self.allocator, import);
-                
+
                 if (func_name) |name| {
                     const func_idx: u32 = @intCast(builder.imports.items.len - 1);
                     try builder.func_names.put(name, func_idx);
                 }
-                
+
                 return;
             } else if (std.mem.eql(u8, keyword, "param")) {
                 try self.advance(); // consume 'param'
@@ -1475,7 +1475,7 @@ pub const Parser = struct {
         // Parse (type ...) if present
         if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
             try self.advance(); // consume 'type'
-            
+
             var type_idx: u32 = 0;
             if (self.current_token == .number) {
                 type_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
@@ -1487,21 +1487,21 @@ pub const Parser = struct {
                 }
                 try self.advance();
             }
-            
+
             if (self.current_token == .right_paren) {
                 try self.advance();
             }
-            
+
             return .{ .type_index = type_idx };
         }
 
         // Parse (param ...) if present
         var param_types = std.ArrayList(wasm_core.types.ValueType){};
         defer param_types.deinit(self.allocator);
-        
+
         if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "param")) {
             try self.advance(); // consume 'param'
-            
+
             while (self.current_token != .right_paren) {
                 if (try self.parseValueType()) |vtype| {
                     try param_types.append(self.allocator, vtype);
@@ -1509,7 +1509,7 @@ pub const Parser = struct {
                     break;
                 }
             }
-            
+
             try self.expectRightParen(); // consume ')'
 
             // Check for (result ...) after (param ...)
@@ -1642,12 +1642,13 @@ pub const Parser = struct {
                             try self.advance();
                         }
                         try self.expectRightParen();
-                    } else if (std.mem.eql(u8, instr_name, "i32.add") or 
-                               std.mem.eql(u8, instr_name, "i32.sub") or 
-                               std.mem.eql(u8, instr_name, "i32.mul") or
-                               std.mem.eql(u8, instr_name, "i64.add") or 
-                               std.mem.eql(u8, instr_name, "i64.sub") or 
-                               std.mem.eql(u8, instr_name, "i64.mul")) {
+                    } else if (std.mem.eql(u8, instr_name, "i32.add") or
+                        std.mem.eql(u8, instr_name, "i32.sub") or
+                        std.mem.eql(u8, instr_name, "i32.mul") or
+                        std.mem.eql(u8, instr_name, "i64.add") or
+                        std.mem.eql(u8, instr_name, "i64.sub") or
+                        std.mem.eql(u8, instr_name, "i64.mul"))
+                    {
                         // Recursively parse operands
                         const sub_expr = try self.parseInitExpression();
                         // Flatten sub-expression instructions
@@ -1662,7 +1663,7 @@ pub const Parser = struct {
                             .global_get => |v| try instrs.append(self.allocator, .{ .global_get = v }),
                             else => {},
                         }
-                        
+
                         // Add the operation
                         if (std.mem.eql(u8, instr_name, "i32.add")) {
                             try instrs.append(self.allocator, .i32_add);
@@ -1677,7 +1678,7 @@ pub const Parser = struct {
                         } else if (std.mem.eql(u8, instr_name, "i64.mul")) {
                             try instrs.append(self.allocator, .i64_mul);
                         }
-                        
+
                         try self.expectRightParen();
                     } else {
                         try self.expectRightParen();
@@ -1804,43 +1805,51 @@ pub const Parser = struct {
             return null;
         }
 
+        // Validate instruction name using instruction_map
+        // This provides early error detection for unknown instructions
+        const instruction_map = @import("./instruction_map.zig");
+        const opcode = instruction_map.opcodeFromName(instr_name) orelse {
+            std.debug.print("Error: Unknown instruction: {s}\n", .{instr_name});
+            return error.UnknownInstruction;
+        };
+
         // Control instructions
-        if (std.mem.eql(u8, instr_name, "nop")) {
+        if (opcode == .nop) {
             return .nop;
-        } else if (std.mem.eql(u8, instr_name, "unreachable")) {
+        } else if (opcode == .@"unreachable") {
             return .@"unreachable";
-        } else if (std.mem.eql(u8, instr_name, "block")) {
+        } else if (opcode == .block) {
             // Skip optional label name
             if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
                 try self.advance();
             }
             return .{ .block = .{ .type = try self.parseBlockType(), .end = 0 } };
-        } else if (std.mem.eql(u8, instr_name, "loop")) {
+        } else if (opcode == .loop) {
             // Skip optional label name
             if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
                 try self.advance();
             }
             return .{ .loop = .{ .type = try self.parseBlockType(), .end = 0 } };
-        } else if (std.mem.eql(u8, instr_name, "if")) {
+        } else if (opcode == .@"if") {
             // Skip optional label name
             if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
                 try self.advance();
             }
             return .{ .@"if" = .{ .type = try self.parseBlockType(), .@"else" = null, .end = 0 } };
-        } else if (std.mem.eql(u8, instr_name, "else")) {
+        } else if (opcode == .@"else") {
             return .@"else";
-        } else if (std.mem.eql(u8, instr_name, "end")) {
+        } else if (opcode == .end) {
             return .end;
-        } else if (std.mem.eql(u8, instr_name, "return")) {
+        } else if (opcode == .@"return") {
             return .@"return";
         }
 
         // Branch instructions
-        else if (std.mem.eql(u8, instr_name, "br")) {
+        else if (opcode == .br) {
             return .{ .br = try self.parseLabelIndex() };
-        } else if (std.mem.eql(u8, instr_name, "br_if")) {
+        } else if (opcode == .br_if) {
             return .{ .br_if = try self.parseLabelIndex() };
-        } else if (std.mem.eql(u8, instr_name, "br_table")) {
+        } else if (opcode == .br_table) {
             // Parse br_table: (br_table label1 label2 ... default)
             var label_idxs = std.ArrayList(u32){};
             defer label_idxs.deinit(self.allocator);
@@ -1869,9 +1878,9 @@ pub const Parser = struct {
         }
 
         // Parametric instructions
-        else if (std.mem.eql(u8, instr_name, "drop")) {
+        else if (opcode == .drop) {
             return .drop;
-        } else if (std.mem.eql(u8, instr_name, "select")) {
+        } else if (opcode == .select) {
             // Check for optional (result ...)
             // We need to peek ahead to see if it's (result ...) without consuming tokens
             const next = try self.peekToken();
@@ -1879,15 +1888,15 @@ pub const Parser = struct {
                 // Save lexer state to peek further
                 const saved_pos = self.lexer.pos;
                 const saved_char = self.lexer.current_char;
-                
+
                 // Peek past the '('
                 _ = try self.lexer.nextToken(); // consume '(' in lexer
                 const after_paren = try self.lexer.peekToken();
-                
+
                 // Restore lexer state
                 self.lexer.pos = saved_pos;
                 self.lexer.current_char = saved_char;
-                
+
                 // Check if it's 'result'
                 if (after_paren == .identifier and std.mem.eql(u8, after_paren.identifier, "result")) {
                     // It's (result ...), so parse it
@@ -1916,9 +1925,9 @@ pub const Parser = struct {
         }
 
         // Call instructions
-        else if (std.mem.eql(u8, instr_name, "call")) {
+        else if (opcode == .call) {
             return .{ .call = try self.parseU32OrIdentifier() };
-        } else if (std.mem.eql(u8, instr_name, "call_indirect")) {
+        } else if (opcode == .call_indirect) {
             // Parse optional table name, (type idx) or inline (param)/(result)
             var type_idx: u32 = 0;
             var table_idx: u32 = 0;
@@ -1935,11 +1944,11 @@ pub const Parser = struct {
                 const saved_lexer_pos = self.lexer.pos;
                 const saved_lexer_char = self.lexer.current_char;
                 const saved_token = self.current_token;
-                
+
                 try self.advance(); // consume '('
                 if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
                     try self.advance(); // consume 'type'
-                    
+
                     // Parse type index or name
                     if (self.current_token == .number) {
                         type_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
@@ -1951,16 +1960,17 @@ pub const Parser = struct {
                         }
                         try self.advance();
                     }
-                    
+
                     try self.expectRightParen();
-                } else if (self.current_token == .identifier and 
-                          (std.mem.eql(u8, self.current_token.identifier, "param") or 
-                           std.mem.eql(u8, self.current_token.identifier, "result"))) {
+                } else if (self.current_token == .identifier and
+                    (std.mem.eql(u8, self.current_token.identifier, "param") or
+                        std.mem.eql(u8, self.current_token.identifier, "result")))
+                {
                     // Inline function type - parse as BlockType and create a type
                     self.lexer.pos = saved_lexer_pos;
                     self.lexer.current_char = saved_lexer_char;
                     self.current_token = saved_token;
-                    
+
                     const block_type = try self.parseBlockType();
                     if (block_type == .type_index) {
                         type_idx = block_type.type_index;
@@ -2013,7 +2023,7 @@ pub const Parser = struct {
         }
 
         // reference instructions
-        else if (std.mem.eql(u8, instr_name, "ref.null")) {
+        else if (opcode == .ref_null) {
             // Parse ref type (funcref or externref)
             if (self.current_token == .identifier) {
                 if (std.mem.eql(u8, self.current_token.identifier, "funcref")) {
@@ -2031,61 +2041,61 @@ pub const Parser = struct {
                 }
             }
             return .{ .ref_null = .funcref };
-        } else if (std.mem.eql(u8, instr_name, "ref.is_null")) {
+        } else if (opcode == .ref_is_null) {
             return .ref_is_null;
-        } else if (std.mem.eql(u8, instr_name, "ref.func")) {
+        } else if (opcode == .ref_func) {
             return .{ .ref_func = try self.parseU32OrIdentifier() };
         }
 
         // parametric instructions
-        else if (std.mem.eql(u8, instr_name, "drop")) {
+        else if (opcode == .drop) {
             return .drop;
         }
 
         // Variable instructions
-        else if (std.mem.eql(u8, instr_name, "local.get")) {
+        else if (opcode == .local_get) {
             return .{ .local_get = try self.parseU32OrIdentifier() };
-        } else if (std.mem.eql(u8, instr_name, "local.set")) {
+        } else if (opcode == .local_set) {
             return .{ .local_set = try self.parseU32OrIdentifier() };
-        } else if (std.mem.eql(u8, instr_name, "local.tee")) {
+        } else if (opcode == .local_tee) {
             return .{ .local_tee = try self.parseU32OrIdentifier() };
-        } else if (std.mem.eql(u8, instr_name, "global.get")) {
+        } else if (opcode == .global_get) {
             return .{ .global_get = try self.parseU32OrIdentifier() };
-        } else if (std.mem.eql(u8, instr_name, "global.set")) {
+        } else if (opcode == .global_set) {
             return .{ .global_set = try self.parseU32OrIdentifier() };
         }
         // table instructions
-        else if (std.mem.eql(u8, instr_name, "table.get")) {
+        else if (opcode == .table_get) {
             const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
                 try self.parseU32OrIdentifier()
             else
                 0;
             return .{ .table_get = idx };
-        } else if (std.mem.eql(u8, instr_name, "table.set")) {
+        } else if (opcode == .table_set) {
             const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
                 try self.parseU32OrIdentifier()
             else
                 0;
             return .{ .table_set = idx };
-        } else if (std.mem.eql(u8, instr_name, "table.size")) {
+        } else if (opcode == .table_size) {
             const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
                 try self.parseU32OrIdentifier()
             else
                 0;
             return .{ .table_size = idx };
-        } else if (std.mem.eql(u8, instr_name, "table.grow")) {
+        } else if (opcode == .table_grow) {
             const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
                 try self.parseU32OrIdentifier()
             else
                 0;
             return .{ .table_grow = idx };
-        } else if (std.mem.eql(u8, instr_name, "table.fill")) {
+        } else if (opcode == .table_fill) {
             const idx = if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
                 try self.parseU32OrIdentifier()
             else
                 0;
             return .{ .table_fill = idx };
-        } else if (std.mem.eql(u8, instr_name, "table.copy")) {
+        } else if (opcode == .table_copy) {
             // Check if there are table indices
             if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$"))) {
                 const dst = try self.parseU32OrIdentifier();
@@ -2094,7 +2104,7 @@ pub const Parser = struct {
             } else {
                 return .{ .table_copy = .{ .table_idx_dst = 0, .table_idx_src = 0 } };
             }
-        } else if (std.mem.eql(u8, instr_name, "table.init")) {
+        } else if (opcode == .table_init) {
             const first_idx = try self.parseU32OrIdentifier();
             // Check if there's a second index (table elem) or just one (elem, table=0)
             if (self.current_token == .number or (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$"))) {
@@ -2103,77 +2113,77 @@ pub const Parser = struct {
             } else {
                 return .{ .table_init = .{ .table_idx = 0, .elem_idx = first_idx } };
             }
-        } else if (std.mem.eql(u8, instr_name, "elem.drop")) {
+        } else if (opcode == .elem_drop) {
             return .{ .elem_drop = try self.parseU32OrIdentifier() };
         }
 
         // Memory instructions
-        else if (std.mem.eql(u8, instr_name, "i32.load")) {
+        else if (opcode == .i32_load) {
             return .{ .i32_load = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i64.load")) {
+        } else if (opcode == .i64_load) {
             return .{ .i64_load = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "f32.load")) {
+        } else if (opcode == .f32_load) {
             return .{ .f32_load = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "f64.load")) {
+        } else if (opcode == .f64_load) {
             return .{ .f64_load = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i32.load8_s")) {
+        } else if (opcode == .i32_load8_s) {
             return .{ .i32_load8_s = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i32.load8_u")) {
+        } else if (opcode == .i32_load8_u) {
             return .{ .i32_load8_u = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i32.load16_s")) {
+        } else if (opcode == .i32_load16_s) {
             return .{ .i32_load16_s = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i32.load16_u")) {
+        } else if (opcode == .i32_load16_u) {
             return .{ .i32_load16_u = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i64.load8_s")) {
+        } else if (opcode == .i64_load8_s) {
             return .{ .i64_load8_s = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i64.load8_u")) {
+        } else if (opcode == .i64_load8_u) {
             return .{ .i64_load8_u = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i64.load16_s")) {
+        } else if (opcode == .i64_load16_s) {
             return .{ .i64_load16_s = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i64.load16_u")) {
+        } else if (opcode == .i64_load16_u) {
             return .{ .i64_load16_u = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i64.load32_s")) {
+        } else if (opcode == .i64_load32_s) {
             return .{ .i64_load32_s = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i64.load32_u")) {
+        } else if (opcode == .i64_load32_u) {
             return .{ .i64_load32_u = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i32.store")) {
+        } else if (opcode == .i32_store) {
             return .{ .i32_store = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i64.store")) {
+        } else if (opcode == .i64_store) {
             return .{ .i64_store = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "f32.store")) {
+        } else if (opcode == .f32_store) {
             return .{ .f32_store = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "f64.store")) {
+        } else if (opcode == .f64_store) {
             return .{ .f64_store = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i32.store8")) {
+        } else if (opcode == .i32_store8) {
             return .{ .i32_store8 = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i32.store16")) {
+        } else if (opcode == .i32_store16) {
             return .{ .i32_store16 = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i64.store8")) {
+        } else if (opcode == .i64_store8) {
             return .{ .i64_store8 = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i64.store16")) {
+        } else if (opcode == .i64_store16) {
             return .{ .i64_store16 = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "i64.store32")) {
+        } else if (opcode == .i64_store32) {
             return .{ .i64_store32 = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "memory.size")) {
+        } else if (opcode == .memory_size) {
             const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
                 try self.parseU32OrIdentifier()
             else
                 0;
             return .{ .memory_size = mem_idx };
-        } else if (std.mem.eql(u8, instr_name, "memory.grow")) {
+        } else if (opcode == .memory_grow) {
             const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
                 try self.parseU32OrIdentifier()
             else
                 0;
             return .{ .memory_grow = mem_idx };
-        } else if (std.mem.eql(u8, instr_name, "memory.init")) {
+        } else if (opcode == .memory_init) {
             const data_idx = try self.parseU32OrIdentifier();
             const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
                 try self.parseU32OrIdentifier()
             else
                 0;
             return .{ .memory_init = .{ .data_idx = data_idx, .mem_idx = mem_idx } };
-        } else if (std.mem.eql(u8, instr_name, "memory.copy")) {
+        } else if (opcode == .memory_copy) {
             const mem_idx_dst = if (self.current_token == .number or self.current_token == .identifier)
                 try self.parseU32OrIdentifier()
             else
@@ -2183,917 +2193,909 @@ pub const Parser = struct {
             else
                 0;
             return .{ .memory_copy = .{ .mem_idx_dst = mem_idx_dst, .mem_idx_src = mem_idx_src } };
-        } else if (std.mem.eql(u8, instr_name, "memory.fill")) {
+        } else if (opcode == .memory_fill) {
             const mem_idx = if (self.current_token == .number or self.current_token == .identifier)
                 try self.parseU32OrIdentifier()
             else
                 0;
             return .{ .memory_fill = mem_idx };
-        } else if (std.mem.eql(u8, instr_name, "data.drop")) {
+        } else if (opcode == .data_drop) {
             return .{ .data_drop = try self.parseU32OrIdentifier() };
         }
 
         // Numeric const instructions
-        else if (std.mem.eql(u8, instr_name, "i32.const")) {
+        else if (opcode == .i32_const) {
             if (self.current_token != .number) {
                 return TextDecodeError.InvalidNumber;
             }
             const val = try numeric_parser.parseInteger(i32, self.current_token.number);
             try self.advance();
             return .{ .i32_const = val };
-        } else if (std.mem.eql(u8, instr_name, "i64.const")) {
+        } else if (opcode == .i64_const) {
             if (self.current_token != .number) {
                 return TextDecodeError.InvalidNumber;
             }
             const val = try numeric_parser.parseInteger(i64, self.current_token.number);
             try self.advance();
             return .{ .i64_const = val };
-        } else if (std.mem.eql(u8, instr_name, "f32.const")) {
+        } else if (opcode == .f32_const) {
             return .{ .f32_const = try self.parseFloat(f32) };
-        } else if (std.mem.eql(u8, instr_name, "f64.const")) {
+        } else if (opcode == .f64_const) {
             return .{ .f64_const = try self.parseFloat(f64) };
-        } else if (std.mem.eql(u8, instr_name, "v128.const")) {
+        } else if (opcode == .v128_const) {
             const result = try self.parseV128Const();
             return .{ .v128_const = result };
         }
 
         // i32 comparison
-        else if (std.mem.eql(u8, instr_name, "i32.eqz")) {
+        else if (opcode == .i32_eqz) {
             return .i32_eqz;
-        } else if (std.mem.eql(u8, instr_name, "i32.eq")) {
+        } else if (opcode == .i32_eq) {
             return .i32_eq;
-        } else if (std.mem.eql(u8, instr_name, "i32.ne")) {
+        } else if (opcode == .i32_ne) {
             return .i32_ne;
-        } else if (std.mem.eql(u8, instr_name, "i32.lt_s")) {
+        } else if (opcode == .i32_lt_s) {
             return .i32_lt_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.lt_u")) {
+        } else if (opcode == .i32_lt_u) {
             return .i32_lt_u;
-        } else if (std.mem.eql(u8, instr_name, "i32.gt_s")) {
+        } else if (opcode == .i32_gt_s) {
             return .i32_gt_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.gt_u")) {
+        } else if (opcode == .i32_gt_u) {
             return .i32_gt_u;
-        } else if (std.mem.eql(u8, instr_name, "i32.le_s")) {
+        } else if (opcode == .i32_le_s) {
             return .i32_le_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.le_u")) {
+        } else if (opcode == .i32_le_u) {
             return .i32_le_u;
-        } else if (std.mem.eql(u8, instr_name, "i32.ge_s")) {
+        } else if (opcode == .i32_ge_s) {
             return .i32_ge_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.ge_u")) {
+        } else if (opcode == .i32_ge_u) {
             return .i32_ge_u;
         }
 
         // i64 comparison
-        else if (std.mem.eql(u8, instr_name, "i64.eqz")) {
+        else if (opcode == .i64_eqz) {
             return .i64_eqz;
-        } else if (std.mem.eql(u8, instr_name, "i64.eq")) {
+        } else if (opcode == .i64_eq) {
             return .i64_eq;
-        } else if (std.mem.eql(u8, instr_name, "i64.ne")) {
+        } else if (opcode == .i64_ne) {
             return .i64_ne;
-        } else if (std.mem.eql(u8, instr_name, "i64.lt_s")) {
+        } else if (opcode == .i64_lt_s) {
             return .i64_lt_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.lt_u")) {
+        } else if (opcode == .i64_lt_u) {
             return .i64_lt_u;
-        } else if (std.mem.eql(u8, instr_name, "i64.gt_s")) {
+        } else if (opcode == .i64_gt_s) {
             return .i64_gt_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.gt_u")) {
+        } else if (opcode == .i64_gt_u) {
             return .i64_gt_u;
-        } else if (std.mem.eql(u8, instr_name, "i64.le_s")) {
+        } else if (opcode == .i64_le_s) {
             return .i64_le_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.le_u")) {
+        } else if (opcode == .i64_le_u) {
             return .i64_le_u;
-        } else if (std.mem.eql(u8, instr_name, "i64.ge_s")) {
+        } else if (opcode == .i64_ge_s) {
             return .i64_ge_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.ge_u")) {
+        } else if (opcode == .i64_ge_u) {
             return .i64_ge_u;
         }
 
         // f32 comparison
-        else if (std.mem.eql(u8, instr_name, "f32.eq")) {
+        else if (opcode == .f32_eq) {
             return .f32_eq;
-        } else if (std.mem.eql(u8, instr_name, "f32.ne")) {
+        } else if (opcode == .f32_ne) {
             return .f32_ne;
-        } else if (std.mem.eql(u8, instr_name, "f32.lt")) {
+        } else if (opcode == .f32_lt) {
             return .f32_lt;
-        } else if (std.mem.eql(u8, instr_name, "f32.gt")) {
+        } else if (opcode == .f32_gt) {
             return .f32_gt;
-        } else if (std.mem.eql(u8, instr_name, "f32.le")) {
+        } else if (opcode == .f32_le) {
             return .f32_le;
-        } else if (std.mem.eql(u8, instr_name, "f32.ge")) {
+        } else if (opcode == .f32_ge) {
             return .f32_ge;
         }
 
         // f64 comparison
-        else if (std.mem.eql(u8, instr_name, "f64.eq")) {
+        else if (opcode == .f64_eq) {
             return .f64_eq;
-        } else if (std.mem.eql(u8, instr_name, "f64.ne")) {
+        } else if (opcode == .f64_ne) {
             return .f64_ne;
-        } else if (std.mem.eql(u8, instr_name, "f64.lt")) {
+        } else if (opcode == .f64_lt) {
             return .f64_lt;
-        } else if (std.mem.eql(u8, instr_name, "f64.gt")) {
+        } else if (opcode == .f64_gt) {
             return .f64_gt;
-        } else if (std.mem.eql(u8, instr_name, "f64.le")) {
+        } else if (opcode == .f64_le) {
             return .f64_le;
-        } else if (std.mem.eql(u8, instr_name, "f64.ge")) {
+        } else if (opcode == .f64_ge) {
             return .f64_ge;
         }
 
         // i32 arithmetic
-        else if (std.mem.eql(u8, instr_name, "i32.clz")) {
+        else if (opcode == .i32_clz) {
             return .i32_clz;
-        } else if (std.mem.eql(u8, instr_name, "i32.ctz")) {
+        } else if (opcode == .i32_ctz) {
             return .i32_ctz;
-        } else if (std.mem.eql(u8, instr_name, "i32.popcnt")) {
+        } else if (opcode == .i32_popcnt) {
             return .i32_popcnt;
-        } else if (std.mem.eql(u8, instr_name, "i32.add")) {
+        } else if (opcode == .i32_add) {
             return .i32_add;
-        } else if (std.mem.eql(u8, instr_name, "i32.sub")) {
+        } else if (opcode == .i32_sub) {
             return .i32_sub;
-        } else if (std.mem.eql(u8, instr_name, "i32.mul")) {
+        } else if (opcode == .i32_mul) {
             return .i32_mul;
-        } else if (std.mem.eql(u8, instr_name, "i32.div_s")) {
+        } else if (opcode == .i32_div_s) {
             return .i32_div_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.div_u")) {
+        } else if (opcode == .i32_div_u) {
             return .i32_div_u;
-        } else if (std.mem.eql(u8, instr_name, "i32.rem_s")) {
+        } else if (opcode == .i32_rem_s) {
             return .i32_rem_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.rem_u")) {
+        } else if (opcode == .i32_rem_u) {
             return .i32_rem_u;
-        } else if (std.mem.eql(u8, instr_name, "i32.and")) {
+        } else if (opcode == .i32_and) {
             return .i32_and;
-        } else if (std.mem.eql(u8, instr_name, "i32.or")) {
+        } else if (opcode == .i32_or) {
             return .i32_or;
-        } else if (std.mem.eql(u8, instr_name, "i32.xor")) {
+        } else if (opcode == .i32_xor) {
             return .i32_xor;
-        } else if (std.mem.eql(u8, instr_name, "i32.shl")) {
+        } else if (opcode == .i32_shl) {
             return .i32_shl;
-        } else if (std.mem.eql(u8, instr_name, "i32.shr_s")) {
+        } else if (opcode == .i32_shr_s) {
             return .i32_shr_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.shr_u")) {
+        } else if (opcode == .i32_shr_u) {
             return .i32_shr_u;
-        } else if (std.mem.eql(u8, instr_name, "i32.rotl")) {
+        } else if (opcode == .i32_rotl) {
             return .i32_rotl;
-        } else if (std.mem.eql(u8, instr_name, "i32.rotr")) {
+        } else if (opcode == .i32_rotr) {
             return .i32_rotr;
         }
 
         // i64 arithmetic
-        else if (std.mem.eql(u8, instr_name, "i64.clz")) {
+        else if (opcode == .i64_clz) {
             return .i64_clz;
-        } else if (std.mem.eql(u8, instr_name, "i64.ctz")) {
+        } else if (opcode == .i64_ctz) {
             return .i64_ctz;
-        } else if (std.mem.eql(u8, instr_name, "i64.popcnt")) {
+        } else if (opcode == .i64_popcnt) {
             return .i64_popcnt;
-        } else if (std.mem.eql(u8, instr_name, "i64.add")) {
+        } else if (opcode == .i64_add) {
             return .i64_add;
-        } else if (std.mem.eql(u8, instr_name, "i64.sub")) {
+        } else if (opcode == .i64_sub) {
             return .i64_sub;
-        } else if (std.mem.eql(u8, instr_name, "i64.mul")) {
+        } else if (opcode == .i64_mul) {
             return .i64_mul;
-        } else if (std.mem.eql(u8, instr_name, "i64.div_s")) {
+        } else if (opcode == .i64_div_s) {
             return .i64_div_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.div_u")) {
+        } else if (opcode == .i64_div_u) {
             return .i64_div_u;
-        } else if (std.mem.eql(u8, instr_name, "i64.rem_s")) {
+        } else if (opcode == .i64_rem_s) {
             return .i64_rem_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.rem_u")) {
+        } else if (opcode == .i64_rem_u) {
             return .i64_rem_u;
-        } else if (std.mem.eql(u8, instr_name, "i64.and")) {
+        } else if (opcode == .i64_and) {
             return .i64_and;
-        } else if (std.mem.eql(u8, instr_name, "i64.or")) {
+        } else if (opcode == .i64_or) {
             return .i64_or;
-        } else if (std.mem.eql(u8, instr_name, "i64.xor")) {
+        } else if (opcode == .i64_xor) {
             return .i64_xor;
-        } else if (std.mem.eql(u8, instr_name, "i64.shl")) {
+        } else if (opcode == .i64_shl) {
             return .i64_shl;
-        } else if (std.mem.eql(u8, instr_name, "i64.shr_s")) {
+        } else if (opcode == .i64_shr_s) {
             return .i64_shr_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.shr_u")) {
+        } else if (opcode == .i64_shr_u) {
             return .i64_shr_u;
-        } else if (std.mem.eql(u8, instr_name, "i64.rotl")) {
+        } else if (opcode == .i64_rotl) {
             return .i64_rotl;
-        } else if (std.mem.eql(u8, instr_name, "i64.rotr")) {
+        } else if (opcode == .i64_rotr) {
             return .i64_rotr;
         }
 
         // f32 arithmetic
-        else if (std.mem.eql(u8, instr_name, "f32.abs")) {
+        else if (opcode == .f32_abs) {
             return .f32_abs;
-        } else if (std.mem.eql(u8, instr_name, "f32.neg")) {
+        } else if (opcode == .f32_neg) {
             return .f32_neg;
-        } else if (std.mem.eql(u8, instr_name, "f32.ceil")) {
+        } else if (opcode == .f32_ceil) {
             return .f32_ceil;
-        } else if (std.mem.eql(u8, instr_name, "f32.floor")) {
+        } else if (opcode == .f32_floor) {
             return .f32_floor;
-        } else if (std.mem.eql(u8, instr_name, "f32.trunc")) {
+        } else if (opcode == .f32_trunc) {
             return .f32_trunc;
-        } else if (std.mem.eql(u8, instr_name, "f32.nearest")) {
+        } else if (opcode == .f32_nearest) {
             return .f32_nearest;
-        } else if (std.mem.eql(u8, instr_name, "f32.sqrt")) {
+        } else if (opcode == .f32_sqrt) {
             return .f32_sqrt;
-        } else if (std.mem.eql(u8, instr_name, "f32.add")) {
+        } else if (opcode == .f32_add) {
             return .f32_add;
-        } else if (std.mem.eql(u8, instr_name, "f32.sub")) {
+        } else if (opcode == .f32_sub) {
             return .f32_sub;
-        } else if (std.mem.eql(u8, instr_name, "f32.mul")) {
+        } else if (opcode == .f32_mul) {
             return .f32_mul;
-        } else if (std.mem.eql(u8, instr_name, "f32.div")) {
+        } else if (opcode == .f32_div) {
             return .f32_div;
-        } else if (std.mem.eql(u8, instr_name, "f32.min")) {
+        } else if (opcode == .f32_min) {
             return .f32_min;
-        } else if (std.mem.eql(u8, instr_name, "f32.max")) {
+        } else if (opcode == .f32_max) {
             return .f32_max;
-        } else if (std.mem.eql(u8, instr_name, "f32.copysign")) {
+        } else if (opcode == .f32_copy_sign) {
             return .f32_copy_sign;
         }
 
         // f64 arithmetic
-        else if (std.mem.eql(u8, instr_name, "f64.abs")) {
+        else if (opcode == .f64_abs) {
             return .f64_abs;
-        } else if (std.mem.eql(u8, instr_name, "f64.neg")) {
+        } else if (opcode == .f64_neg) {
             return .f64_neg;
-        } else if (std.mem.eql(u8, instr_name, "f64.ceil")) {
+        } else if (opcode == .f64_ceil) {
             return .f64_ceil;
-        } else if (std.mem.eql(u8, instr_name, "f64.floor")) {
+        } else if (opcode == .f64_floor) {
             return .f64_floor;
-        } else if (std.mem.eql(u8, instr_name, "f64.trunc")) {
+        } else if (opcode == .f64_trunc) {
             return .f64_trunc;
-        } else if (std.mem.eql(u8, instr_name, "f64.nearest")) {
+        } else if (opcode == .f64_nearest) {
             return .f64_nearest;
-        } else if (std.mem.eql(u8, instr_name, "f64.sqrt")) {
+        } else if (opcode == .f64_sqrt) {
             return .f64_sqrt;
-        } else if (std.mem.eql(u8, instr_name, "f64.add")) {
+        } else if (opcode == .f64_add) {
             return .f64_add;
-        } else if (std.mem.eql(u8, instr_name, "f64.sub")) {
+        } else if (opcode == .f64_sub) {
             return .f64_sub;
-        } else if (std.mem.eql(u8, instr_name, "f64.mul")) {
+        } else if (opcode == .f64_mul) {
             return .f64_mul;
-        } else if (std.mem.eql(u8, instr_name, "f64.div")) {
+        } else if (opcode == .f64_div) {
             return .f64_div;
-        } else if (std.mem.eql(u8, instr_name, "f64.min")) {
+        } else if (opcode == .f64_min) {
             return .f64_min;
-        } else if (std.mem.eql(u8, instr_name, "f64.max")) {
+        } else if (opcode == .f64_max) {
             return .f64_max;
-        } else if (std.mem.eql(u8, instr_name, "f64.copysign")) {
+        } else if (opcode == .f64_copy_sign) {
             return .f64_copy_sign;
         }
 
         // Numeric conversion
-        else if (std.mem.eql(u8, instr_name, "i32.wrap_i64")) {
+        else if (opcode == .i32_wrap_i64) {
             return .i32_wrap_i64;
-        } else if (std.mem.eql(u8, instr_name, "i32.trunc_f32_s")) {
+        } else if (opcode == .i32_trunc_f32_s) {
             return .i32_trunc_f32_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.trunc_f32_u")) {
+        } else if (opcode == .i32_trunc_f32_u) {
             return .i32_trunc_f32_u;
-        } else if (std.mem.eql(u8, instr_name, "i32.trunc_f64_s")) {
+        } else if (opcode == .i32_trunc_f64_s) {
             return .i32_trunc_f64_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.trunc_f64_u")) {
+        } else if (opcode == .i32_trunc_f64_u) {
             return .i32_trunc_f64_u;
-        } else if (std.mem.eql(u8, instr_name, "i32.trunc_sat_f32_s")) {
+        } else if (opcode == .i32_trunc_sat_f32_s) {
             return .i32_trunc_sat_f32_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.trunc_sat_f32_u")) {
+        } else if (opcode == .i32_trunc_sat_f32_u) {
             return .i32_trunc_sat_f32_u;
-        } else if (std.mem.eql(u8, instr_name, "i32.trunc_sat_f64_s")) {
+        } else if (opcode == .i32_trunc_sat_f64_s) {
             return .i32_trunc_sat_f64_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.trunc_sat_f64_u")) {
+        } else if (opcode == .i32_trunc_sat_f64_u) {
             return .i32_trunc_sat_f64_u;
-        } else if (std.mem.eql(u8, instr_name, "i64.extend_i32_s")) {
+        } else if (opcode == .i64_extend_i32_s) {
             return .i64_extend_i32_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.extend_i32_u")) {
+        } else if (opcode == .i64_extend_i32_u) {
             return .i64_extend_i32_u;
-        } else if (std.mem.eql(u8, instr_name, "i64.trunc_f32_s")) {
+        } else if (opcode == .i64_trunc_f32_s) {
             return .i64_trunc_f32_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.trunc_f32_u")) {
+        } else if (opcode == .i64_trunc_f32_u) {
             return .i64_trunc_f32_u;
-        } else if (std.mem.eql(u8, instr_name, "i64.trunc_f64_s")) {
+        } else if (opcode == .i64_trunc_f64_s) {
             return .i64_trunc_f64_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.trunc_f64_u")) {
+        } else if (opcode == .i64_trunc_f64_u) {
             return .i64_trunc_f64_u;
-        } else if (std.mem.eql(u8, instr_name, "i64.trunc_sat_f32_s")) {
+        } else if (opcode == .i64_trunc_sat_f32_s) {
             return .i64_trunc_sat_f32_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.trunc_sat_f32_u")) {
+        } else if (opcode == .i64_trunc_sat_f32_u) {
             return .i64_trunc_sat_f32_u;
-        } else if (std.mem.eql(u8, instr_name, "i64.trunc_sat_f64_s")) {
+        } else if (opcode == .i64_trunc_sat_f64_s) {
             return .i64_trunc_sat_f64_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.trunc_sat_f64_u")) {
+        } else if (opcode == .i64_trunc_sat_f64_u) {
             return .i64_trunc_sat_f64_u;
-        } else if (std.mem.eql(u8, instr_name, "f32.convert_i32_s")) {
+        } else if (opcode == .f32_convert_i32_s) {
             return .f32_convert_i32_s;
-        } else if (std.mem.eql(u8, instr_name, "f32.convert_i32_u")) {
+        } else if (opcode == .f32_convert_i32_u) {
             return .f32_convert_i32_u;
-        } else if (std.mem.eql(u8, instr_name, "f32.convert_i64_s")) {
+        } else if (opcode == .f32_convert_i64_s) {
             return .f32_convert_i64_s;
-        } else if (std.mem.eql(u8, instr_name, "f32.convert_i64_u")) {
+        } else if (opcode == .f32_convert_i64_u) {
             return .f32_convert_i64_u;
-        } else if (std.mem.eql(u8, instr_name, "f32.demote_f64")) {
+        } else if (opcode == .f32_demote_f64) {
             return .f32_demote_f64;
-        } else if (std.mem.eql(u8, instr_name, "f64.convert_i32_s")) {
+        } else if (opcode == .f64_convert_i32_s) {
             return .f64_convert_i32_s;
-        } else if (std.mem.eql(u8, instr_name, "f64.convert_i32_u")) {
+        } else if (opcode == .f64_convert_i32_u) {
             return .f64_convert_i32_u;
-        } else if (std.mem.eql(u8, instr_name, "f64.convert_i64_s")) {
+        } else if (opcode == .f64_convert_i64_s) {
             return .f64_convert_i64_s;
-        } else if (std.mem.eql(u8, instr_name, "f64.convert_i64_u")) {
+        } else if (opcode == .f64_convert_i64_u) {
             return .f64_convert_i64_u;
-        } else if (std.mem.eql(u8, instr_name, "f64.promote_f32")) {
+        } else if (opcode == .f64_promote_f32) {
             return .f64_promote_f32;
-        } else if (std.mem.eql(u8, instr_name, "i32.reinterpret_f32")) {
+        } else if (opcode == .i32_reinterpret_f32) {
             return .i32_reinterpret_f32;
-        } else if (std.mem.eql(u8, instr_name, "i64.reinterpret_f64")) {
+        } else if (opcode == .i64_reinterpret_f64) {
             return .i64_reinterpret_f64;
-        } else if (std.mem.eql(u8, instr_name, "f32.reinterpret_i32")) {
+        } else if (opcode == .f32_reinterpret_i32) {
             return .f32_reinterpret_i32;
-        } else if (std.mem.eql(u8, instr_name, "f64.reinterpret_i64")) {
+        } else if (opcode == .f64_reinterpret_i64) {
             return .f64_reinterpret_i64;
         }
 
         // Sign extension instructions (WebAssembly 2.0)
-        else if (std.mem.eql(u8, instr_name, "i32.extend8_s")) {
+        else if (opcode == .i32_extend8_s) {
             return .i32_extend8_s;
-        } else if (std.mem.eql(u8, instr_name, "i32.extend16_s")) {
+        } else if (opcode == .i32_extend16_s) {
             return .i32_extend16_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.extend8_s")) {
+        } else if (opcode == .i64_extend8_s) {
             return .i64_extend8_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.extend16_s")) {
+        } else if (opcode == .i64_extend16_s) {
             return .i64_extend16_s;
-        } else if (std.mem.eql(u8, instr_name, "i64.extend32_s")) {
+        } else if (opcode == .i64_extend32_s) {
             return .i64_extend32_s;
         }
 
         // v128 memory instructions
-        else if (std.mem.eql(u8, instr_name, "v128.load")) {
+        else if (opcode == .v128_load) {
             return .{ .v128_load = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load8x8_s")) {
+        } else if (opcode == .v128_load8x8_s) {
             return .{ .v128_load8x8_s = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load8x8_u")) {
+        } else if (opcode == .v128_load8x8_u) {
             return .{ .v128_load8x8_u = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load16x4_s")) {
+        } else if (opcode == .v128_load16x4_s) {
             return .{ .v128_load16x4_s = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load16x4_u")) {
+        } else if (opcode == .v128_load16x4_u) {
             return .{ .v128_load16x4_u = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load32x2_s")) {
+        } else if (opcode == .v128_load32x2_s) {
             return .{ .v128_load32x2_s = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load32x2_u")) {
+        } else if (opcode == .v128_load32x2_u) {
             return .{ .v128_load32x2_u = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load8_splat")) {
+        } else if (opcode == .v128_load8_splat) {
             return .{ .v128_load8_splat = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load16_splat")) {
+        } else if (opcode == .v128_load16_splat) {
             return .{ .v128_load16_splat = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load32_splat")) {
+        } else if (opcode == .v128_load32_splat) {
             return .{ .v128_load32_splat = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load64_splat")) {
+        } else if (opcode == .v128_load64_splat) {
             return .{ .v128_load64_splat = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.store")) {
+        } else if (opcode == .v128_store) {
             return .{ .v128_store = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load8_lane")) {
+        } else if (opcode == .v128_load8_lane) {
             return .{ .v128_load8_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load16_lane")) {
+        } else if (opcode == .v128_load16_lane) {
             return .{ .v128_load16_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load32_lane")) {
+        } else if (opcode == .v128_load32_lane) {
             return .{ .v128_load32_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load64_lane")) {
+        } else if (opcode == .v128_load64_lane) {
             return .{ .v128_load64_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "v128.store8_lane")) {
+        } else if (opcode == .v128_store8_lane) {
             return .{ .v128_store8_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "v128.store16_lane")) {
+        } else if (opcode == .v128_store16_lane) {
             return .{ .v128_store16_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "v128.store32_lane")) {
+        } else if (opcode == .v128_store32_lane) {
             return .{ .v128_store32_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "v128.store64_lane")) {
+        } else if (opcode == .v128_store64_lane) {
             return .{ .v128_store64_lane = try self.parseMemArgWithLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load32_zero")) {
+        } else if (opcode == .v128_load32_zero) {
             return .{ .v128_load32_zero = try self.parseMemArg() };
-        } else if (std.mem.eql(u8, instr_name, "v128.load64_zero")) {
+        } else if (opcode == .v128_load64_zero) {
             return .{ .v128_load64_zero = try self.parseMemArg() };
         }
 
         // v128 element manipulation instructions
-        else if (std.mem.eql(u8, instr_name, "i8x16.shuffle")) {
+        else if (opcode == .i8x16_shuffle) {
             return .{ .i8x16_shuffle = try self.parseLaneIdx16() };
-        } else if (std.mem.eql(u8, instr_name, "i8x16.swizzle")) {
+        } else if (opcode == .i8x16_swizzle) {
             return .i8x16_swizzle;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.splat")) {
+        } else if (opcode == .i8x16_splat) {
             return .i8x16_splat;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.splat")) {
+        } else if (opcode == .i16x8_splat) {
             return .i16x8_splat;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.splat")) {
+        } else if (opcode == .i32x4_splat) {
             return .i32x4_splat;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.splat")) {
+        } else if (opcode == .i64x2_splat) {
             return .i64x2_splat;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.splat")) {
+        } else if (opcode == .f32x4_splat) {
             return .f32x4_splat;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.splat")) {
+        } else if (opcode == .f64x2_splat) {
             return .f64x2_splat;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.extract_lane_s")) {
+        } else if (opcode == .i8x16_extract_lane_s) {
             return .{ .i8x16_extract_lane_s = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "i8x16.extract_lane_u")) {
+        } else if (opcode == .i8x16_extract_lane_u) {
             return .{ .i8x16_extract_lane_u = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "i8x16.replace_lane")) {
+        } else if (opcode == .i8x16_replace_lane) {
             return .{ .i8x16_replace_lane = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "i16x8.extract_lane_s")) {
+        } else if (opcode == .i16x8_extract_lane_s) {
             return .{ .i16x8_extract_lane_s = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "i16x8.extract_lane_u")) {
+        } else if (opcode == .i16x8_extract_lane_u) {
             return .{ .i16x8_extract_lane_u = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "i16x8.replace_lane")) {
+        } else if (opcode == .i16x8_replace_lane) {
             return .{ .i16x8_replace_lane = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "i32x4.extract_lane")) {
+        } else if (opcode == .i32x4_extract_lane) {
             return .{ .i32x4_extract_lane = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "i32x4.replace_lane")) {
+        } else if (opcode == .i32x4_replace_lane) {
             return .{ .i32x4_replace_lane = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "i64x2.extract_lane")) {
+        } else if (opcode == .i64x2_extract_lane) {
             return .{ .i64x2_extract_lane = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "i64x2.replace_lane")) {
+        } else if (opcode == .i64x2_replace_lane) {
             return .{ .i64x2_replace_lane = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "f32x4.extract_lane")) {
+        } else if (opcode == .f32x4_extract_lane) {
             return .{ .f32x4_extract_lane = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "f32x4.replace_lane")) {
+        } else if (opcode == .f32x4_replace_lane) {
             return .{ .f32x4_replace_lane = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "f64x2.extract_lane")) {
+        } else if (opcode == .f64x2_extract_lane) {
             return .{ .f64x2_extract_lane = try self.parseLaneIdx() };
-        } else if (std.mem.eql(u8, instr_name, "f64x2.replace_lane")) {
+        } else if (opcode == .f64x2_replace_lane) {
             return .{ .f64x2_replace_lane = try self.parseLaneIdx() };
         }
 
         // v128 comparison instructions - i8x16
-        else if (std.mem.eql(u8, instr_name, "i8x16.eq")) {
+        else if (opcode == .i8x16_eq) {
             return .i8x16_eq;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.ne")) {
+        } else if (opcode == .i8x16_ne) {
             return .i8x16_ne;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.lt_s")) {
+        } else if (opcode == .i8x16_lt_s) {
             return .i8x16_lt_s;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.lt_u")) {
+        } else if (opcode == .i8x16_lt_u) {
             return .i8x16_lt_u;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.gt_s")) {
+        } else if (opcode == .i8x16_gt_s) {
             return .i8x16_gt_s;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.gt_u")) {
+        } else if (opcode == .i8x16_gt_u) {
             return .i8x16_gt_u;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.le_s")) {
+        } else if (opcode == .i8x16_le_s) {
             return .i8x16_le_s;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.le_u")) {
+        } else if (opcode == .i8x16_le_u) {
             return .i8x16_le_u;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.ge_s")) {
+        } else if (opcode == .i8x16_ge_s) {
             return .i8x16_ge_s;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.ge_u")) {
+        } else if (opcode == .i8x16_ge_u) {
             return .i8x16_ge_u;
         }
         // i16x8
-        else if (std.mem.eql(u8, instr_name, "i16x8.eq")) {
+        else if (opcode == .i16x8_eq) {
             return .i16x8_eq;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.ne")) {
+        } else if (opcode == .i16x8_ne) {
             return .i16x8_ne;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.lt_s")) {
+        } else if (opcode == .i16x8_lt_s) {
             return .i16x8_lt_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.lt_u")) {
+        } else if (opcode == .i16x8_lt_u) {
             return .i16x8_lt_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.gt_s")) {
+        } else if (opcode == .i16x8_gt_s) {
             return .i16x8_gt_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.gt_u")) {
+        } else if (opcode == .i16x8_gt_u) {
             return .i16x8_gt_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.le_s")) {
+        } else if (opcode == .i16x8_le_s) {
             return .i16x8_le_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.le_u")) {
+        } else if (opcode == .i16x8_le_u) {
             return .i16x8_le_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.ge_s")) {
+        } else if (opcode == .i16x8_ge_s) {
             return .i16x8_ge_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.ge_u")) {
+        } else if (opcode == .i16x8_ge_u) {
             return .i16x8_ge_u;
         }
         // i32x4
-        else if (std.mem.eql(u8, instr_name, "i32x4.eq")) {
+        else if (opcode == .i32x4_eq) {
             return .i32x4_eq;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.ne")) {
+        } else if (opcode == .i32x4_ne) {
             return .i32x4_ne;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.lt_s")) {
+        } else if (opcode == .i32x4_lt_s) {
             return .i32x4_lt_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.lt_u")) {
+        } else if (opcode == .i32x4_lt_u) {
             return .i32x4_lt_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.gt_s")) {
+        } else if (opcode == .i32x4_gt_s) {
             return .i32x4_gt_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.gt_u")) {
+        } else if (opcode == .i32x4_gt_u) {
             return .i32x4_gt_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.le_s")) {
+        } else if (opcode == .i32x4_le_s) {
             return .i32x4_le_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.le_u")) {
+        } else if (opcode == .i32x4_le_u) {
             return .i32x4_le_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.ge_s")) {
+        } else if (opcode == .i32x4_ge_s) {
             return .i32x4_ge_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.ge_u")) {
+        } else if (opcode == .i32x4_ge_u) {
             return .i32x4_ge_u;
         }
         // i64x2
-        else if (std.mem.eql(u8, instr_name, "i64x2.eq")) {
+        else if (opcode == .i64x2_eq) {
             return .i64x2_eq;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.ne")) {
+        } else if (opcode == .i64x2_ne) {
             return .i64x2_ne;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.lt_s")) {
+        } else if (opcode == .i64x2_lt_s) {
             return .i64x2_lt_s;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.gt_s")) {
+        } else if (opcode == .i64x2_gt_s) {
             return .i64x2_gt_s;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.le_s")) {
+        } else if (opcode == .i64x2_le_s) {
             return .i64x2_le_s;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.ge_s")) {
+        } else if (opcode == .i64x2_ge_s) {
             return .i64x2_ge_s;
         }
         // f32x4
-        else if (std.mem.eql(u8, instr_name, "f32x4.eq")) {
+        else if (opcode == .f32x4_eq) {
             return .f32x4_eq;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.ne")) {
+        } else if (opcode == .f32x4_ne) {
             return .f32x4_ne;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.lt")) {
+        } else if (opcode == .f32x4_lt) {
             return .f32x4_lt;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.gt")) {
+        } else if (opcode == .f32x4_gt) {
             return .f32x4_gt;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.le")) {
+        } else if (opcode == .f32x4_le) {
             return .f32x4_le;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.ge")) {
+        } else if (opcode == .f32x4_ge) {
             return .f32x4_ge;
         }
         // f64x2
-        else if (std.mem.eql(u8, instr_name, "f64x2.eq")) {
+        else if (opcode == .f64x2_eq) {
             return .f64x2_eq;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.ne")) {
+        } else if (opcode == .f64x2_ne) {
             return .f64x2_ne;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.lt")) {
+        } else if (opcode == .f64x2_lt) {
             return .f64x2_lt;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.gt")) {
+        } else if (opcode == .f64x2_gt) {
             return .f64x2_gt;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.le")) {
+        } else if (opcode == .f64x2_le) {
             return .f64x2_le;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.ge")) {
+        } else if (opcode == .f64x2_ge) {
             return .f64x2_ge;
         }
 
         // v128 logical operations
-        else if (std.mem.eql(u8, instr_name, "v128.not")) {
+        else if (opcode == .v128_not) {
             return .v128_not;
-        } else if (std.mem.eql(u8, instr_name, "v128.and")) {
+        } else if (opcode == .v128_and) {
             return .v128_and;
-        } else if (std.mem.eql(u8, instr_name, "v128.andnot")) {
+        } else if (opcode == .v128_andnot) {
             return .v128_andnot;
-        } else if (std.mem.eql(u8, instr_name, "v128.or")) {
+        } else if (opcode == .v128_or) {
             return .v128_or;
-        } else if (std.mem.eql(u8, instr_name, "v128.xor")) {
+        } else if (opcode == .v128_xor) {
             return .v128_xor;
-        } else if (std.mem.eql(u8, instr_name, "v128.bitselect")) {
+        } else if (opcode == .v128_bitselect) {
             return .v128_bitselect;
         }
 
         // v128 test instructions
-        else if (std.mem.eql(u8, instr_name, "v128.any_true")) {
+        else if (opcode == .v128_any_true) {
             return .v128_any_true;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.all_true")) {
+        } else if (opcode == .i8x16_all_true) {
             return .i8x16_all_true;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.all_true")) {
+        } else if (opcode == .i16x8_all_true) {
             return .i16x8_all_true;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.all_true")) {
+        } else if (opcode == .i32x4_all_true) {
             return .i32x4_all_true;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.all_true")) {
+        } else if (opcode == .i64x2_all_true) {
             return .i64x2_all_true;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.bitmask")) {
+        } else if (opcode == .i8x16_bitmask) {
             return .i8x16_bitmask;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.bitmask")) {
+        } else if (opcode == .i16x8_bitmask) {
             return .i16x8_bitmask;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.bitmask")) {
+        } else if (opcode == .i32x4_bitmask) {
             return .i32x4_bitmask;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.bitmask")) {
+        } else if (opcode == .i64x2_bitmask) {
             return .i64x2_bitmask;
         }
 
         // v128 integer arithmetic - unary operations
-        else if (std.mem.eql(u8, instr_name, "i8x16.abs")) {
+        else if (opcode == .i8x16_abs) {
             return .i8x16_abs;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.abs")) {
+        } else if (opcode == .i16x8_abs) {
             return .i16x8_abs;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.abs")) {
+        } else if (opcode == .i32x4_abs) {
             return .i32x4_abs;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.abs")) {
+        } else if (opcode == .i64x2_abs) {
             return .i64x2_abs;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.neg")) {
+        } else if (opcode == .i8x16_neg) {
             return .i8x16_neg;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.neg")) {
+        } else if (opcode == .i16x8_neg) {
             return .i16x8_neg;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.neg")) {
+        } else if (opcode == .i32x4_neg) {
             return .i32x4_neg;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.neg")) {
+        } else if (opcode == .i64x2_neg) {
             return .i64x2_neg;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.popcnt")) {
+        } else if (opcode == .i8x16_popcnt) {
             return .i8x16_popcnt;
         }
         // shift operations
-        else if (std.mem.eql(u8, instr_name, "i8x16.shl")) {
+        else if (opcode == .i8x16_shl) {
             return .i8x16_shl;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.shl")) {
+        } else if (opcode == .i16x8_shl) {
             return .i16x8_shl;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.shl")) {
+        } else if (opcode == .i32x4_shl) {
             return .i32x4_shl;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.shl")) {
+        } else if (opcode == .i64x2_shl) {
             return .i64x2_shl;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.shr_s")) {
+        } else if (opcode == .i8x16_shr_s) {
             return .i8x16_shr_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.shr_s")) {
+        } else if (opcode == .i16x8_shr_s) {
             return .i16x8_shr_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.shr_s")) {
+        } else if (opcode == .i32x4_shr_s) {
             return .i32x4_shr_s;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.shr_s")) {
+        } else if (opcode == .i64x2_shr_s) {
             return .i64x2_shr_s;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.shr_u")) {
+        } else if (opcode == .i8x16_shr_u) {
             return .i8x16_shr_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.shr_u")) {
+        } else if (opcode == .i16x8_shr_u) {
             return .i16x8_shr_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.shr_u")) {
+        } else if (opcode == .i32x4_shr_u) {
             return .i32x4_shr_u;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.shr_u")) {
+        } else if (opcode == .i64x2_shr_u) {
             return .i64x2_shr_u;
         }
         // add/sub operations
-        else if (std.mem.eql(u8, instr_name, "i8x16.add")) {
+        else if (opcode == .i8x16_add) {
             return .i8x16_add;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.add")) {
+        } else if (opcode == .i16x8_add) {
             return .i16x8_add;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.add")) {
+        } else if (opcode == .i32x4_add) {
             return .i32x4_add;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.add")) {
+        } else if (opcode == .i64x2_add) {
             return .i64x2_add;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.sub")) {
+        } else if (opcode == .i8x16_sub) {
             return .i8x16_sub;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.sub")) {
+        } else if (opcode == .i16x8_sub) {
             return .i16x8_sub;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.sub")) {
+        } else if (opcode == .i32x4_sub) {
             return .i32x4_sub;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.sub")) {
+        } else if (opcode == .i64x2_sub) {
             return .i64x2_sub;
         }
         // saturating add/sub
-        else if (std.mem.eql(u8, instr_name, "i8x16.add_sat_s")) {
+        else if (opcode == .i8x16_add_sat_s) {
             return .i8x16_add_sat_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.add_sat_s")) {
+        } else if (opcode == .i16x8_add_sat_s) {
             return .i16x8_add_sat_s;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.add_sat_u")) {
+        } else if (opcode == .i8x16_add_sat_u) {
             return .i8x16_add_sat_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.add_sat_u")) {
+        } else if (opcode == .i16x8_add_sat_u) {
             return .i16x8_add_sat_u;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.sub_sat_s")) {
+        } else if (opcode == .i8x16_sub_sat_s) {
             return .i8x16_sub_sat_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.sub_sat_s")) {
+        } else if (opcode == .i16x8_sub_sat_s) {
             return .i16x8_sub_sat_s;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.sub_sat_u")) {
+        } else if (opcode == .i8x16_sub_sat_u) {
             return .i8x16_sub_sat_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.sub_sat_u")) {
+        } else if (opcode == .i16x8_sub_sat_u) {
             return .i16x8_sub_sat_u;
         }
         // mul operations
-        else if (std.mem.eql(u8, instr_name, "i16x8.mul")) {
+        else if (opcode == .i16x8_mul) {
             return .i16x8_mul;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.mul")) {
+        } else if (opcode == .i32x4_mul) {
             return .i32x4_mul;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.mul")) {
+        } else if (opcode == .i64x2_mul) {
             return .i64x2_mul;
         }
         // min/max operations
-        else if (std.mem.eql(u8, instr_name, "i8x16.min_s")) {
+        else if (opcode == .i8x16_min_s) {
             return .i8x16_min_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.min_s")) {
+        } else if (opcode == .i16x8_min_s) {
             return .i16x8_min_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.min_s")) {
+        } else if (opcode == .i32x4_min_s) {
             return .i32x4_min_s;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.min_u")) {
+        } else if (opcode == .i8x16_min_u) {
             return .i8x16_min_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.min_u")) {
+        } else if (opcode == .i16x8_min_u) {
             return .i16x8_min_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.min_u")) {
+        } else if (opcode == .i32x4_min_u) {
             return .i32x4_min_u;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.max_s")) {
+        } else if (opcode == .i8x16_max_s) {
             return .i8x16_max_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.max_s")) {
+        } else if (opcode == .i16x8_max_s) {
             return .i16x8_max_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.max_s")) {
+        } else if (opcode == .i32x4_max_s) {
             return .i32x4_max_s;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.max_u")) {
+        } else if (opcode == .i8x16_max_u) {
             return .i8x16_max_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.max_u")) {
+        } else if (opcode == .i16x8_max_u) {
             return .i16x8_max_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.max_u")) {
+        } else if (opcode == .i32x4_max_u) {
             return .i32x4_max_u;
         }
         // avgr operations
-        else if (std.mem.eql(u8, instr_name, "i8x16.avgr_u")) {
+        else if (opcode == .i8x16_avgr_u) {
             return .i8x16_avgr_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.avgr_u")) {
+        } else if (opcode == .i16x8_avgr_u) {
             return .i16x8_avgr_u;
         }
         // special operations
-        else if (std.mem.eql(u8, instr_name, "i16x8.q15mulr_sat_s")) {
+        else if (opcode == .i16x8_q15mulr_sat_s) {
             return .i16x8_q15mulr_sat_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.dot_i16x8_s")) {
+        } else if (opcode == .i32x4_dot_i16x8_s) {
             return .i32x4_dot_i16x8_s;
         }
         // extmul operations
-        else if (std.mem.eql(u8, instr_name, "i16x8.extmul_low_i8x16_s")) {
+        else if (opcode == .i16x8_extmul_low_i8x16_s) {
             return .i16x8_extmul_low_i8x16_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.extmul_high_i8x16_s")) {
+        } else if (opcode == .i16x8_extmul_high_i8x16_s) {
             return .i16x8_extmul_high_i8x16_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.extmul_low_i8x16_u")) {
+        } else if (opcode == .i16x8_extmul_low_i8x16_u) {
             return .i16x8_extmul_low_i8x16_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.extmul_high_i8x16_u")) {
+        } else if (opcode == .i16x8_extmul_high_i8x16_u) {
             return .i16x8_extmul_high_i8x16_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.extmul_low_i16x8_s")) {
+        } else if (opcode == .i32x4_extmul_low_i16x8_s) {
             return .i32x4_extmul_low_i16x8_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.extmul_high_i16x8_s")) {
+        } else if (opcode == .i32x4_extmul_high_i16x8_s) {
             return .i32x4_extmul_high_i16x8_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.extmul_low_i16x8_u")) {
+        } else if (opcode == .i32x4_extmul_low_i16x8_u) {
             return .i32x4_extmul_low_i16x8_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.extmul_high_i16x8_u")) {
+        } else if (opcode == .i32x4_extmul_high_i16x8_u) {
             return .i32x4_extmul_high_i16x8_u;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.extmul_low_i32x4_s")) {
+        } else if (opcode == .i64x2_extmul_low_i32x4_s) {
             return .i64x2_extmul_low_i32x4_s;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.extmul_high_i32x4_s")) {
+        } else if (opcode == .i64x2_extmul_high_i32x4_s) {
             return .i64x2_extmul_high_i32x4_s;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.extmul_low_i32x4_u")) {
+        } else if (opcode == .i64x2_extmul_low_i32x4_u) {
             return .i64x2_extmul_low_i32x4_u;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.extmul_high_i32x4_u")) {
+        } else if (opcode == .i64x2_extmul_high_i32x4_u) {
             return .i64x2_extmul_high_i32x4_u;
         }
         // extadd_pairwise operations
-        else if (std.mem.eql(u8, instr_name, "i16x8.extadd_pairwise_i8x16_s")) {
+        else if (opcode == .i16x8_extadd_pairwise_i8x16_s) {
             return .i16x8_extadd_pairwise_i8x16_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.extadd_pairwise_i8x16_u")) {
+        } else if (opcode == .i16x8_extadd_pairwise_i8x16_u) {
             return .i16x8_extadd_pairwise_i8x16_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.extadd_pairwise_i16x8_s")) {
+        } else if (opcode == .i32x4_extadd_pairwise_i16x8_s) {
             return .i32x4_extadd_pairwise_i16x8_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.extadd_pairwise_i16x8_u")) {
+        } else if (opcode == .i32x4_extadd_pairwise_i16x8_u) {
             return .i32x4_extadd_pairwise_i16x8_u;
         }
 
         // v128 floating-point arithmetic - unary operations
-        else if (std.mem.eql(u8, instr_name, "f32x4.abs")) {
+        else if (opcode == .f32x4_abs) {
             return .f32x4_abs;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.abs")) {
+        } else if (opcode == .f64x2_abs) {
             return .f64x2_abs;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.neg")) {
+        } else if (opcode == .f32x4_neg) {
             return .f32x4_neg;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.neg")) {
+        } else if (opcode == .f64x2_neg) {
             return .f64x2_neg;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.sqrt")) {
+        } else if (opcode == .f32x4_sqrt) {
             return .f32x4_sqrt;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.sqrt")) {
+        } else if (opcode == .f64x2_sqrt) {
             return .f64x2_sqrt;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.ceil")) {
+        } else if (opcode == .f32x4_ceil) {
             return .f32x4_ceil;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.ceil")) {
+        } else if (opcode == .f64x2_ceil) {
             return .f64x2_ceil;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.floor")) {
+        } else if (opcode == .f32x4_floor) {
             return .f32x4_floor;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.floor")) {
+        } else if (opcode == .f64x2_floor) {
             return .f64x2_floor;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.trunc")) {
+        } else if (opcode == .f32x4_trunc) {
             return .f32x4_trunc;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.trunc")) {
+        } else if (opcode == .f64x2_trunc) {
             return .f64x2_trunc;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.nearest")) {
+        } else if (opcode == .f32x4_nearest) {
             return .f32x4_nearest;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.nearest")) {
+        } else if (opcode == .f64x2_nearest) {
             return .f64x2_nearest;
         }
         // binary operations
-        else if (std.mem.eql(u8, instr_name, "f32x4.add")) {
+        else if (opcode == .f32x4_add) {
             return .f32x4_add;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.add")) {
+        } else if (opcode == .f64x2_add) {
             return .f64x2_add;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.sub")) {
+        } else if (opcode == .f32x4_sub) {
             return .f32x4_sub;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.sub")) {
+        } else if (opcode == .f64x2_sub) {
             return .f64x2_sub;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.mul")) {
+        } else if (opcode == .f32x4_mul) {
             return .f32x4_mul;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.mul")) {
+        } else if (opcode == .f64x2_mul) {
             return .f64x2_mul;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.div")) {
+        } else if (opcode == .f32x4_div) {
             return .f32x4_div;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.div")) {
+        } else if (opcode == .f64x2_div) {
             return .f64x2_div;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.min")) {
+        } else if (opcode == .f32x4_min) {
             return .f32x4_min;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.min")) {
+        } else if (opcode == .f64x2_min) {
             return .f64x2_min;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.max")) {
+        } else if (opcode == .f32x4_max) {
             return .f32x4_max;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.max")) {
+        } else if (opcode == .f64x2_max) {
             return .f64x2_max;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.pmin")) {
+        } else if (opcode == .f32x4_pmin) {
             return .f32x4_pmin;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.pmin")) {
+        } else if (opcode == .f64x2_pmin) {
             return .f64x2_pmin;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.pmax")) {
+        } else if (opcode == .f32x4_pmax) {
             return .f32x4_pmax;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.pmax")) {
+        } else if (opcode == .f64x2_pmax) {
             return .f64x2_pmax;
         }
 
         // v128 type conversion instructions
-        else if (std.mem.eql(u8, instr_name, "i32x4.trunc_sat_f32x4_s")) {
+        else if (opcode == .i32x4_trunc_sat_f32x4_s) {
             return .i32x4_trunc_sat_f32x4_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.trunc_sat_f32x4_u")) {
+        } else if (opcode == .i32x4_trunc_sat_f32x4_u) {
             return .i32x4_trunc_sat_f32x4_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.trunc_sat_f64x2_s_zero")) {
+        } else if (opcode == .i32x4_trunc_sat_f64x2_s_zero) {
             return .i32x4_trunc_sat_f64x2_s_zero;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.trunc_sat_f64x2_u_zero")) {
+        } else if (opcode == .i32x4_trunc_sat_f64x2_u_zero) {
             return .i32x4_trunc_sat_f64x2_u_zero;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.convert_i32x4_s")) {
+        } else if (opcode == .f32x4_convert_i32x4_s) {
             return .f32x4_convert_i32x4_s;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.convert_i32x4_u")) {
+        } else if (opcode == .f32x4_convert_i32x4_u) {
             return .f32x4_convert_i32x4_u;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.convert_low_i32x4_s")) {
+        } else if (opcode == .f64x2_convert_low_i32x4_s) {
             return .f64x2_convert_low_i32x4_s;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.convert_low_i32x4_u")) {
+        } else if (opcode == .f64x2_convert_low_i32x4_u) {
             return .f64x2_convert_low_i32x4_u;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.demote_f64x2_zero")) {
+        } else if (opcode == .f32x4_demote_f64x2_zero) {
             return .f32x4_demote_f64x2_zero;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.promote_low_f32x4")) {
+        } else if (opcode == .f64x2_promote_low_f32x4) {
             return .f64x2_promote_low_f32x4;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.narrow_i16x8_s")) {
+        } else if (opcode == .i8x16_narrow_i16x8_s) {
             return .i8x16_narrow_i16x8_s;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.narrow_i16x8_u")) {
+        } else if (opcode == .i8x16_narrow_i16x8_u) {
             return .i8x16_narrow_i16x8_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.narrow_i32x4_s")) {
+        } else if (opcode == .i16x8_narrow_i32x4_s) {
             return .i16x8_narrow_i32x4_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.narrow_i32x4_u")) {
+        } else if (opcode == .i16x8_narrow_i32x4_u) {
             return .i16x8_narrow_i32x4_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.extend_low_i8x16_s")) {
+        } else if (opcode == .i16x8_extend_low_i8x16_s) {
             return .i16x8_extend_low_i8x16_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.extend_low_i8x16_u")) {
+        } else if (opcode == .i16x8_extend_low_i8x16_u) {
             return .i16x8_extend_low_i8x16_u;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.extend_high_i8x16_s")) {
+        } else if (opcode == .i16x8_extend_high_i8x16_s) {
             return .i16x8_extend_high_i8x16_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.extend_high_i8x16_u")) {
+        } else if (opcode == .i16x8_extend_high_i8x16_u) {
             return .i16x8_extend_high_i8x16_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.extend_low_i16x8_s")) {
+        } else if (opcode == .i32x4_extend_low_i16x8_s) {
             return .i32x4_extend_low_i16x8_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.extend_low_i16x8_u")) {
+        } else if (opcode == .i32x4_extend_low_i16x8_u) {
             return .i32x4_extend_low_i16x8_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.extend_high_i16x8_s")) {
+        } else if (opcode == .i32x4_extend_high_i16x8_s) {
             return .i32x4_extend_high_i16x8_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.extend_high_i16x8_u")) {
+        } else if (opcode == .i32x4_extend_high_i16x8_u) {
             return .i32x4_extend_high_i16x8_u;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.extend_low_i32x4_s")) {
+        } else if (opcode == .i64x2_extend_low_i32x4_s) {
             return .i64x2_extend_low_i32x4_s;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.extend_low_i32x4_u")) {
+        } else if (opcode == .i64x2_extend_low_i32x4_u) {
             return .i64x2_extend_low_i32x4_u;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.extend_high_i32x4_s")) {
+        } else if (opcode == .i64x2_extend_high_i32x4_s) {
             return .i64x2_extend_high_i32x4_s;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.extend_high_i32x4_u")) {
+        } else if (opcode == .i64x2_extend_high_i32x4_u) {
             return .i64x2_extend_high_i32x4_u;
         }
 
         // Relaxed SIMD instructions (WebAssembly 2.0)
-        else if (std.mem.eql(u8, instr_name, "i8x16.relaxed_swizzle")) {
+        else if (opcode == .i8x16_relaxed_swizzle) {
             return .i8x16_relaxed_swizzle;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_trunc_f32x4_s")) {
+        } else if (opcode == .i32x4_relaxed_trunc_f32x4_s) {
             return .i32x4_relaxed_trunc_f32x4_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_trunc_f32x4_u")) {
+        } else if (opcode == .i32x4_relaxed_trunc_f32x4_u) {
             return .i32x4_relaxed_trunc_f32x4_u;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_trunc_f64x2_s_zero")) {
+        } else if (opcode == .i32x4_relaxed_trunc_f64x2_s_zero) {
             return .i32x4_relaxed_trunc_f64x2_s_zero;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_trunc_f64x2_u_zero")) {
+        } else if (opcode == .i32x4_relaxed_trunc_f64x2_u_zero) {
             return .i32x4_relaxed_trunc_f64x2_u_zero;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.relaxed_madd")) {
+        } else if (opcode == .f32x4_relaxed_madd) {
             return .f32x4_relaxed_madd;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.relaxed_nmadd")) {
+        } else if (opcode == .f32x4_relaxed_nmadd) {
             return .f32x4_relaxed_nmadd;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.relaxed_madd")) {
+        } else if (opcode == .f64x2_relaxed_madd) {
             return .f64x2_relaxed_madd;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.relaxed_nmadd")) {
+        } else if (opcode == .f64x2_relaxed_nmadd) {
             return .f64x2_relaxed_nmadd;
-        } else if (std.mem.eql(u8, instr_name, "i8x16.relaxed_laneselect")) {
+        } else if (opcode == .i8x16_relaxed_laneselect) {
             return .i8x16_relaxed_laneselect;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.relaxed_laneselect")) {
+        } else if (opcode == .i16x8_relaxed_laneselect) {
             return .i16x8_relaxed_laneselect;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_laneselect")) {
+        } else if (opcode == .i32x4_relaxed_laneselect) {
             return .i32x4_relaxed_laneselect;
-        } else if (std.mem.eql(u8, instr_name, "i64x2.relaxed_laneselect")) {
+        } else if (opcode == .i64x2_relaxed_laneselect) {
             return .i64x2_relaxed_laneselect;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.relaxed_min")) {
+        } else if (opcode == .f32x4_relaxed_min) {
             return .f32x4_relaxed_min;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.relaxed_max")) {
+        } else if (opcode == .f32x4_relaxed_max) {
             return .f32x4_relaxed_max;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.relaxed_min")) {
+        } else if (opcode == .f64x2_relaxed_min) {
             return .f64x2_relaxed_min;
-        } else if (std.mem.eql(u8, instr_name, "f64x2.relaxed_max")) {
+        } else if (opcode == .f64x2_relaxed_max) {
             return .f64x2_relaxed_max;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.relaxed_q15mulr_s")) {
+        } else if (opcode == .i16x8_relaxed_q15mulr_s) {
             return .i16x8_relaxed_q15mulr_s;
-        } else if (std.mem.eql(u8, instr_name, "i16x8.relaxed_dot_i8x16_i7x16_s")) {
+        } else if (opcode == .i16x8_relaxed_dot_i8x16_i7x16_s) {
             return .i16x8_relaxed_dot_i8x16_i7x16_s;
-        } else if (std.mem.eql(u8, instr_name, "i32x4.relaxed_dot_i8x16_i7x16_add_s")) {
+        } else if (opcode == .i32x4_relaxed_dot_i8x16_i7x16_add_s) {
             return .i32x4_relaxed_dot_i8x16_i7x16_add_s;
-        } else if (std.mem.eql(u8, instr_name, "f32x4.relaxed_dot_bf16x8_add_f32x4")) {
+        } else if (opcode == .f32x4_relaxed_dot_bf16x8_add_f32x4) {
             return .f32x4_relaxed_dot_bf16x8_add_f32x4;
-        }
-
-        // Skip non-instruction keywords
-        if (std.mem.eql(u8, instr_name, "type") or
-            std.mem.eql(u8, instr_name, "param") or
-            std.mem.eql(u8, instr_name, "result"))
-        {
-            return null;
         }
 
         // Unknown instruction
@@ -3222,7 +3224,7 @@ pub const Parser = struct {
                 self.current_token = saved_token;
 
                 if (is_then) break;
-                
+
                 try self.advance(); // consume '('
                 try self.parseSExpression(instructions);
                 try self.expectRightParen();
@@ -3608,21 +3610,21 @@ pub const Parser = struct {
                 std.mem.eql(u8, format_type, "instance"))
             {
                 try self.advance();
-                
+
                 if (std.mem.eql(u8, format_type, "binary")) {
                     // Collect binary data
                     var binary_data = std.ArrayList(u8){};
                     defer binary_data.deinit(self.allocator);
-                    
+
                     while (self.current_token == .string) {
                         const bytes = try parseBinaryString(self.allocator, self.current_token.string);
                         defer self.allocator.free(bytes);
                         try binary_data.appendSlice(self.allocator, bytes);
                         try self.advance();
                     }
-                    
+
                     try self.expectToken(.right_paren);
-                    
+
                     return spec_types.command.Command{
                         .module = .{
                             .line = line,
@@ -3633,7 +3635,7 @@ pub const Parser = struct {
                         },
                     };
                 }
-                
+
                 // quote or instance format
                 while (self.current_token == .string or self.current_token == .identifier) {
                     try self.advance();
@@ -3786,7 +3788,7 @@ pub const Parser = struct {
                 if (c >= '0' and c <= '9') {
                     // Hex escape: \XX
                     if (i + 1 < str.len) {
-                        const hex_str = str[i..i+2];
+                        const hex_str = str[i .. i + 2];
                         const byte = try std.fmt.parseInt(u8, hex_str, 16);
                         try result.append(allocator, byte);
                         i += 2;
@@ -3796,7 +3798,7 @@ pub const Parser = struct {
                 } else if ((c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F')) {
                     // Hex escape: \XX
                     if (i + 1 < str.len) {
-                        const hex_str = str[i..i+2];
+                        const hex_str = str[i .. i + 2];
                         const byte = try std.fmt.parseInt(u8, hex_str, 16);
                         try result.append(allocator, byte);
                         i += 2;
@@ -3843,7 +3845,7 @@ pub const Parser = struct {
         // Check for format type
         var module_text: ?[]const u8 = null;
         var module_binary: ?[]const u8 = null;
-        
+
         if (self.current_token == .identifier) {
             const format_type = self.current_token.identifier;
             if (std.mem.eql(u8, format_type, "quote")) {
@@ -3851,7 +3853,7 @@ pub const Parser = struct {
                 try self.advance();
                 var text_parts = std.ArrayList(u8){};
                 defer text_parts.deinit(self.allocator);
-                
+
                 while (self.current_token == .string) {
                     if (text_parts.items.len > 0) {
                         try text_parts.append(self.allocator, ' ');
@@ -3859,7 +3861,7 @@ pub const Parser = struct {
                     try text_parts.appendSlice(self.allocator, self.current_token.string);
                     try self.advance();
                 }
-                
+
                 module_text = try text_parts.toOwnedSlice(self.allocator);
                 try self.expectToken(.right_paren);
             } else if (std.mem.eql(u8, format_type, "binary")) {
@@ -3867,14 +3869,14 @@ pub const Parser = struct {
                 try self.advance();
                 var binary_data = std.ArrayList(u8){};
                 defer binary_data.deinit(self.allocator);
-                
+
                 while (self.current_token == .string) {
                     const bytes = try parseBinaryString(self.allocator, self.current_token.string);
                     defer self.allocator.free(bytes);
                     try binary_data.appendSlice(self.allocator, bytes);
                     try self.advance();
                 }
-                
+
                 module_binary = try binary_data.toOwnedSlice(self.allocator);
                 try self.expectToken(.right_paren);
             } else {
@@ -3951,7 +3953,7 @@ pub const Parser = struct {
         // Check for format type
         var module_text: ?[]const u8 = null;
         var module_binary: ?[]const u8 = null;
-        
+
         if (self.current_token == .identifier) {
             const format_type = self.current_token.identifier;
             if (std.mem.eql(u8, format_type, "quote")) {
@@ -3959,7 +3961,7 @@ pub const Parser = struct {
                 try self.advance();
                 var text_parts = std.ArrayList(u8){};
                 defer text_parts.deinit(self.allocator);
-                
+
                 while (self.current_token == .string) {
                     if (text_parts.items.len > 0) {
                         try text_parts.append(self.allocator, ' ');
@@ -3967,7 +3969,7 @@ pub const Parser = struct {
                     try text_parts.appendSlice(self.allocator, self.current_token.string);
                     try self.advance();
                 }
-                
+
                 module_text = try text_parts.toOwnedSlice(self.allocator);
                 try self.expectToken(.right_paren);
             } else if (std.mem.eql(u8, format_type, "binary")) {
@@ -3975,14 +3977,14 @@ pub const Parser = struct {
                 try self.advance();
                 var binary_data = std.ArrayList(u8){};
                 defer binary_data.deinit(self.allocator);
-                
+
                 while (self.current_token == .string) {
                     const bytes = try parseBinaryString(self.allocator, self.current_token.string);
                     defer self.allocator.free(bytes);
                     try binary_data.appendSlice(self.allocator, bytes);
                     try self.advance();
                 }
-                
+
                 module_binary = try binary_data.toOwnedSlice(self.allocator);
                 try self.expectToken(.right_paren);
             } else {
