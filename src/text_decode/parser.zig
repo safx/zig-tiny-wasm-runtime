@@ -193,9 +193,7 @@ pub const Parser = struct {
 
     fn parseElem(self: *Parser, builder: *ModuleBuilder) !void {
         // Skip optional name
-        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
-            try self.advance();
-        }
+        _ = try self.parseOptionalName();
 
         const ref_type: wasm_core.types.RefType = .funcref;
         var table_idx: u32 = 0;
@@ -362,11 +360,7 @@ pub const Parser = struct {
 
     fn parseType(self: *Parser, builder: *ModuleBuilder) !void {
         // Parse optional type name
-        var type_name: ?[]const u8 = null;
-        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
-            type_name = self.current_token.identifier;
-            try self.advance();
-        }
+        const type_name = try self.parseOptionalName();
 
         // Expect (func ...)
         try self.expectToken(.left_paren);
@@ -435,9 +429,7 @@ pub const Parser = struct {
 
     fn parseGlobal(self: *Parser, builder: *ModuleBuilder) !void {
         // Skip optional name
-        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
-            try self.advance();
-        }
+        _ = try self.parseOptionalName();
 
         // Check if it's an import
         if (self.current_token == .left_paren) {
@@ -696,9 +688,7 @@ pub const Parser = struct {
 
     fn parseTable(self: *Parser, builder: *ModuleBuilder) !void {
         // Skip table name if present
-        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
-            try self.advance();
-        }
+        _ = try self.parseOptionalName();
 
         // Process optional export
         var export_name: ?[]const u8 = null;
@@ -850,11 +840,7 @@ pub const Parser = struct {
 
     fn parseMemory(self: *Parser, builder: *ModuleBuilder) !void {
         // Optional memory name (e.g., $mem0)
-        var memory_name: ?[]const u8 = null;
-        if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
-            memory_name = self.current_token.identifier;
-            try self.advance();
-        }
+        const memory_name = try self.parseOptionalName();
 
         // Check if it's an import
         if (self.current_token == .left_paren) {
@@ -1020,9 +1006,7 @@ pub const Parser = struct {
         // or: (data (offset (i32.const offset)) "string" ...)
 
         // Skip optional data name ($name)
-        if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
-            try self.advance();
-        }
+        _ = try self.parseOptionalName();
 
         var offset: wasm_core.types.InitExpression = .{ .i32_const = 0 };
         var mem_idx: u32 = 0;
@@ -1818,24 +1802,15 @@ pub const Parser = struct {
             .nop => return .nop,
             .@"unreachable" => return .@"unreachable",
             .block => {
-                // Skip optional label name
-                if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
-                    try self.advance();
-                }
+                _ = try self.parseOptionalName();
                 return .{ .block = .{ .type = try self.parseBlockType(), .end = 0 } };
             },
             .loop => {
-                // Skip optional label name
-                if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
-                    try self.advance();
-                }
+                _ = try self.parseOptionalName();
                 return .{ .loop = .{ .type = try self.parseBlockType(), .end = 0 } };
             },
             .@"if" => {
-                // Skip optional label name
-                if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
-                    try self.advance();
-                }
+                _ = try self.parseOptionalName();
                 return .{ .@"if" = .{ .type = try self.parseBlockType(), .@"else" = null, .end = 0 } };
             },
             .@"else" => return .@"else",
@@ -1943,9 +1918,7 @@ pub const Parser = struct {
                 var table_idx: u32 = 0;
 
                 // Check for table name or number first: call_indirect $table (type ...)
-                if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
-                    table_idx = try self.parseU32OrIdentifier();
-                } else if (self.current_token == .number) {
+                if (self.isName() or self.current_token == .number) {
                     table_idx = try self.parseU32OrIdentifier();
                 }
 
@@ -2871,11 +2844,26 @@ pub const Parser = struct {
         return TextDecodeError.UnexpectedToken;
     }
 
+    /// Check if current token is a name (identifier starting with '$')
+    fn isName(self: *Parser) bool {
+        return self.current_token == .identifier and
+            self.current_token.identifier.len > 0 and
+            self.current_token.identifier[0] == '$';
+    }
+
+    /// Parse optional name ($identifier), returns name and advances if present
+    fn parseOptionalName(self: *Parser) !?[]const u8 {
+        if (self.isName()) {
+            const name = self.current_token.identifier;
+            try self.advance();
+            return name;
+        }
+        return null;
+    }
+
     /// Parse optional table index (number or $name), returns 0 if not present
     fn parseOptionalTableIdx(self: *Parser) !u32 {
-        if (self.current_token == .number or
-            (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")))
-        {
+        if (self.current_token == .number or self.isName()) {
             return try self.parseU32OrIdentifier();
         }
         return 0;
