@@ -3413,6 +3413,90 @@ pub const Parser = struct {
         };
     }
 
+    /// Parse assert_exhaustion: (assert_exhaustion (invoke ...) "message")
+    fn parseAssertExhaustion(self: *Parser) !spec_types.command.Command {
+        // current token is "assert_exhaustion"
+        const line = self.lexer.line;
+        try self.advance();
+
+        // Parse action
+        const action = try self.parseAction();
+
+        // Parse failure message
+        if (self.current_token != .string) {
+            std.debug.print("Error: parseAssertExhaustion: Unexpected token at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
+            return TextDecodeError.UnexpectedToken;
+        }
+        const failure = try self.allocator.dupe(u8, self.current_token.string);
+        try self.advance();
+
+        try self.expectToken(.right_paren);
+
+        return spec_types.command.Command{
+            .assert_exhaustion = .{
+                .line = line,
+                .action = action,
+                .error_text = failure,
+            },
+        };
+    }
+
+    /// Parse assert_unlinkable/assert_uninstantiable: (assert_unlinkable (module ...) "message")
+    fn parseAssertModuleError(self: *Parser, comptime tag: enum { assert_unlinkable, assert_uninstantiable }) !spec_types.command.Command {
+        const line = self.lexer.line;
+        try self.advance();
+
+        // Expect (module ...) - skip the module content
+        try self.expectToken(.left_paren);
+
+        if (self.current_token != .identifier or !std.mem.eql(u8, self.current_token.identifier, "module")) {
+            return TextDecodeError.UnexpectedToken;
+        }
+
+        // Skip module content by counting parentheses
+        var depth: u32 = 1;
+        try self.advance();
+        while (depth > 0 and self.current_token != .eof) {
+            if (self.current_token == .left_paren) {
+                depth += 1;
+            } else if (self.current_token == .right_paren) {
+                depth -= 1;
+            }
+            if (depth > 0) {
+                try self.advance();
+            }
+        }
+        if (self.current_token == .right_paren) {
+            try self.advance();
+        }
+
+        // Parse failure message
+        if (self.current_token != .string) {
+            return TextDecodeError.UnexpectedToken;
+        }
+        const failure = try self.allocator.dupe(u8, self.current_token.string);
+        try self.advance();
+
+        try self.expectToken(.right_paren);
+
+        return switch (tag) {
+            .assert_unlinkable => spec_types.command.Command{
+                .assert_unlinkable = .{
+                    .line = line,
+                    .file_name = try self.allocator.dupe(u8, ""),
+                    .error_text = failure,
+                },
+            },
+            .assert_uninstantiable => spec_types.command.Command{
+                .assert_uninstantiable = .{
+                    .line = line,
+                    .file_name = try self.allocator.dupe(u8, ""),
+                    .error_text = failure,
+                },
+            },
+        };
+    }
+
     /// Convert escaped string to binary data
     fn parseBinaryString(allocator: std.mem.Allocator, str: []const u8) ![]u8 {
         var result = std.ArrayList(u8){};
@@ -4008,6 +4092,26 @@ pub fn parseWastScript(allocator: std.mem.Allocator, input: []const u8) ![]spec_
                     .line = parser.lexer.line,
                 },
             };
+            try commands.append(allocator, cmd);
+        } else if (std.mem.eql(u8, cmd_name, "get")) {
+            try parser.advance(); // consume 'get'
+            const get_action = try parser.parseGet();
+            try parser.expectToken(.right_paren);
+            const cmd = spec_types.command.Command{
+                .action = .{
+                    .action = .{ .get = get_action },
+                    .line = parser.lexer.line,
+                },
+            };
+            try commands.append(allocator, cmd);
+        } else if (std.mem.eql(u8, cmd_name, "assert_exhaustion")) {
+            const cmd = try parser.parseAssertExhaustion();
+            try commands.append(allocator, cmd);
+        } else if (std.mem.eql(u8, cmd_name, "assert_unlinkable")) {
+            const cmd = try parser.parseAssertModuleError(.assert_unlinkable);
+            try commands.append(allocator, cmd);
+        } else if (std.mem.eql(u8, cmd_name, "assert_uninstantiable")) {
+            const cmd = try parser.parseAssertModuleError(.assert_uninstantiable);
             try commands.append(allocator, cmd);
         } else {
             try parser.skipToClosingParen();
