@@ -1959,6 +1959,11 @@ pub const Parser = struct {
                 try self.parseSExpression(instructions);
                 try self.expectRightParen();
             } else if (self.current_token == .identifier) {
+                // Skip $-prefixed label identifiers that appear as bare tokens
+                if (self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                    try self.advance();
+                    continue;
+                }
                 // Check if this is a block/loop/if instruction and extract label name
                 const instr_name = self.current_token.identifier;
                 const is_block_instr = std.mem.eql(u8, instr_name, "block") or
@@ -2021,6 +2026,9 @@ pub const Parser = struct {
             return null;
         } else if (std.mem.eql(u8, instr_name, "then")) {
             // 'then' is part of if structure, not a standalone instruction - skip it
+            return null;
+        } else if (std.mem.eql(u8, instr_name, "local")) {
+            // 'local' is a local declaration, not an instruction - skip it
             return null;
         }
 
@@ -3169,7 +3177,7 @@ pub const Parser = struct {
         while (self.current_token == .identifier) {
             const id = self.current_token.identifier;
             if (std.mem.startsWith(u8, id, "offset=")) {
-                offset = try std.fmt.parseInt(u32, id[7..], 0);
+                offset = std.math.cast(u32, try std.fmt.parseInt(u64, id[7..], 0)) orelse std.math.maxInt(u32);
                 try self.advance();
             } else if (std.mem.startsWith(u8, id, "align=")) {
                 const align_bytes = try std.fmt.parseInt(u32, id[6..], 0);
@@ -3202,7 +3210,7 @@ pub const Parser = struct {
         while (self.current_token == .identifier) {
             const id = self.current_token.identifier;
             if (std.mem.startsWith(u8, id, "offset=")) {
-                offset = try std.fmt.parseInt(u32, id[7..], 0);
+                offset = std.math.cast(u32, try std.fmt.parseInt(u64, id[7..], 0)) orelse std.math.maxInt(u32);
                 try self.advance();
             } else if (std.mem.startsWith(u8, id, "align=")) {
                 const align_bytes = try std.fmt.parseInt(u32, id[6..], 0);

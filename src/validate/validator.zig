@@ -795,27 +795,30 @@ pub const ModuleValidator = struct {
             .f64x2_convert_low_i32x4_u => try vCvtOp(type_stack),
 
             // Relaxed SIMD instructions
-            .i8x16_relaxed_swizzle => unreachable,
-            .i32x4_relaxed_trunc_f32x4_s => unreachable,
-            .i32x4_relaxed_trunc_f32x4_u => unreachable,
-            .i32x4_relaxed_trunc_f64x2_s_zero => unreachable,
-            .i32x4_relaxed_trunc_f64x2_u_zero => unreachable,
-            .f32x4_relaxed_madd => unreachable,
-            .f32x4_relaxed_nmadd => unreachable,
-            .f64x2_relaxed_madd => unreachable,
-            .f64x2_relaxed_nmadd => unreachable,
-            .i8x16_relaxed_laneselect => unreachable,
-            .i16x8_relaxed_laneselect => unreachable,
-            .i32x4_relaxed_laneselect => unreachable,
-            .i64x2_relaxed_laneselect => unreachable,
-            .f32x4_relaxed_min => unreachable,
-            .f32x4_relaxed_max => unreachable,
-            .f64x2_relaxed_min => unreachable,
-            .f64x2_relaxed_max => unreachable,
-            .i16x8_relaxed_q15mulr_s => unreachable,
-            .i16x8_relaxed_dot_i8x16_i7x16_s => unreachable,
-            .i32x4_relaxed_dot_i8x16_i7x16_add_s => unreachable,
-            .f32x4_relaxed_dot_bf16x8_add_f32x4 => unreachable,
+            // Unary/convert: [v128] -> [v128]
+            .i32x4_relaxed_trunc_f32x4_s => try vCvtOp(type_stack),
+            .i32x4_relaxed_trunc_f32x4_u => try vCvtOp(type_stack),
+            .i32x4_relaxed_trunc_f64x2_s_zero => try vCvtOp(type_stack),
+            .i32x4_relaxed_trunc_f64x2_u_zero => try vCvtOp(type_stack),
+            // Binary: [v128 v128] -> [v128]
+            .i8x16_relaxed_swizzle => try vBinOp(type_stack),
+            .f32x4_relaxed_min => try vBinOp(type_stack),
+            .f32x4_relaxed_max => try vBinOp(type_stack),
+            .f64x2_relaxed_min => try vBinOp(type_stack),
+            .f64x2_relaxed_max => try vBinOp(type_stack),
+            .i16x8_relaxed_q15mulr_s => try vBinOp(type_stack),
+            .i16x8_relaxed_dot_i8x16_i7x16_s => try vBinOp(type_stack),
+            // Ternary: [v128 v128 v128] -> [v128]
+            .f32x4_relaxed_madd => try vTernOp(type_stack),
+            .f32x4_relaxed_nmadd => try vTernOp(type_stack),
+            .f64x2_relaxed_madd => try vTernOp(type_stack),
+            .f64x2_relaxed_nmadd => try vTernOp(type_stack),
+            .i8x16_relaxed_laneselect => try vTernOp(type_stack),
+            .i16x8_relaxed_laneselect => try vTernOp(type_stack),
+            .i32x4_relaxed_laneselect => try vTernOp(type_stack),
+            .i64x2_relaxed_laneselect => try vTernOp(type_stack),
+            .i32x4_relaxed_dot_i8x16_i7x16_add_s => try vTernOp(type_stack),
+            .f32x4_relaxed_dot_bf16x8_add_f32x4 => try vTernOp(type_stack),
         }
         return ip + 1;
     }
@@ -924,6 +927,13 @@ inline fn vUnOp(type_stack: *TypeStack) Error!void {
 
 inline fn vBinOp(type_stack: *TypeStack) Error!void {
     try binOp(i128, type_stack);
+}
+
+inline fn vTernOp(type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.pushValueType(.v128);
 }
 
 inline fn vShiftOp(type_stack: *TypeStack) Error!void {
