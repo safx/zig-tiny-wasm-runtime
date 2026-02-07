@@ -742,6 +742,13 @@ pub const Parser = struct {
             if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
                 try self.advance();
             }
+            // Skip optional address type (i32/i64 for table64)
+            if (self.current_token == .identifier and
+                (std.mem.eql(u8, self.current_token.identifier, "i32") or
+                std.mem.eql(u8, self.current_token.identifier, "i64")))
+            {
+                try self.advance();
+            }
 
             // Parse table type: min [max] reftype
             var min: u32 = 0;
@@ -3527,6 +3534,44 @@ pub const Parser = struct {
         var offset: u32 = 0;
         var alignment: u32 = 0;
         var lane_idx: u8 = 0;
+        var mem_idx: u32 = 0;
+
+        // Parse optional memory index (e.g., $mem1 or numeric index)
+        // Must distinguish from lane_idx: if a number is followed by offset=/align=/another number, it's mem_idx
+        if (self.current_token == .identifier) {
+            const id = self.current_token.identifier;
+            if (!std.mem.startsWith(u8, id, "offset=") and !std.mem.startsWith(u8, id, "align=")) {
+                // This is a memory index name
+                if (self.builder.memory_names.get(id)) |idx| {
+                    mem_idx = idx;
+                }
+                try self.advance();
+            }
+        } else if (self.current_token == .number) {
+            // Could be mem_idx or lane_idx - need lookahead
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+            const potential_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
+            try self.advance();
+
+            if (self.current_token == .identifier and
+                (std.mem.startsWith(u8, self.current_token.identifier, "offset=") or
+                std.mem.startsWith(u8, self.current_token.identifier, "align=")))
+            {
+                // Followed by memarg keywords -> this number is mem_idx
+                mem_idx = potential_idx;
+            } else if (self.current_token == .number) {
+                // Followed by another number -> this number is mem_idx, next is lane_idx
+                mem_idx = potential_idx;
+            } else {
+                // Not followed by memarg/number -> this is lane_idx, not mem_idx
+                // Restore and let existing lane_idx parsing handle it
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+            }
+        }
 
         // Parse optional offset=N and align=N
         while (self.current_token == .identifier) {
@@ -3558,6 +3603,7 @@ pub const Parser = struct {
             .@"align" = alignment,
             .offset = offset,
             .lane_idx = lane_idx,
+            .mem_idx = mem_idx,
         };
     }
 

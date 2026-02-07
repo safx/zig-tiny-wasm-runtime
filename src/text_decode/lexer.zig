@@ -216,6 +216,27 @@ pub const Lexer = struct {
             self.advance();
         }
 
+        // Check for quoted identifier $"..."
+        const text_so_far = self.input[start..self.pos];
+        if (text_so_far.len > 0 and text_so_far[text_so_far.len - 1] == '$' and
+            self.current_char != null and self.current_char.? == '"')
+        {
+            // Read the string part as part of the identifier
+            self.advance(); // skip opening quote
+            while (self.current_char) |char| {
+                if (char == '"') {
+                    self.advance(); // skip closing quote
+                    return Token{ .identifier = self.input[start..self.pos] };
+                }
+                if (char == '\\') {
+                    self.advance(); // skip escape character
+                    if (self.current_char == null) break;
+                }
+                self.advance();
+            }
+            return TextDecodeError.InvalidString;
+        }
+
         const text = self.input[start..self.pos];
 
         // Check if it's a number
