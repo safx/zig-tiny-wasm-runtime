@@ -1561,26 +1561,29 @@ pub const Parser = struct {
         return vtype;
     }
 
-    /// Parse block type: checks for (result ...) and returns appropriate BlockType
+    /// Parse block type: checks for (type ...), (param ...), (result ...) and returns appropriate BlockType.
+    /// Handles all valid combinations including (type $idx) followed by trailing (param ...)/(result ...) annotations.
     fn parseBlockType(self: *Parser) !wasm_core.types.Instruction.BlockType {
         // Skip label if present (e.g., $l)
         if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
             try self.advance();
         }
 
-        // Check if next token is '(' followed by 'result' or 'type'
+        // Check if next token is '('
         if (self.current_token != .left_paren) {
             return .empty;
         }
 
-        // Save lexer state for potential backtrack
-        const saved_lexer_pos = self.lexer.pos;
-        const saved_lexer_char = self.lexer.current_char;
-        const saved_token = self.current_token;
+        // Save lexer state for potential backtrack (before any '(' consumption)
+        const original_lexer_pos = self.lexer.pos;
+        const original_lexer_char = self.lexer.current_char;
+        const original_token = self.current_token;
+
+        // Try to parse (type ...) first
+        var has_type_index: ?u32 = null;
 
         try self.advance(); // consume '('
 
-        // Parse (type ...) if present
         if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
             try self.advance(); // consume 'type'
 
@@ -1589,105 +1592,118 @@ pub const Parser = struct {
                 type_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
                 try self.advance();
             } else if (self.current_token == .identifier) {
-                // Resolve type name
                 if (self.builder.type_names.get(self.current_token.identifier)) |idx| {
                     type_idx = idx;
                 }
                 try self.advance();
             }
 
-            if (self.current_token == .right_paren) {
-                try self.advance();
-            }
-
-            return .{ .type_index = type_idx };
+            try self.expectRightParen(); // consume ')'
+            has_type_index = type_idx;
+            // Fall through to consume trailing (param ...)/(result ...) annotations
+        } else {
+            // Not (type ...) - restore state before param/result loop
+            self.lexer.pos = original_lexer_pos;
+            self.lexer.current_char = original_lexer_char;
+            self.current_token = original_token;
         }
 
-        // Parse (param ...) if present
+        // Parse zero or more (param ...) clauses
         var param_types = std.ArrayList(wasm_core.types.ValueType){};
         defer param_types.deinit(self.allocator);
 
-        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "param")) {
-            try self.advance(); // consume 'param'
+        while (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_tok = self.current_token;
 
-            while (self.current_token != .right_paren) {
-                if (try self.parseValueType()) |vtype| {
-                    try param_types.append(self.allocator, vtype);
-                } else {
-                    break;
+            try self.advance(); // consume '('
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "param")) {
+                try self.advance(); // consume 'param'
+
+                // Skip optional param name ($name)
+                if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
+                    try self.advance();
                 }
-            }
 
-            try self.expectRightParen(); // consume ')'
-
-            // Check for (result ...) after (param ...)
-            if (self.current_token == .left_paren) {
-                try self.advance();
+                while (self.current_token != .right_paren) {
+                    if (try self.parseValueType()) |vtype| {
+                        try param_types.append(self.allocator, vtype);
+                    } else {
+                        break;
+                    }
+                }
+                try self.expectRightParen(); // consume ')'
             } else {
-                // Only params, no result - need to create a function type
-                if (param_types.items.len > 0) {
-                    const func_type = wasm_core.types.FuncType{
-                        .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, param_types.items),
-                        .result_types = &.{},
-                    };
-                    const type_idx: u32 = @intCast(self.builder.types.items.len);
-                    try self.builder.types.append(self.allocator, func_type);
-                    return .{ .type_index = type_idx };
-                }
-                return .empty;
+                // Not a (param ...), restore and break
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_tok;
+                break;
             }
         }
 
-        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "result")) {
-            try self.advance(); // consume 'result'
+        // Parse zero or more (result ...) clauses
+        var result_types = std.ArrayList(wasm_core.types.ValueType){};
+        defer result_types.deinit(self.allocator);
 
-            // Parse the result type(s)
-            var result_types = std.ArrayList(wasm_core.types.ValueType){};
-            defer result_types.deinit(self.allocator);
+        while (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_tok = self.current_token;
 
-            while (self.current_token != .right_paren) {
-                if (try self.parseValueType()) |vtype| {
-                    try result_types.append(self.allocator, vtype);
-                } else {
-                    break;
+            try self.advance(); // consume '('
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "result")) {
+                try self.advance(); // consume 'result'
+                while (self.current_token != .right_paren) {
+                    if (try self.parseValueType()) |vtype| {
+                        try result_types.append(self.allocator, vtype);
+                    } else {
+                        break;
+                    }
                 }
-            }
-
-            try self.expectRightParen(); // consume ')'
-
-            // If we have params, always create a function type
-            if (param_types.items.len > 0) {
-                const func_type = wasm_core.types.FuncType{
-                    .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, param_types.items),
-                    .result_types = try self.allocator.dupe(wasm_core.types.ValueType, result_types.items),
-                };
-                const type_idx: u32 = @intCast(self.builder.types.items.len);
-                try self.builder.types.append(self.allocator, func_type);
-                return .{ .type_index = type_idx };
-            }
-
-            // No params - return based on result count
-            if (result_types.items.len == 0) {
-                return .empty;
-            } else if (result_types.items.len == 1) {
-                return .{ .value_type = result_types.items[0] };
+                try self.expectRightParen(); // consume ')'
             } else {
-                // Multiple results - register a new type and return its index
-                const func_type = wasm_core.types.FuncType{
-                    .parameter_types = &.{},
-                    .result_types = try self.allocator.dupe(wasm_core.types.ValueType, result_types.items),
-                };
-                const type_idx: u32 = @intCast(self.builder.types.items.len);
-                try self.builder.types.append(self.allocator, func_type);
-                return .{ .type_index = type_idx };
+                // Not a (result ...), restore and break
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_tok;
+                break;
             }
-        } else {
-            // Not a (result ...), restore lexer state
-            self.lexer.pos = saved_lexer_pos;
-            self.lexer.current_char = saved_lexer_char;
-            self.current_token = saved_token;
+        }
+
+        // Return appropriate BlockType
+        if (has_type_index) |type_idx| {
+            // (type $idx) was present - trailing annotations already consumed
+            return .{ .type_index = type_idx };
+        }
+
+        if (param_types.items.len == 0 and result_types.items.len == 0) {
+            // No type annotations found - restore original state
+            self.lexer.pos = original_lexer_pos;
+            self.lexer.current_char = original_lexer_char;
+            self.current_token = original_token;
             return .empty;
         }
+
+        if (param_types.items.len == 0 and result_types.items.len == 1) {
+            return .{ .value_type = result_types.items[0] };
+        }
+
+        // Multiple params/results or params with results - create a function type
+        const func_type = wasm_core.types.FuncType{
+            .parameter_types = if (param_types.items.len > 0)
+                try self.allocator.dupe(wasm_core.types.ValueType, param_types.items)
+            else
+                &.{},
+            .result_types = if (result_types.items.len > 0)
+                try self.allocator.dupe(wasm_core.types.ValueType, result_types.items)
+            else
+                &.{},
+        };
+        const type_idx: u32 = @intCast(self.builder.types.items.len);
+        try self.builder.types.append(self.allocator, func_type);
+        return .{ .type_index = type_idx };
     }
 
     /// Expect and consume a right paren
@@ -1908,6 +1924,12 @@ pub const Parser = struct {
         if (std.mem.eql(u8, instr_name, "result")) {
             // 'result' is a type declaration, not an instruction - skip it
             return null;
+        } else if (std.mem.eql(u8, instr_name, "param")) {
+            // 'param' is a type declaration, not an instruction - skip it
+            return null;
+        } else if (std.mem.eql(u8, instr_name, "type")) {
+            // 'type' is a type reference, not an instruction - skip it
+            return null;
         } else if (std.mem.eql(u8, instr_name, "then")) {
             // 'then' is part of if structure, not a standalone instruction - skip it
             return null;
@@ -2069,6 +2091,36 @@ pub const Parser = struct {
                         }
 
                         try self.expectRightParen();
+
+                        // Consume trailing (param ...)/(result ...) annotations after (type ...)
+                        while (self.current_token == .left_paren) {
+                            const trail_pos = self.lexer.pos;
+                            const trail_char = self.lexer.current_char;
+                            const trail_tok = self.current_token;
+
+                            try self.advance(); // consume '('
+                            if (self.current_token == .identifier and
+                                (std.mem.eql(u8, self.current_token.identifier, "param") or
+                                std.mem.eql(u8, self.current_token.identifier, "result")))
+                            {
+                                // Skip to closing paren
+                                try self.advance(); // consume 'param'/'result'
+                                // Skip optional param name
+                                if (self.current_token == .identifier and std.mem.startsWith(u8, self.current_token.identifier, "$")) {
+                                    try self.advance();
+                                }
+                                while (self.current_token != .right_paren) {
+                                    try self.advance();
+                                }
+                                try self.expectRightParen(); // consume ')'
+                            } else {
+                                // Not param/result, restore and break
+                                self.lexer.pos = trail_pos;
+                                self.lexer.current_char = trail_char;
+                                self.current_token = trail_tok;
+                                break;
+                            }
+                        }
                     } else if (self.current_token == .identifier and
                         (std.mem.eql(u8, self.current_token.identifier, "param") or
                             std.mem.eql(u8, self.current_token.identifier, "result")))
