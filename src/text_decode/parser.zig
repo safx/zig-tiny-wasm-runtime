@@ -225,8 +225,16 @@ pub const Parser = struct {
             self.current_token = try self.lexer.nextToken();
             return;
         } else {
-            std.debug.print("Warning: Unknown module field: {s}\n", .{field_name});
-            return TextDecodeError.UnexpectedToken;
+            // Unknown module field (e.g., tag, rec) - skip content to allow parsing remaining fields
+            while (self.current_token != .right_paren and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    try self.advance();
+                    try self.skipToClosingParen();
+                } else {
+                    try self.advance();
+                }
+            }
+            // Falls through to expectToken(.right_paren) on line 232
         }
 
         try self.expectToken(.right_paren);
@@ -3680,10 +3688,14 @@ pub const Parser = struct {
                 std.mem.eql(u8, id, "table") or
                 std.mem.eql(u8, id, "memory") or
                 std.mem.eql(u8, id, "data") or
+                std.mem.eql(u8, id, "elem") or
+                std.mem.eql(u8, id, "start") or
                 std.mem.eql(u8, id, "export") or
                 std.mem.eql(u8, id, "type") or
                 std.mem.eql(u8, id, "import") or
                 std.mem.eql(u8, id, "global") or
+                std.mem.eql(u8, id, "tag") or
+                std.mem.eql(u8, id, "rec") or
                 std.mem.eql(u8, id, "binary") or
                 std.mem.eql(u8, id, "quote") or
                 std.mem.eql(u8, id, "instance");
