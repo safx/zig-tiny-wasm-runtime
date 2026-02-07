@@ -502,24 +502,30 @@ pub const Parser = struct {
         var value_type: wasm_core.types.ValueType = .i32;
         var mutability: wasm_core.types.Mutability = .immutable;
 
-        // Check for (mut type)
+        // Check for (mut type) or (ref ...) or plain type
         if (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+
             try self.advance();
             if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "mut")) {
                 mutability = .mutable;
                 try self.advance();
-                if (self.current_token == .identifier) {
-                    value_type = try self.parseValueType() orelse .i32;
+                // Parse type inside (mut ...) - can be plain identifier or (ref ...)
+                if (try self.parseValueType()) |vtype| {
+                    value_type = vtype;
                 }
                 try self.expectRightParen();
             } else {
-                // Not (mut ...), might be init expression - restore
-                // Actually, we need to handle this case differently
-                // For now, assume it's a type
-                if (self.current_token == .identifier) {
-                    value_type = try self.parseValueType() orelse .i32;
+                // Not (mut ...), restore and try parseValueType which handles (ref ...)
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+
+                if (try self.parseValueType()) |vtype| {
+                    value_type = vtype;
                 }
-                try self.expectRightParen();
             }
         } else if (self.current_token == .identifier) {
             value_type = try self.parseValueType() orelse .i32;
@@ -718,13 +724,23 @@ pub const Parser = struct {
                 var max: ?u32 = null;
                 var ref_type: wasm_core.types.RefType = .funcref;
 
-                if (self.current_token == .number) {
-                    min = try std.fmt.parseInt(u32, self.current_token.number, 0);
+                // Optional table address type (i32 or i64 for table64)
+                if (self.current_token == .identifier and
+                    (std.mem.eql(u8, self.current_token.identifier, "i32") or
+                    std.mem.eql(u8, self.current_token.identifier, "i64")))
+                {
                     try self.advance();
                 }
 
                 if (self.current_token == .number) {
-                    max = try std.fmt.parseInt(u32, self.current_token.number, 0);
+                    const val = try std.fmt.parseInt(u64, self.current_token.number, 0);
+                    min = std.math.cast(u32, val) orelse std.math.maxInt(u32);
+                    try self.advance();
+                }
+
+                if (self.current_token == .number) {
+                    const val = try std.fmt.parseInt(u64, self.current_token.number, 0);
+                    max = std.math.cast(u32, val) orelse std.math.maxInt(u32);
                     try self.advance();
                 }
 
@@ -790,15 +806,25 @@ pub const Parser = struct {
         var max: ?u32 = null;
         var ref_type: wasm_core.types.RefType = .funcref;
 
-        // Parse min
+        // Optional table address type (i32 or i64 for table64)
+        if (self.current_token == .identifier and
+            (std.mem.eql(u8, self.current_token.identifier, "i32") or
+            std.mem.eql(u8, self.current_token.identifier, "i64")))
+        {
+            try self.advance();
+        }
+
+        // Parse min (use u64 to handle table64 large values, clamp to u32)
         if (self.current_token == .number) {
-            min = try std.fmt.parseInt(u32, self.current_token.number, 0);
+            const val = try std.fmt.parseInt(u64, self.current_token.number, 0);
+            min = std.math.cast(u32, val) orelse std.math.maxInt(u32);
             try self.advance();
         }
 
         // Parse optional max
         if (self.current_token == .number) {
-            max = try std.fmt.parseInt(u32, self.current_token.number, 0);
+            const val = try std.fmt.parseInt(u64, self.current_token.number, 0);
+            max = std.math.cast(u32, val) orelse std.math.maxInt(u32);
             try self.advance();
         }
 
@@ -989,15 +1015,29 @@ pub const Parser = struct {
                 try self.expectRightParen();
 
                 // Parse memory limits (min max)
-                if (self.current_token != .left_paren) return TextDecodeError.UnexpectedToken;
-                try self.advance(); // consume '('
-                if (self.current_token != .identifier or !std.mem.eql(u8, self.current_token.identifier, "memory")) {
-                    return TextDecodeError.UnexpectedToken;
-                }
-                try self.advance(); // consume 'memory'
-
+                // Two formats:
+                //   (memory $name (import ...) <limits>)  - limits directly after import
+                //   (memory $name (import ...) (memory <limits>))  - nested memory form
                 var min: u32 = 1;
                 var max: ?u32 = null;
+                var need_inner_close = false;
+
+                if (self.current_token == .left_paren) {
+                    try self.advance(); // consume '('
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "memory")) {
+                        try self.advance(); // consume 'memory'
+                        need_inner_close = true;
+                    }
+                }
+
+                // Optional memory type (i32 or i64 for memory64)
+                if (self.current_token == .identifier and
+                    (std.mem.eql(u8, self.current_token.identifier, "i32") or
+                    std.mem.eql(u8, self.current_token.identifier, "i64")))
+                {
+                    try self.advance();
+                }
+
                 if (self.current_token == .number) {
                     min = @intCast(try std.fmt.parseInt(u64, self.current_token.number, 0));
                     try self.advance();
@@ -1007,7 +1047,9 @@ pub const Parser = struct {
                     try self.advance();
                 }
 
-                try self.expectRightParen();
+                if (need_inner_close) {
+                    try self.expectRightParen();
+                }
 
                 // Add to imports
                 try builder.imports.append(self.allocator, .{
@@ -1520,6 +1562,10 @@ pub const Parser = struct {
             try self.advance(); // consume '('
             if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref")) {
                 try self.advance(); // consume 'ref'
+                // Skip optional 'null' in (ref null <heaptype>)
+                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "null")) {
+                    try self.advance();
+                }
                 if (self.current_token == .identifier) {
                     const ref_type = self.current_token.identifier;
                     try self.advance();
@@ -1756,6 +1802,34 @@ pub const Parser = struct {
                             try self.advance();
                         }
                         try self.expectRightParen();
+                    } else if (std.mem.eql(u8, instr_name, "v128.const")) {
+                        const val = try self.parseV128Const();
+                        try instrs.append(self.allocator, .{ .v128_const = val });
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, instr_name, "ref.func")) {
+                        if (self.current_token == .number) {
+                            const val = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                            try instrs.append(self.allocator, .{ .ref_func = val });
+                            try self.advance();
+                        } else if (self.current_token == .identifier) {
+                            // Named function reference - resolve to index
+                            const name = self.current_token.identifier;
+                            const func_idx = self.builder.func_names.get(name) orelse 0;
+                            try instrs.append(self.allocator, .{ .ref_func = func_idx });
+                            try self.advance();
+                        }
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, instr_name, "ref.null")) {
+                        var rt: wasm_core.types.RefType = .funcref;
+                        if (self.current_token == .identifier) {
+                            const type_name = self.current_token.identifier;
+                            if (std.mem.eql(u8, type_name, "extern") or std.mem.eql(u8, type_name, "externref")) {
+                                rt = .externref;
+                            }
+                            try self.advance();
+                        }
+                        try instrs.append(self.allocator, .{ .ref_null = rt });
+                        try self.expectRightParen();
                     } else if (std.mem.eql(u8, instr_name, "global.get")) {
                         if (self.current_token == .number) {
                             const val = try std.fmt.parseInt(u32, self.current_token.number, 10);
@@ -1784,8 +1858,10 @@ pub const Parser = struct {
                             .i64_const => |v| try instrs.append(self.allocator, .{ .i64_const = v }),
                             .f32_const => |v| try instrs.append(self.allocator, .{ .f32_const = v }),
                             .f64_const => |v| try instrs.append(self.allocator, .{ .f64_const = v }),
+                            .v128_const => |v| try instrs.append(self.allocator, .{ .v128_const = v }),
+                            .ref_null => |v| try instrs.append(self.allocator, .{ .ref_null = v }),
+                            .ref_func => |v| try instrs.append(self.allocator, .{ .ref_func = v }),
                             .global_get => |v| try instrs.append(self.allocator, .{ .global_get = v }),
-                            else => {},
                         }
 
                         // Add the operation
@@ -1805,7 +1881,17 @@ pub const Parser = struct {
 
                         try self.expectRightParen();
                     } else {
-                        try self.expectRightParen();
+                        // Unknown init expression instruction - skip tokens until closing paren
+                        var depth: u32 = 1;
+                        while (depth > 0 and self.current_token != .eof) {
+                            if (self.current_token == .left_paren) {
+                                depth += 1;
+                            } else if (self.current_token == .right_paren) {
+                                depth -= 1;
+                            }
+                            if (depth > 0) try self.advance();
+                        }
+                        if (self.current_token == .right_paren) try self.advance();
                     }
                 }
             } else {
@@ -1821,6 +1907,9 @@ pub const Parser = struct {
                 .i64_const => |v| .{ .i64_const = v },
                 .f32_const => |v| .{ .f32_const = v },
                 .f64_const => |v| .{ .f64_const = v },
+                .v128_const => |v| .{ .v128_const = v },
+                .ref_null => |v| .{ .ref_null = v },
+                .ref_func => |v| .{ .ref_func = v },
                 .global_get => |v| .{ .global_get = v },
                 else => .{ .instructions = try self.allocator.dupe(wasm_core.types.Instruction, instrs.items) },
             };
