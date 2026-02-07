@@ -2339,8 +2339,9 @@ pub const Parser = struct {
         // This provides early error detection for unknown instructions
         const instruction_map = @import("./instruction_map.zig");
         const opcode = instruction_map.opcodeFromName(instr_name) orelse {
-            std.debug.print("Error: Unknown instruction: {s}\n", .{instr_name});
-            return error.UnknownInstruction;
+            // Unknown instruction (e.g., call_ref, return_call, throw, try_table)
+            // Return null to skip - callers handle this gracefully
+            return null;
         };
 
         // Control instructions
@@ -3172,8 +3173,15 @@ pub const Parser = struct {
 
         // Parse the instruction
         const instr = try self.parseInstruction() orelse {
-            // Skip to closing paren for non-instruction keywords
-            while (self.current_token != .right_paren and self.current_token != .eof) {
+            // Skip to matching closing paren, tracking nested parentheses
+            var depth: u32 = 0;
+            while (self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    depth += 1;
+                } else if (self.current_token == .right_paren) {
+                    if (depth == 0) break;
+                    depth -= 1;
+                }
                 try self.advance();
             }
             // Pop label if we pushed one
