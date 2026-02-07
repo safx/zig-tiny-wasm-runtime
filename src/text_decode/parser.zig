@@ -183,6 +183,47 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, field_name, "start")) {
             const idx = try self.parseU32OrIdentifier();
             builder.start = idx;
+        } else if (field_name.len > 0 and field_name[0] == '@') {
+            // WAT annotation (@name ...) - skip raw content until matching closing paren
+            // Must work at raw character level because annotation content may contain
+            // characters that the lexer cannot tokenize (e.g., commas, brackets, braces)
+            var depth: u32 = 0;
+            while (self.lexer.pos < self.lexer.input.len) {
+                const ch = self.lexer.input[self.lexer.pos];
+                if (ch == '(') {
+                    depth += 1;
+                } else if (ch == ')') {
+                    if (depth == 0) break;
+                    depth -= 1;
+                } else if (ch == '"') {
+                    // Skip string literal content
+                    self.lexer.pos += 1;
+                    while (self.lexer.pos < self.lexer.input.len and self.lexer.input[self.lexer.pos] != '"') {
+                        if (self.lexer.input[self.lexer.pos] == '\\') self.lexer.pos += 1; // skip escape
+                        self.lexer.pos += 1;
+                    }
+                    if (self.lexer.pos < self.lexer.input.len) self.lexer.pos += 1; // skip closing "
+                    continue;
+                } else if (ch == ';' and self.lexer.pos + 1 < self.lexer.input.len and self.lexer.input[self.lexer.pos + 1] == ';') {
+                    // Skip line comment
+                    while (self.lexer.pos < self.lexer.input.len and self.lexer.input[self.lexer.pos] != '\n') {
+                        self.lexer.pos += 1;
+                    }
+                    continue;
+                } else if (ch == '\n') {
+                    self.lexer.line += 1;
+                }
+                self.lexer.pos += 1;
+            }
+            // Position is now at ')' or end — update lexer state and advance past ')'
+            if (self.lexer.pos < self.lexer.input.len) {
+                self.lexer.pos += 1; // skip ')'
+                self.lexer.current_char = if (self.lexer.pos < self.lexer.input.len) self.lexer.input[self.lexer.pos] else null;
+            } else {
+                self.lexer.current_char = null;
+            }
+            self.current_token = try self.lexer.nextToken();
+            return;
         } else {
             std.debug.print("Warning: Unknown module field: {s}\n", .{field_name});
             return TextDecodeError.UnexpectedToken;
@@ -261,9 +302,14 @@ pub const Parser = struct {
             try self.advance();
         }
 
-        // Skip 'func' keyword if present
-        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "func")) {
-            try self.advance();
+        // Skip ref type keyword if present (func, funcref, externref, etc.)
+        if (self.current_token == .identifier) {
+            const kw = self.current_token.identifier;
+            if (std.mem.eql(u8, kw, "func") or std.mem.eql(u8, kw, "funcref") or
+                std.mem.eql(u8, kw, "externref") or std.mem.eql(u8, kw, "extern"))
+            {
+                try self.advance();
+            }
         }
 
         // Parse function references
@@ -324,10 +370,19 @@ pub const Parser = struct {
                     } else if (std.mem.eql(u8, self.current_token.identifier, "ref.null")) {
                         try self.advance();
                         try init_list.append(self.allocator, .{ .ref_null = .funcref });
+                        // Consume the type argument if present
+                        if (self.current_token != .right_paren) try self.advance();
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, self.current_token.identifier, "global.get")) {
                         try self.advance();
+                        const global_idx = try self.parseU32OrIdentifier();
+                        try init_list.append(self.allocator, .{ .global_get = global_idx });
                         try self.expectRightParen();
                     } else {
-                        try self.advance();
+                        // Unknown expression - skip all tokens until closing paren
+                        while (self.current_token != .right_paren and self.current_token != .eof) {
+                            try self.advance();
+                        }
                         try self.expectRightParen();
                     }
                 }
@@ -453,9 +508,30 @@ pub const Parser = struct {
 
                 try self.expectRightParen();
 
-                // Parse global type
+                // Parse global type: plain identifier, (mut type), or (ref ...)
                 var value_type: wasm_core.types.ValueType = .i32;
-                if (self.current_token == .identifier) {
+                var mutability: wasm_core.types.Mutability = .immutable;
+
+                if (self.current_token == .left_paren) {
+                    const saved2 = .{ self.lexer.pos, self.lexer.current_char, self.current_token };
+                    try self.advance();
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "mut")) {
+                        mutability = .mutable;
+                        try self.advance();
+                        if (try self.parseValueType()) |vtype| {
+                            value_type = vtype;
+                        }
+                        try self.expectRightParen();
+                    } else {
+                        // Not (mut ...), restore and try parseValueType for (ref ...)
+                        self.lexer.pos = saved2[0];
+                        self.lexer.current_char = saved2[1];
+                        self.current_token = saved2[2];
+                        if (try self.parseValueType()) |vtype| {
+                            value_type = vtype;
+                        }
+                    }
+                } else if (self.current_token == .identifier) {
                     value_type = try self.parseValueType() orelse .i32;
                 }
 
@@ -463,7 +539,7 @@ pub const Parser = struct {
                 try builder.imports.append(self.allocator, .{
                     .module_name = module_name,
                     .name = field_name,
-                    .desc = .{ .global = .{ .value_type = value_type, .mutability = .immutable } },
+                    .desc = .{ .global = .{ .value_type = value_type, .mutability = mutability } },
                 });
                 return;
             } else {
@@ -617,20 +693,36 @@ pub const Parser = struct {
             }
             break :blk wasm_core.types.ImportDesc{ .function = type_idx };
         } else if (std.mem.eql(u8, desc_type, "global")) blk: {
-            // Parse global type
+            // Skip optional $name
+            if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                try self.advance();
+            }
+
+            // Parse global type: plain identifier, (mut type), or (ref ...)
             var value_type: wasm_core.types.ValueType = .i32;
             var mutability: wasm_core.types.Mutability = .immutable;
 
-            // Check for (mut type)
             if (self.current_token == .left_paren) {
+                const saved_pos2 = self.lexer.pos;
+                const saved_char2 = self.lexer.current_char;
+                const saved_token2 = self.current_token;
                 try self.advance();
                 if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "mut")) {
                     mutability = .mutable;
                     try self.advance();
-                    if (self.current_token == .identifier) {
-                        value_type = try self.parseValueType() orelse .i32;
+                    // Parse type inside (mut ...) - can be plain identifier or (ref ...)
+                    if (try self.parseValueType()) |vtype| {
+                        value_type = vtype;
                     }
                     try self.expectRightParen();
+                } else {
+                    // Not (mut ...), restore and try parseValueType for (ref ...)
+                    self.lexer.pos = saved_pos2;
+                    self.lexer.current_char = saved_char2;
+                    self.current_token = saved_token2;
+                    if (try self.parseValueType()) |vtype| {
+                        value_type = vtype;
+                    }
                 }
             } else if (self.current_token == .identifier) {
                 value_type = try self.parseValueType() orelse .i32;
@@ -638,6 +730,11 @@ pub const Parser = struct {
 
             break :blk wasm_core.types.ImportDesc{ .global = .{ .value_type = value_type, .mutability = mutability } };
         } else if (std.mem.eql(u8, desc_type, "table")) blk: {
+            // Skip optional $name
+            if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                try self.advance();
+            }
+
             // Parse table type: min [max] reftype
             var min: u32 = 0;
             var max: ?u32 = null;
@@ -654,16 +751,46 @@ pub const Parser = struct {
             }
 
             if (self.current_token == .identifier) {
-                if (std.mem.eql(u8, self.current_token.identifier, "funcref")) {
-                    ref_type = .funcref;
-                } else if (std.mem.eql(u8, self.current_token.identifier, "externref")) {
-                    ref_type = .externref;
-                }
+                ref_type = try self.parseRefType();
+            } else if (self.current_token == .left_paren) {
+                // Handle (ref null func) style ref type
+                const saved_pos4 = self.lexer.pos;
+                const saved_char4 = self.lexer.current_char;
+                const saved_token4 = self.current_token;
                 try self.advance();
+                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref")) {
+                    try self.advance();
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "null")) {
+                        try self.advance();
+                    }
+                    if (self.current_token == .identifier) {
+                        ref_type = try self.parseRefType();
+                    } else if (self.current_token == .number) {
+                        // Numeric type index
+                        try self.advance();
+                    }
+                    try self.expectRightParen();
+                } else {
+                    self.lexer.pos = saved_pos4;
+                    self.lexer.current_char = saved_char4;
+                    self.current_token = saved_token4;
+                }
             }
 
             break :blk wasm_core.types.ImportDesc{ .table = .{ .limits = .{ .min = min, .max = max }, .ref_type = ref_type } };
         } else if (std.mem.eql(u8, desc_type, "memory")) blk: {
+            // Skip optional $name
+            if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                try self.advance();
+            }
+            // Skip optional address type (i32/i64 for memory64)
+            if (self.current_token == .identifier and
+                (std.mem.eql(u8, self.current_token.identifier, "i32") or
+                std.mem.eql(u8, self.current_token.identifier, "i64")))
+            {
+                try self.advance();
+            }
+
             // Parse memory type: min [max]
             var min: u32 = 1;
             var max: ?u32 = null;
@@ -679,6 +806,29 @@ pub const Parser = struct {
             }
 
             break :blk wasm_core.types.ImportDesc{ .memory = .{ .limits = .{ .min = min, .max = max } } };
+        } else if (std.mem.eql(u8, desc_type, "tag")) blk: {
+            // Exception handling tags - skip content, create dummy function import
+            while (self.current_token != .right_paren and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    var depth2: u32 = 1;
+                    try self.advance();
+                    while (depth2 > 0 and self.current_token != .eof) {
+                        if (self.current_token == .left_paren) depth2 += 1 else if (self.current_token == .right_paren) depth2 -= 1;
+                        if (depth2 > 0) try self.advance();
+                    }
+                    if (self.current_token == .right_paren) try self.advance();
+                } else {
+                    try self.advance();
+                }
+            }
+            // Create an empty function type for the tag import
+            const func_type = wasm_core.types.FuncType{
+                .parameter_types = &.{},
+                .result_types = &.{},
+            };
+            const tag_type_idx: u32 = @intCast(builder.types.items.len);
+            try builder.types.append(self.allocator, func_type);
+            break :blk wasm_core.types.ImportDesc{ .function = tag_type_idx };
         } else {
             return TextDecodeError.UnexpectedToken;
         };
@@ -745,12 +895,26 @@ pub const Parser = struct {
                 }
 
                 if (self.current_token == .identifier) {
-                    if (std.mem.eql(u8, self.current_token.identifier, "funcref")) {
-                        ref_type = .funcref;
+                    ref_type = try self.parseRefType();
+                } else if (self.current_token == .left_paren) {
+                    // Handle (ref null func) etc.
+                    const sp = .{ self.lexer.pos, self.lexer.current_char, self.current_token };
+                    try self.advance();
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref")) {
                         try self.advance();
-                    } else if (std.mem.eql(u8, self.current_token.identifier, "externref")) {
-                        ref_type = .externref;
-                        try self.advance();
+                        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "null")) {
+                            try self.advance();
+                        }
+                        if (self.current_token == .identifier) {
+                            ref_type = try self.parseRefType();
+                        } else if (self.current_token == .number) {
+                            try self.advance();
+                        }
+                        try self.expectRightParen();
+                    } else {
+                        self.lexer.pos = sp[0];
+                        self.lexer.current_char = sp[1];
+                        self.current_token = sp[2];
                     }
                 }
 
@@ -798,6 +962,83 @@ pub const Parser = struct {
                 self.lexer.pos = saved_pos;
                 self.lexer.current_char = saved_char;
                 self.current_token = saved_token;
+            }
+        }
+
+        // Check for (import ...) after (export ...) — e.g., (table (export "t") (import "m" "n") 2 funcref)
+        if (export_name != null and self.current_token == .left_paren) {
+            const saved_pos3 = self.lexer.pos;
+            const saved_char3 = self.lexer.current_char;
+            const saved_token3 = self.current_token;
+
+            try self.advance();
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "import")) {
+                try self.advance(); // consume 'import'
+
+                var module_name: []const u8 = "";
+                var field_name2: []const u8 = "";
+
+                if (self.current_token == .string) {
+                    module_name = self.current_token.string;
+                    try self.advance();
+                }
+                if (self.current_token == .string) {
+                    field_name2 = self.current_token.string;
+                    try self.advance();
+                }
+                try self.expectRightParen();
+
+                // Parse table type after import
+                var min2: u32 = 0;
+                var max2: ?u32 = null;
+                var ref_type2: wasm_core.types.RefType = .funcref;
+
+                // Skip optional address type
+                if (self.current_token == .identifier and
+                    (std.mem.eql(u8, self.current_token.identifier, "i32") or
+                    std.mem.eql(u8, self.current_token.identifier, "i64")))
+                {
+                    try self.advance();
+                }
+
+                if (self.current_token == .number) {
+                    const val = try std.fmt.parseInt(u64, self.current_token.number, 0);
+                    min2 = std.math.cast(u32, val) orelse std.math.maxInt(u32);
+                    try self.advance();
+                }
+                if (self.current_token == .number) {
+                    const val = try std.fmt.parseInt(u64, self.current_token.number, 0);
+                    max2 = std.math.cast(u32, val) orelse std.math.maxInt(u32);
+                    try self.advance();
+                }
+                if (self.current_token == .identifier) {
+                    ref_type2 = try self.parseRefType();
+                }
+
+                const table_type = wasm_core.types.TableType{
+                    .limits = .{ .min = min2, .max = max2 },
+                    .ref_type = ref_type2,
+                };
+
+                try builder.imports.append(self.allocator, .{
+                    .module_name = try self.allocator.dupe(u8, module_name),
+                    .name = try self.allocator.dupe(u8, field_name2),
+                    .desc = .{ .table = table_type },
+                });
+
+                // Register the export for this imported table
+                const table_idx: u32 = @intCast(builder.tables.items.len);
+                try builder.exports.append(self.allocator, .{
+                    .name = export_name.?,
+                    .desc = .{ .table = table_idx },
+                });
+
+                return;
+            } else {
+                // Not import, restore
+                self.lexer.pos = saved_pos3;
+                self.lexer.current_char = saved_char3;
+                self.current_token = saved_token3;
             }
         }
 
@@ -861,8 +1102,17 @@ pub const Parser = struct {
                         try self.advance();
                     }
                     try self.expectRightParen();
+                } else if (self.current_token == .identifier) {
+                    // (ref func) / (ref extern) / (ref $type) without null
+                    ref_type = try self.parseRefType();
+                    try self.expectRightParen();
+                } else if (self.current_token == .number) {
+                    // (ref 0) - numeric type index
+                    ref_type = .funcref;
+                    try self.advance();
+                    try self.expectRightParen();
                 } else {
-                    // Not (ref null ...), restore
+                    // Not a recognized (ref ...), restore
                     self.lexer.pos = saved_pos;
                     self.lexer.current_char = saved_char;
                     self.current_token = saved_token;
@@ -899,6 +1149,26 @@ pub const Parser = struct {
                         const idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
                         try init_list.append(self.allocator, .{ .ref_func = idx });
                         try self.advance();
+                    } else if (self.current_token == .left_paren) {
+                        // Handle (ref.func $f) and (ref.null func) expressions
+                        try self.advance();
+                        if (self.current_token == .identifier) {
+                            const expr_kw = self.current_token.identifier;
+                            if (std.mem.eql(u8, expr_kw, "ref.func")) {
+                                try self.advance();
+                                const idx = try self.parseU32OrIdentifier();
+                                try init_list.append(self.allocator, .{ .ref_func = idx });
+                            } else if (std.mem.eql(u8, expr_kw, "ref.null")) {
+                                try self.advance();
+                                // Consume the type argument (func/extern/etc.)
+                                _ = try self.parseRefType();
+                                try init_list.append(self.allocator, .{ .ref_null = .funcref });
+                            } else {
+                                // Unknown expression, skip content
+                                try self.advance();
+                            }
+                        }
+                        try self.expectRightParen();
                     } else {
                         break;
                     }
@@ -1365,12 +1635,13 @@ pub const Parser = struct {
                 }
                 try self.expectRightParen();
 
-                // Continue parsing params/results after import
+                // Continue parsing type/params/results after import
+                var explicit_type_idx: ?u32 = null;
                 while (self.current_token == .left_paren) {
                     const next_tok = try self.peekToken();
                     if (next_tok == .identifier) {
                         const kw = next_tok.identifier;
-                        if (!std.mem.eql(u8, kw, "param") and !std.mem.eql(u8, kw, "result")) {
+                        if (!std.mem.eql(u8, kw, "param") and !std.mem.eql(u8, kw, "result") and !std.mem.eql(u8, kw, "type")) {
                             break;
                         }
                     } else break;
@@ -1378,7 +1649,11 @@ pub const Parser = struct {
                     try self.advance(); // consume '('
                     const kw = self.current_token.identifier;
 
-                    if (std.mem.eql(u8, kw, "param")) {
+                    if (std.mem.eql(u8, kw, "type")) {
+                        try self.advance(); // consume 'type'
+                        explicit_type_idx = try self.parseU32OrIdentifier();
+                        try self.expectRightParen();
+                    } else if (std.mem.eql(u8, kw, "param")) {
                         try self.advance();
                         while (self.current_token != .right_paren and self.current_token != .eof) {
                             if (self.current_token == .identifier) {
@@ -1410,13 +1685,16 @@ pub const Parser = struct {
                     }
                 }
 
-                // Create function type and add import
-                const func_type = wasm_core.types.FuncType{
-                    .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, params.items),
-                    .result_types = try self.allocator.dupe(wasm_core.types.ValueType, results.items),
+                // Use explicit type index if provided, otherwise create new type
+                const type_idx: u32 = if (explicit_type_idx) |tidx| tidx else blk: {
+                    const func_type = wasm_core.types.FuncType{
+                        .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, params.items),
+                        .result_types = try self.allocator.dupe(wasm_core.types.ValueType, results.items),
+                    };
+                    const idx: u32 = @intCast(builder.types.items.len);
+                    try builder.types.append(self.allocator, func_type);
+                    break :blk idx;
                 };
-                const type_idx: u32 = @intCast(builder.types.items.len);
-                try builder.types.append(self.allocator, func_type);
 
                 const import_desc = wasm_core.types.ImportDesc{
                     .function = type_idx,
@@ -1576,8 +1854,13 @@ pub const Parser = struct {
                     } else if (std.mem.eql(u8, ref_type, "func")) {
                         return .func_ref;
                     }
-                    // For other ref types (GC types), return externref as fallback
+                    // For other ref types (GC types, $name), return externref as fallback
                     return .extern_ref;
+                } else if (self.current_token == .number) {
+                    // Numeric type index (ref null 0) - treat as funcref
+                    try self.advance();
+                    try self.expectRightParen();
+                    return .func_ref;
                 }
             }
             return null;
@@ -1599,6 +1882,18 @@ pub const Parser = struct {
         else if (std.mem.eql(u8, type_name, "funcref"))
             .func_ref
         else if (std.mem.eql(u8, type_name, "externref"))
+            .extern_ref
+        else if (std.mem.eql(u8, type_name, "anyref"))
+            .extern_ref
+        else if (std.mem.eql(u8, type_name, "exnref"))
+            .extern_ref
+        else if (std.mem.eql(u8, type_name, "nullexnref"))
+            .extern_ref
+        else if (std.mem.eql(u8, type_name, "nullfuncref"))
+            .func_ref
+        else if (std.mem.eql(u8, type_name, "nullexternref"))
+            .extern_ref
+        else if (std.mem.eql(u8, type_name, "nullref"))
             .extern_ref
         else
             return null;
@@ -3119,18 +3414,29 @@ pub const Parser = struct {
     /// Parse ref type (funcref/externref or func/extern)
     fn parseRefType(self: *Parser) !wasm_core.types.RefType {
         if (self.current_token == .identifier) {
-            if (std.mem.eql(u8, self.current_token.identifier, "funcref")) {
+            const id = self.current_token.identifier;
+            if (std.mem.eql(u8, id, "funcref")) {
                 try self.advance();
                 return .funcref;
-            } else if (std.mem.eql(u8, self.current_token.identifier, "externref")) {
+            } else if (std.mem.eql(u8, id, "externref") or std.mem.eql(u8, id, "anyref")) {
                 try self.advance();
                 return .externref;
-            } else if (std.mem.eql(u8, self.current_token.identifier, "func")) {
+            } else if (std.mem.eql(u8, id, "func") or std.mem.eql(u8, id, "nofunc") or std.mem.eql(u8, id, "nullfuncref")) {
                 try self.advance();
                 return .funcref;
-            } else if (std.mem.eql(u8, self.current_token.identifier, "extern")) {
+            } else if (std.mem.eql(u8, id, "extern") or std.mem.eql(u8, id, "noextern") or std.mem.eql(u8, id, "nullexternref")) {
                 try self.advance();
                 return .externref;
+            } else if (std.mem.eql(u8, id, "any") or std.mem.eql(u8, id, "none") or
+                std.mem.eql(u8, id, "exn") or std.mem.eql(u8, id, "noexn") or
+                std.mem.eql(u8, id, "exnref") or std.mem.eql(u8, id, "nullexnref"))
+            {
+                try self.advance();
+                return .funcref;
+            } else if (id.len > 0 and id[0] == '$') {
+                // Named type reference ($t) - treat as funcref
+                try self.advance();
+                return .funcref;
             }
         }
         return .funcref; // default

@@ -34,9 +34,21 @@ pub fn parseFloat(comptime T: type, input: []const u8) !T {
         const is_negative = std.mem.startsWith(u8, input, "-");
         const nan_start: usize = if (is_negative) 4 else 3; // Skip "-nan" or "nan"
 
-        // Check for payload: nan:0x<hex>
+        // Check for payload: nan:0x<hex>, nan:canonical, nan:arithmetic
         if (input.len > nan_start and input[nan_start] == ':') {
             const payload_str = input[nan_start + 1 ..];
+
+            // Handle special NaN keywords (canonical and arithmetic both map to quiet NaN)
+            if (std.mem.eql(u8, payload_str, "canonical") or std.mem.eql(u8, payload_str, "arithmetic")) {
+                if (T == f32) {
+                    const bits: u32 = if (is_negative) 0xFFC00000 else 0x7FC00000;
+                    return @bitCast(bits);
+                } else {
+                    const bits: u64 = if (is_negative) 0xFFF8000000000000 else 0x7FF8000000000000;
+                    return @bitCast(bits);
+                }
+            }
+
             // Remove underscores from payload
             var buffer: [256]u8 = undefined;
             const clean_payload = try removeUnderscores(payload_str, &buffer);
