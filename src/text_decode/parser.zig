@@ -3718,6 +3718,107 @@ pub const Parser = struct {
         return @bitCast(bytes);
     }
 
+    /// Parse a float value for Result context — handles nan:canonical/nan:arithmetic keywords
+    fn parseFloatResult(self: *Parser, comptime T: type) !spec_types.command.FloatType(T) {
+        const input = if (self.current_token == .identifier)
+            self.current_token.identifier
+        else if (self.current_token == .number)
+            self.current_token.number
+        else
+            return TextDecodeError.UnexpectedToken;
+
+        if (std.mem.eql(u8, input, "nan:canonical")) {
+            try self.advance();
+            return .nan_canonical;
+        } else if (std.mem.eql(u8, input, "nan:arithmetic")) {
+            try self.advance();
+            return .nan_arithmetic;
+        }
+
+        const F = if (T == u32) f32 else f64;
+        const val = try numeric_parser.parseFloat(F, input);
+        try self.advance();
+        return .{ .value = @bitCast(val) };
+    }
+
+    /// Parse v128.const for Result context — returns vec_f32/vec_f64 when NaN lanes are present
+    fn parseV128ConstResult(self: *Parser) !spec_types.command.Result {
+        if (self.current_token != .identifier) {
+            return TextDecodeError.UnexpectedToken;
+        }
+        const shape = self.current_token.identifier;
+        try self.advance();
+
+        if (std.mem.eql(u8, shape, "f32x4")) {
+            var lanes: [4]spec_types.command.FloatType(u32) = undefined;
+            var has_nan = false;
+            for (0..4) |i| {
+                lanes[i] = try self.parseFloatResult(u32);
+                if (lanes[i] == .nan_canonical or lanes[i] == .nan_arithmetic) has_nan = true;
+            }
+            if (has_nan) {
+                return .{ .vec_f32 = lanes };
+            }
+            var bytes: [16]u8 = undefined;
+            for (0..4) |i| {
+                const val_bytes: [4]u8 = @bitCast(lanes[i].value);
+                @memcpy(bytes[i * 4 .. i * 4 + 4], &val_bytes);
+            }
+            return .{ .v128 = @bitCast(bytes) };
+        } else if (std.mem.eql(u8, shape, "f64x2")) {
+            var lanes: [2]spec_types.command.FloatType(u64) = undefined;
+            var has_nan = false;
+            for (0..2) |i| {
+                lanes[i] = try self.parseFloatResult(u64);
+                if (lanes[i] == .nan_canonical or lanes[i] == .nan_arithmetic) has_nan = true;
+            }
+            if (has_nan) {
+                return .{ .vec_f64 = lanes };
+            }
+            var bytes: [16]u8 = undefined;
+            for (0..2) |i| {
+                const val_bytes: [8]u8 = @bitCast(lanes[i].value);
+                @memcpy(bytes[i * 8 .. i * 8 + 8], &val_bytes);
+            }
+            return .{ .v128 = @bitCast(bytes) };
+        } else {
+            // Integer shapes — parse directly
+            var bytes: [16]u8 = undefined;
+            if (std.mem.eql(u8, shape, "i8x16")) {
+                for (0..16) |i| {
+                    const val = try numeric_parser.parseInteger(i8, self.current_token.number);
+                    bytes[i] = @bitCast(val);
+                    try self.advance();
+                }
+            } else if (std.mem.eql(u8, shape, "i16x8")) {
+                for (0..8) |i| {
+                    const val = try numeric_parser.parseInteger(i16, self.current_token.number);
+                    const val_bytes: [2]u8 = @bitCast(val);
+                    bytes[i * 2] = val_bytes[0];
+                    bytes[i * 2 + 1] = val_bytes[1];
+                    try self.advance();
+                }
+            } else if (std.mem.eql(u8, shape, "i32x4")) {
+                for (0..4) |i| {
+                    const val = try numeric_parser.parseInteger(i32, self.current_token.number);
+                    const val_bytes: [4]u8 = @bitCast(val);
+                    @memcpy(bytes[i * 4 .. i * 4 + 4], &val_bytes);
+                    try self.advance();
+                }
+            } else if (std.mem.eql(u8, shape, "i64x2")) {
+                for (0..2) |i| {
+                    const val = try numeric_parser.parseInteger(i64, self.current_token.number);
+                    const val_bytes: [8]u8 = @bitCast(val);
+                    @memcpy(bytes[i * 8 .. i * 8 + 8], &val_bytes);
+                    try self.advance();
+                }
+            } else {
+                return TextDecodeError.UnexpectedToken;
+            }
+            return .{ .v128 = @bitCast(bytes) };
+        }
+    }
+
     /// Skip to the closing paren of the current s-expression
     fn skipToClosingParen(self: *Parser) !void {
         var depth: u32 = 1;
@@ -4595,9 +4696,9 @@ pub const Parser = struct {
             try self.expectToken(.right_paren);
             return spec_types.command.Result{ .f64 = .{ .value = @bitCast(value) } };
         } else if (std.mem.eql(u8, type_name, "v128.const")) {
-            const result = try self.parseV128Const();
+            const result = try self.parseV128ConstResult();
             try self.expectToken(.right_paren);
-            return spec_types.command.Result{ .v128 = result };
+            return result;
         } else {
             try self.skipToClosingParen();
             return spec_types.command.Result{ .i32 = 0 };
