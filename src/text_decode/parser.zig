@@ -4452,6 +4452,49 @@ pub const Parser = struct {
             try self.advance();
             try self.expectToken(.right_paren);
             return spec_types.command.Value{ .f64 = @bitCast(value) };
+        } else if (std.mem.eql(u8, type_name, "v128.const")) {
+            const value = try self.parseV128Const();
+            try self.expectToken(.right_paren);
+            return spec_types.command.Value{ .v128 = value };
+        } else if (std.mem.eql(u8, type_name, "ref.null")) {
+            // Parse ref type: funcref, externref, func, extern, etc.
+            var is_extern = false;
+            if (self.current_token == .identifier) {
+                const rt = self.current_token.identifier;
+                if (std.mem.eql(u8, rt, "extern") or std.mem.eql(u8, rt, "externref")) {
+                    is_extern = true;
+                }
+                try self.advance();
+            }
+            try self.expectToken(.right_paren);
+            if (is_extern) {
+                return spec_types.command.Value{ .extern_ref = null };
+            } else {
+                return spec_types.command.Value{ .func_ref = null };
+            }
+        } else if (std.mem.eql(u8, type_name, "ref.func")) {
+            // Parse function index
+            var func_idx: u32 = 0;
+            if (self.current_token == .number) {
+                func_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                try self.advance();
+            } else if (self.current_token == .identifier) {
+                if (self.builder.func_names.get(self.current_token.identifier)) |idx| {
+                    func_idx = idx;
+                }
+                try self.advance();
+            }
+            try self.expectToken(.right_paren);
+            return spec_types.command.Value{ .func_ref = func_idx };
+        } else if (std.mem.eql(u8, type_name, "ref.extern")) {
+            // Parse external reference index
+            var extern_idx: u32 = 0;
+            if (self.current_token == .number) {
+                extern_idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                try self.advance();
+            }
+            try self.expectToken(.right_paren);
+            return spec_types.command.Value{ .extern_ref = extern_idx };
         } else {
             try self.skipToClosingParen();
             return spec_types.command.Value{ .i32 = 0 };
