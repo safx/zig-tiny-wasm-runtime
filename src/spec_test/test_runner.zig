@@ -318,6 +318,7 @@ pub const SpecTestRunner = struct {
                     else
                         current_module orelse continue;
                     try registered_modules.put(r.as_name, mod_inst);
+                    try self.engine.registerModule(mod_inst, r.as_name);
                 },
             }
         }

@@ -194,6 +194,16 @@ pub const Context = struct {
         if (idx >= self.mems.len) return Error.UnknownMemory;
     }
 
+    pub fn getMem(self: Self, idx: MemIdx) Error!MemoryType {
+        return if (idx < self.mems.len) self.mems[idx] else Error.UnknownMemory;
+    }
+
+    /// Returns the address type (i32 or i64) for the given memory index.
+    pub fn memAddrType(self: Self, idx: MemIdx) Error!ValueType {
+        const mem = try self.getMem(idx);
+        return if (mem.is_64) .i64 else .i32;
+    }
+
     pub fn getGlobal(self: Self, idx: GlobalIdx) Error!GlobalType {
         return if (idx < self.globals.len) self.globals[idx] else Error.UnknownGlobal;
     }

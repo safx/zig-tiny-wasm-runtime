@@ -1316,10 +1316,12 @@ pub const Parser = struct {
                 }
 
                 // Optional memory type (i32 or i64 for memory64)
+                var is_64 = false;
                 if (self.current_token == .identifier and
                     (std.mem.eql(u8, self.current_token.identifier, "i32") or
                     std.mem.eql(u8, self.current_token.identifier, "i64")))
                 {
+                    is_64 = std.mem.eql(u8, self.current_token.identifier, "i64");
                     try self.advance();
                 }
 
@@ -1340,7 +1342,7 @@ pub const Parser = struct {
                 try builder.imports.append(self.allocator, .{
                     .module_name = module_name,
                     .name = field_name,
-                    .desc = .{ .memory = .{ .limits = .{ .min = min, .max = max } } },
+                    .desc = .{ .memory = .{ .limits = .{ .min = min, .max = max }, .is_64 = is_64 } },
                 });
                 return;
             } else {
@@ -1383,10 +1385,12 @@ pub const Parser = struct {
         }
 
         // Optional memory type (i32 or i64 for memory64)
+        var is_64 = false;
         if (self.current_token == .identifier and
             (std.mem.eql(u8, self.current_token.identifier, "i32") or
                 std.mem.eql(u8, self.current_token.identifier, "i64")))
         {
+            is_64 = std.mem.eql(u8, self.current_token.identifier, "i64");
             try self.advance(); // skip the memory type
         }
 
@@ -1431,6 +1435,7 @@ pub const Parser = struct {
                 .min = min_pages,
                 .max = max_pages,
             },
+            .is_64 = is_64,
         };
 
         const mem_idx: u32 = @intCast(builder.memories.items.len);

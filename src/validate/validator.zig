@@ -361,19 +361,22 @@ pub const ModuleValidator = struct {
             .i64_store32 => |mem_arg| try opStore(i64, 32, mem_arg, type_stack, c),
             .memory_size => |mem_idx| {
                 try c.checkMem(mem_idx);
-                try type_stack.pushValueType(.i32);
+                const addr_type = try c.memAddrType(mem_idx);
+                try type_stack.pushValueType(addr_type);
             },
             .memory_grow => |mem_idx| {
                 try c.checkMem(mem_idx);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.pushValueType(.i32);
+                const addr_type = try c.memAddrType(mem_idx);
+                try type_stack.popWithCheckingValueType(addr_type);
+                try type_stack.pushValueType(addr_type);
             },
             .memory_init => |arg| {
                 try c.checkMem(arg.mem_idx);
                 try c.checkData(arg.data_idx);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.memAddrType(arg.mem_idx);
+                try type_stack.popWithCheckingValueType(.i32); // count (always i32)
+                try type_stack.popWithCheckingValueType(.i32); // src offset (always i32)
+                try type_stack.popWithCheckingValueType(addr_type); // dst offset
             },
             .data_drop => |data_idx| {
                 try c.checkData(data_idx);
@@ -381,15 +384,20 @@ pub const ModuleValidator = struct {
             .memory_copy => |arg| {
                 try c.checkMem(arg.mem_idx_dst);
                 try c.checkMem(arg.mem_idx_src);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
+                const dst_type = try c.memAddrType(arg.mem_idx_dst);
+                const src_type = try c.memAddrType(arg.mem_idx_src);
+                // count type: i64 if either memory is 64-bit
+                const count_type: ValueType = if (dst_type == .i64 or src_type == .i64) .i64 else .i32;
+                try type_stack.popWithCheckingValueType(count_type); // count
+                try type_stack.popWithCheckingValueType(src_type); // src offset
+                try type_stack.popWithCheckingValueType(dst_type); // dst offset
             },
             .memory_fill => |mem_idx| {
                 try c.checkMem(mem_idx);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.memAddrType(mem_idx);
+                try type_stack.popWithCheckingValueType(addr_type); // count
+                try type_stack.popWithCheckingValueType(.i32); // value (always i32)
+                try type_stack.popWithCheckingValueType(addr_type); // dst offset
             },
 
             // numeric instructions (1)
@@ -641,16 +649,16 @@ pub const ModuleValidator = struct {
             .v128_xor => try vvBinOp(type_stack),
             .v128_bitselect => try vvTernOp(type_stack),
             .v128_any_true => try vvTestOp(type_stack),
-            .v128_load8_lane => |mem_arg| try vLoadLane(8, mem_arg, type_stack),
-            .v128_load16_lane => |mem_arg| try vLoadLane(16, mem_arg, type_stack),
-            .v128_load32_lane => |mem_arg| try vLoadLane(32, mem_arg, type_stack),
-            .v128_load64_lane => |mem_arg| try vLoadLane(64, mem_arg, type_stack),
-            .v128_store8_lane => try vStoreLane(type_stack),
-            .v128_store16_lane => try vStoreLane(type_stack),
-            .v128_store32_lane => try vStoreLane(type_stack),
-            .v128_store64_lane => try vStoreLane(type_stack),
-            .v128_load32_zero => try vLoadZero(type_stack),
-            .v128_load64_zero => try vLoadZero(type_stack),
+            .v128_load8_lane => |mem_arg| try vLoadLane(8, mem_arg, type_stack, c),
+            .v128_load16_lane => |mem_arg| try vLoadLane(16, mem_arg, type_stack, c),
+            .v128_load32_lane => |mem_arg| try vLoadLane(32, mem_arg, type_stack, c),
+            .v128_load64_lane => |mem_arg| try vLoadLane(64, mem_arg, type_stack, c),
+            .v128_store8_lane => |mem_arg| try vStoreLane(mem_arg, type_stack, c),
+            .v128_store16_lane => |mem_arg| try vStoreLane(mem_arg, type_stack, c),
+            .v128_store32_lane => |mem_arg| try vStoreLane(mem_arg, type_stack, c),
+            .v128_store64_lane => |mem_arg| try vStoreLane(mem_arg, type_stack, c),
+            .v128_load32_zero => |mem_arg| try vLoadZero(mem_arg, type_stack, c),
+            .v128_load64_zero => |mem_arg| try vLoadZero(mem_arg, type_stack, c),
             .f32x4_demote_f64x2_zero => try vCvtOp(type_stack),
             .f64x2_promote_low_f32x4 => try vCvtOp(type_stack),
             .i8x16_abs => try vUnOp(type_stack),
@@ -836,7 +844,8 @@ inline fn opLoad(comptime T: type, comptime N: type, mem_arg: Instruction.MemArg
         return Error.NegativeNumberAlignment;
     try c.checkMem(mem_arg.mem_idx);
 
-    try type_stack.popWithCheckingValueType(.i32);
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
+    try type_stack.popWithCheckingValueType(addr_type);
     const t = valueTypeOf(T);
     try type_stack.pushValueType(t);
 }
@@ -846,7 +855,8 @@ inline fn opV128Load(comptime N: type, comptime M: u8, mem_arg: Instruction.MemA
         return Error.NegativeNumberAlignment;
     try c.checkMem(mem_arg.mem_idx);
 
-    try type_stack.popWithCheckingValueType(.i32);
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
+    try type_stack.popWithCheckingValueType(addr_type);
     try type_stack.pushValueType(.v128);
 }
 
@@ -855,7 +865,8 @@ inline fn opV128LoadSplat(comptime N: type, mem_arg: Instruction.MemArg, type_st
         return Error.NegativeNumberAlignment;
     try c.checkMem(mem_arg.mem_idx);
 
-    try type_stack.popWithCheckingValueType(.i32);
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
+    try type_stack.popWithCheckingValueType(addr_type);
     try type_stack.pushValueType(.v128);
 }
 
@@ -870,9 +881,10 @@ inline fn opStore(comptime T: type, comptime bit_size: u32, mem_arg: Instruction
         return Error.NegativeNumberAlignment;
     try c.checkMem(mem_arg.mem_idx);
 
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
     const t = valueTypeOf(T);
     try type_stack.popWithCheckingValueType(t);
-    try type_stack.popWithCheckingValueType(.i32);
+    try type_stack.popWithCheckingValueType(addr_type);
 }
 
 inline fn instrOp(comptime R: type, comptime T: type, type_stack: *TypeStack) Error!void {
@@ -1000,26 +1012,32 @@ const vExtmul = vBinOp;
 const vDot = vBinOp;
 const vExtaddPairwise = vUnOp;
 
-inline fn vLoadLane(comptime N: u8, mem_arg: Instruction.MemArgWithLaneIdx, type_stack: *TypeStack) Error!void {
+inline fn vLoadLane(comptime N: u8, mem_arg: Instruction.MemArgWithLaneIdx, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > N / 8)
         return Error.NegativeNumberAlignment;
+    try c.checkMem(mem_arg.mem_idx);
 
     if (mem_arg.lane_idx >= 128 / N)
         return Error.InvalidLaneIndex;
 
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
     try type_stack.popWithCheckingValueType(.v128);
-    try type_stack.popWithCheckingValueType(.i32);
+    try type_stack.popWithCheckingValueType(addr_type);
     try type_stack.pushValueType(.v128);
 }
 
-inline fn vLoadZero(type_stack: *TypeStack) Error!void {
-    try type_stack.popWithCheckingValueType(.i32);
+inline fn vLoadZero(mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+    try c.checkMem(mem_arg.mem_idx);
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
+    try type_stack.popWithCheckingValueType(addr_type);
     try type_stack.pushValueType(.v128);
 }
 
-inline fn vStoreLane(type_stack: *TypeStack) Error!void {
+inline fn vStoreLane(mem_arg: Instruction.MemArgWithLaneIdx, type_stack: *TypeStack, c: Context) Error!void {
+    try c.checkMem(mem_arg.mem_idx);
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
     try type_stack.popWithCheckingValueType(.v128);
-    try type_stack.popWithCheckingValueType(.i32);
+    try type_stack.popWithCheckingValueType(addr_type);
 }
 
 fn validateImport(c: Context, imp: Import) Error!void {

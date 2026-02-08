@@ -136,6 +136,7 @@ pub const GlobalType = struct {
 
 pub const MemoryType = struct {
     limits: Limits,
+    is_64: bool = false,
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         _ = try writer.print("{f}", .{self.limits});

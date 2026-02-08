@@ -190,7 +190,13 @@ pub const ModuleLoader = struct {
     }
 
     fn memtype(self: *Self) Error!types.MemoryType {
-        return .{ .limits = try self.limits() };
+        // Peek at the flags byte to detect memory64 (bit 2 = 0x04)
+        const flags_pos = self.reader.position;
+        const flags = try self.reader.readU8();
+        const is_64 = (flags & 0x04) != 0;
+        // Reset position so limits() can read the flags byte
+        self.reader.position = flags_pos;
+        return .{ .limits = try self.limits(), .is_64 = is_64 };
     }
 
     fn global(self: *Self) (Error || error{OutOfMemory})!types.Global {
@@ -531,12 +537,12 @@ pub const ModuleLoader = struct {
 
     fn limits(self: *Self) Error!types.Limits {
         const kind = try self.reader.readU8();
+        const has_max = (kind & 0x01) != 0;
+        // Accept flags 0x00, 0x01 (standard), 0x04, 0x05 (memory64)
+        if (kind & ~@as(u8, 0x05) != 0)
+            return Error.MalformedLimitId;
         const min = try self.reader.readVarU32();
-        const max = switch (kind) {
-            0 => null,
-            1 => try self.reader.readVarU32(),
-            else => return Error.MalformedLimitId,
-        };
+        const max: ?u32 = if (has_max) try self.reader.readVarU32() else null;
         return .{ .min = min, .max = max };
     }
 
