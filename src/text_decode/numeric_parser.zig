@@ -69,9 +69,14 @@ pub fn parseFloat(comptime T: type, input: []const u8) !T {
                 return @bitCast(bits);
             }
         } else {
-            // Plain nan without payload
-            const sign: T = if (is_negative) -1.0 else 1.0;
-            return sign * std.math.nan(T);
+            // Plain nan without payload - use bit manipulation (arithmetic doesn't preserve NaN sign)
+            if (T == f32) {
+                const bits: u32 = if (is_negative) 0xFFC00000 else 0x7FC00000;
+                return @bitCast(bits);
+            } else {
+                const bits: u64 = if (is_negative) 0xFFF8000000000000 else 0x7FF8000000000000;
+                return @bitCast(bits);
+            }
         }
     } else if (std.mem.eql(u8, input, "inf")) {
         return std.math.inf(T);

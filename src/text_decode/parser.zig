@@ -1599,7 +1599,8 @@ pub const Parser = struct {
             }
         }
 
-        // Parse function attributes (export, param, result, local)
+        // Parse function attributes (export, param, result, local, type)
+        var explicit_type_idx: ?u32 = null;
         while (self.current_token == .left_paren) {
             // Peek to see if next token is an attribute
             const next = try self.peekToken();
@@ -1609,7 +1610,8 @@ pub const Parser = struct {
                     std.mem.eql(u8, keyword, "import") or
                     std.mem.eql(u8, keyword, "param") or
                     std.mem.eql(u8, keyword, "result") or
-                    std.mem.eql(u8, keyword, "local");
+                    std.mem.eql(u8, keyword, "local") or
+                    std.mem.eql(u8, keyword, "type");
                 if (!is_attribute) {
                     // Not an attribute, so it's the function body
                     break;
@@ -1651,7 +1653,7 @@ pub const Parser = struct {
                 try self.expectRightParen();
 
                 // Continue parsing type/params/results after import
-                var explicit_type_idx: ?u32 = null;
+                // Reuses outer explicit_type_idx (this path returns early)
                 while (self.current_token == .left_paren) {
                     const next_tok = try self.peekToken();
                     if (next_tok == .identifier) {
@@ -1786,6 +1788,10 @@ pub const Parser = struct {
                     }
                 }
                 try self.expectRightParen();
+            } else if (std.mem.eql(u8, keyword, "type")) {
+                try self.advance(); // consume 'type'
+                explicit_type_idx = try self.parseU32OrIdentifier();
+                try self.expectRightParen();
             }
         }
 
@@ -1798,17 +1804,20 @@ pub const Parser = struct {
         // Fix block/loop/if end positions
         try self.fixBlockEnds(instructions.items);
 
-        // Create function type
-        const func_type_idx = builder.types.items.len;
-        const func_type = wasm_core.types.FuncType{
-            .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, params.items),
-            .result_types = try self.allocator.dupe(wasm_core.types.ValueType, results.items),
+        // Use explicit type index if provided, otherwise create new type
+        const func_type_idx: u32 = if (explicit_type_idx) |tidx| tidx else blk: {
+            const ft = wasm_core.types.FuncType{
+                .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, params.items),
+                .result_types = try self.allocator.dupe(wasm_core.types.ValueType, results.items),
+            };
+            const idx: u32 = @intCast(builder.types.items.len);
+            try builder.types.append(self.allocator, ft);
+            break :blk idx;
         };
-        try builder.types.append(self.allocator, func_type);
 
         // Create function
         const func = wasm_core.types.Func{
-            .type = @intCast(func_type_idx),
+            .type = func_type_idx,
             .locals = try self.allocator.dupe(wasm_core.types.ValueType, locals.items),
             .body = try self.allocator.dupe(wasm_core.types.Instruction, instructions.items),
         };
@@ -2545,7 +2554,10 @@ pub const Parser = struct {
                             // Create a new type for this inline signature
                             const func_type = switch (block_type) {
                                 .empty => wasm_core.types.FuncType{ .parameter_types = &.{}, .result_types = &.{} },
-                                .value_type => |vt| wasm_core.types.FuncType{ .parameter_types = &.{}, .result_types = &.{vt} },
+                                .value_type => |vt| wasm_core.types.FuncType{
+                                    .parameter_types = &.{},
+                                    .result_types = try self.allocator.dupe(wasm_core.types.ValueType, &.{vt}),
+                                },
                                 .type_index => unreachable,
                             };
                             type_idx = @intCast(self.builder.types.items.len);
@@ -3408,6 +3420,9 @@ pub const Parser = struct {
                 return idx;
             }
             if (self.builder.memory_names.get(id)) |idx| {
+                return idx;
+            }
+            if (self.builder.type_names.get(id)) |idx| {
                 return idx;
             }
             // If not found, return 0 as fallback
