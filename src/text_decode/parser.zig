@@ -572,7 +572,10 @@ pub const Parser = struct {
                     table_idx = try std.fmt.parseInt(u32, self.current_token.number, 0);
                     try self.advance();
                 } else if (self.current_token == .identifier) {
-                    // Table name - skip
+                    // Resolve table name
+                    if (builder.table_names.get(self.current_token.identifier)) |idx| {
+                        table_idx = idx;
+                    }
                     try self.advance();
                 }
                 try self.expectRightParen();
