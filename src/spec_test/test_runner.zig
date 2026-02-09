@@ -102,6 +102,7 @@ pub const SpecTestRunner = struct {
                             }
                             continue;
                         };
+                        self.printModuleSummary(module, arg.name);
                     } else if (arg.module_binary) |binary| {
                         const decode = @import("wasm-decode");
                         var loader = decode.Loader.new(self.allocator);
@@ -117,6 +118,7 @@ pub const SpecTestRunner = struct {
                             }
                             continue;
                         };
+                        self.printModuleSummary(module, arg.name);
                     } else if (arg.file_name.len > 0) {
                         current_module = self.engine.loadModuleFromPath(arg.file_name, arg.name) catch |err| {
                             if (self.verbose_level >= 1) {
@@ -124,6 +126,9 @@ pub const SpecTestRunner = struct {
                             }
                             continue;
                         };
+                        if (current_module) |mod_inst| {
+                            self.printModuleInstSummary(mod_inst, arg.name);
+                        }
                     }
                 },
                 .module_quote => {
@@ -400,6 +405,56 @@ pub const SpecTestRunner = struct {
             self.debugPrint("  Global '{s}' not found in module exports\n", .{name});
         }
         return error.GlobalNotFound;
+    }
+
+    fn printModuleSummary(self: *Self, module: core.types.Module, name: ?[]const u8) void {
+        if (self.verbose_level >= 1) {
+            if (name) |n| {
+                if (n.len > 0) {
+                    self.debugPrint("  module '{s}': {d} imports, {d} funcs, {d} exports, {d} tables, {d} memories\n", .{
+                        n,
+                        module.imports.len,
+                        module.funcs.len,
+                        module.exports.len,
+                        module.tables.len,
+                        module.memories.len,
+                    });
+                    return;
+                }
+            }
+            self.debugPrint("  module: {d} imports, {d} funcs, {d} exports, {d} tables, {d} memories\n", .{
+                module.imports.len,
+                module.funcs.len,
+                module.exports.len,
+                module.tables.len,
+                module.memories.len,
+            });
+        }
+    }
+
+    fn printModuleInstSummary(self: *Self, mod_inst: *runtime.types.ModuleInst, name: ?[]const u8) void {
+        if (self.verbose_level >= 1) {
+            if (name) |n| {
+                if (n.len > 0) {
+                    self.debugPrint("  module '{s}': {d} funcs, {d} exports, {d} tables, {d} memories, {d} globals\n", .{
+                        n,
+                        mod_inst.func_addrs.len,
+                        mod_inst.exports.len,
+                        mod_inst.table_addrs.len,
+                        mod_inst.mem_addrs.len,
+                        mod_inst.global_addrs.len,
+                    });
+                    return;
+                }
+            }
+            self.debugPrint("  module: {d} funcs, {d} exports, {d} tables, {d} memories, {d} globals\n", .{
+                mod_inst.func_addrs.len,
+                mod_inst.exports.len,
+                mod_inst.table_addrs.len,
+                mod_inst.mem_addrs.len,
+                mod_inst.global_addrs.len,
+            });
+        }
     }
 
     fn debugPrint(self: Self, comptime fmt: []const u8, args: anytype) void {
