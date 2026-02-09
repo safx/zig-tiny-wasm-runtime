@@ -23,6 +23,8 @@ pub const ModuleBuilder = struct {
     func_names: std.StringHashMap(u32),
     memory_names: std.StringHashMap(u32),
     type_names: std.StringHashMap(u32),
+    global_names: std.StringHashMap(u32),
+    table_names: std.StringHashMap(u32),
 
     pub fn init(allocator: std.mem.Allocator) ModuleBuilder {
         return ModuleBuilder{
@@ -40,6 +42,8 @@ pub const ModuleBuilder = struct {
             .func_names = std.StringHashMap(u32).init(allocator),
             .memory_names = std.StringHashMap(u32).init(allocator),
             .type_names = std.StringHashMap(u32).init(allocator),
+            .global_names = std.StringHashMap(u32).init(allocator),
+            .table_names = std.StringHashMap(u32).init(allocator),
         };
     }
 
@@ -75,6 +79,8 @@ pub const ModuleBuilder = struct {
         self.func_names.deinit();
         self.memory_names.deinit();
         self.type_names.deinit();
+        self.global_names.deinit();
+        self.table_names.deinit();
     }
 
     pub fn countImportFuncs(self: *const ModuleBuilder) u32 {
@@ -122,6 +128,8 @@ pub const ModuleBuilder = struct {
         self.func_names.clearRetainingCapacity();
         self.memory_names.clearRetainingCapacity();
         self.type_names.clearRetainingCapacity();
+        self.global_names.clearRetainingCapacity();
+        self.table_names.clearRetainingCapacity();
         self.start = null;
     }
 };
@@ -167,6 +175,273 @@ pub const Parser = struct {
         try self.advance();
     }
 
+    // ── Pre-scan infrastructure for forward reference resolution ──
+
+    const PreScanEntry = struct {
+        name: ?[]const u8,
+        is_import: bool,
+    };
+
+    /// Lightweight pre-scan of all top-level module fields to collect names
+    /// and register them in the builder's name maps before the real parse.
+    /// This resolves forward references (e.g. call $later_func) and
+    /// cross-entity references (e.g. global.get $g, table.get $t).
+    fn preScanNames(self: *Parser) !void {
+        // Save lexer state
+        const saved_pos = self.lexer.pos;
+        const saved_char = self.lexer.current_char;
+        const saved_token = self.current_token;
+        const saved_line = self.lexer.line;
+
+        var type_entries = std.ArrayList(PreScanEntry){};
+        defer type_entries.deinit(self.allocator);
+        var func_entries = std.ArrayList(PreScanEntry){};
+        defer func_entries.deinit(self.allocator);
+        var table_entries = std.ArrayList(PreScanEntry){};
+        defer table_entries.deinit(self.allocator);
+        var memory_entries = std.ArrayList(PreScanEntry){};
+        defer memory_entries.deinit(self.allocator);
+        var global_entries = std.ArrayList(PreScanEntry){};
+        defer global_entries.deinit(self.allocator);
+
+        // Scan all top-level fields: (field_name ...)
+        while (self.current_token == .left_paren) {
+            try self.advance(); // consume '('
+
+            if (self.current_token != .identifier) {
+                // Not a recognized field, skip
+                try self.preScanSkipField();
+                continue;
+            }
+
+            const field_name = self.current_token.identifier;
+
+            // Handle @annotations at raw character level (content may contain
+            // characters the lexer cannot tokenize)
+            if (field_name.len > 0 and field_name[0] == '@') {
+                // Skip raw content until matching closing paren
+                var depth: u32 = 0;
+                while (self.lexer.pos < self.lexer.input.len) {
+                    const ch = self.lexer.input[self.lexer.pos];
+                    if (ch == '(') {
+                        depth += 1;
+                    } else if (ch == ')') {
+                        if (depth == 0) break;
+                        depth -= 1;
+                    } else if (ch == '\n') {
+                        self.lexer.line += 1;
+                    }
+                    self.lexer.pos += 1;
+                }
+                // Position on closing ')'
+                if (self.lexer.pos < self.lexer.input.len) {
+                    self.lexer.pos += 1; // skip ')'
+                }
+                self.lexer.current_char = if (self.lexer.pos < self.lexer.input.len) self.lexer.input[self.lexer.pos] else null;
+                self.current_token = try self.lexer.nextToken();
+                continue;
+            }
+
+            try self.advance(); // consume field keyword
+
+            if (std.mem.eql(u8, field_name, "type")) {
+                const name = self.preScanReadOptionalName();
+                try type_entries.append(self.allocator, .{ .name = name, .is_import = false });
+                try self.preScanSkipField();
+            } else if (std.mem.eql(u8, field_name, "func")) {
+                const name = self.preScanReadOptionalName();
+                const is_import = try self.preScanDetectImport();
+                try func_entries.append(self.allocator, .{ .name = name, .is_import = is_import });
+                try self.preScanSkipField();
+            } else if (std.mem.eql(u8, field_name, "global")) {
+                const name = self.preScanReadOptionalName();
+                const is_import = try self.preScanDetectImport();
+                try global_entries.append(self.allocator, .{ .name = name, .is_import = is_import });
+                try self.preScanSkipField();
+            } else if (std.mem.eql(u8, field_name, "table")) {
+                const name = self.preScanReadOptionalName();
+                const is_import = try self.preScanDetectImport();
+                try table_entries.append(self.allocator, .{ .name = name, .is_import = is_import });
+                try self.preScanSkipField();
+            } else if (std.mem.eql(u8, field_name, "memory")) {
+                const name = self.preScanReadOptionalName();
+                const is_import = try self.preScanDetectImport();
+                try memory_entries.append(self.allocator, .{ .name = name, .is_import = is_import });
+                try self.preScanSkipField();
+            } else if (std.mem.eql(u8, field_name, "import")) {
+                // Standalone import: (import "mod" "name" (func/table/memory/global $name ...))
+                try self.preScanHandleStandaloneImport(&func_entries, &table_entries, &memory_entries, &global_entries);
+                try self.preScanSkipField();
+            } else {
+                // export, data, elem, start, tag, rec, @annotation, etc. - skip
+                try self.preScanSkipField();
+            }
+        }
+
+        // Assign indices to all name maps
+        try self.assignPreScanIndices(type_entries.items, &self.builder.type_names);
+        try self.assignPreScanIndices(func_entries.items, &self.builder.func_names);
+        try self.assignPreScanIndices(table_entries.items, &self.builder.table_names);
+        try self.assignPreScanIndices(memory_entries.items, &self.builder.memory_names);
+        try self.assignPreScanIndices(global_entries.items, &self.builder.global_names);
+
+        // Restore lexer state
+        self.lexer.pos = saved_pos;
+        self.lexer.current_char = saved_char;
+        self.current_token = saved_token;
+        self.lexer.line = saved_line;
+    }
+
+    /// Read an optional $name at current position (does not save/restore).
+    fn preScanReadOptionalName(self: *Parser) ?[]const u8 {
+        if (self.current_token == .identifier) {
+            const id = self.current_token.identifier;
+            if (id.len > 0 and id[0] == '$') {
+                return id;
+            }
+        }
+        return null;
+    }
+
+    /// Detect if the current field has an inline (import ...) after optional name/exports.
+    /// Uses save/restore to avoid consuming tokens.
+    fn preScanDetectImport(self: *Parser) !bool {
+        const sp_pos = self.lexer.pos;
+        const sp_char = self.lexer.current_char;
+        const sp_token = self.current_token;
+        const sp_line = self.lexer.line;
+
+        // Skip optional $name
+        if (self.current_token == .identifier and
+            self.current_token.identifier.len > 0 and
+            self.current_token.identifier[0] == '$')
+        {
+            try self.advance();
+        }
+
+        // Look through optional (export ...) and check for (import ...)
+        var found_import = false;
+        while (self.current_token == .left_paren) {
+            try self.advance(); // consume '('
+            if (self.current_token == .identifier) {
+                if (std.mem.eql(u8, self.current_token.identifier, "import")) {
+                    found_import = true;
+                    break;
+                } else if (std.mem.eql(u8, self.current_token.identifier, "export")) {
+                    // Skip past this (export ...) and continue looking
+                    try self.advance(); // consume 'export'
+                    // Skip to closing )
+                    while (self.current_token != .right_paren and self.current_token != .eof) {
+                        try self.advance();
+                    }
+                    if (self.current_token == .right_paren) try self.advance();
+                    continue;
+                }
+            }
+            break; // Not import/export, stop looking
+        }
+
+        // Restore
+        self.lexer.pos = sp_pos;
+        self.lexer.current_char = sp_char;
+        self.current_token = sp_token;
+        self.lexer.line = sp_line;
+
+        return found_import;
+    }
+
+    /// Handle standalone import: already consumed "import" keyword.
+    /// Parse (import "mod" "name" (desc_type $name ...))
+    fn preScanHandleStandaloneImport(
+        self: *Parser,
+        func_entries: *std.ArrayList(PreScanEntry),
+        table_entries: *std.ArrayList(PreScanEntry),
+        memory_entries: *std.ArrayList(PreScanEntry),
+        global_entries: *std.ArrayList(PreScanEntry),
+    ) !void {
+        // Skip "module_name" string
+        if (self.current_token == .string) try self.advance();
+        // Skip "field_name" string
+        if (self.current_token == .string) try self.advance();
+
+        // Expect (desc_type ...)
+        if (self.current_token != .left_paren) return;
+        try self.advance(); // consume '('
+
+        if (self.current_token != .identifier) return;
+        const desc_type = self.current_token.identifier;
+        try self.advance(); // consume desc type keyword
+
+        // Read optional $name inside the descriptor
+        const name = self.preScanReadOptionalName();
+
+        if (std.mem.eql(u8, desc_type, "func")) {
+            try func_entries.append(self.allocator, .{ .name = name, .is_import = true });
+        } else if (std.mem.eql(u8, desc_type, "table")) {
+            try table_entries.append(self.allocator, .{ .name = name, .is_import = true });
+        } else if (std.mem.eql(u8, desc_type, "memory")) {
+            try memory_entries.append(self.allocator, .{ .name = name, .is_import = true });
+        } else if (std.mem.eql(u8, desc_type, "global")) {
+            try global_entries.append(self.allocator, .{ .name = name, .is_import = true });
+        } else if (std.mem.eql(u8, desc_type, "tag")) {
+            // Tags are imported as functions in our model
+            try func_entries.append(self.allocator, .{ .name = name, .is_import = true });
+        }
+        // The remaining content will be skipped by preScanSkipField
+    }
+
+    /// Skip to the closing ')' of the current field (depth-tracking).
+    /// Assumes we are inside a '(' that has already been consumed.
+    fn preScanSkipField(self: *Parser) !void {
+        var depth: u32 = 1;
+        while (depth > 0 and self.current_token != .eof) {
+            if (self.current_token == .left_paren) {
+                depth += 1;
+            } else if (self.current_token == .right_paren) {
+                depth -= 1;
+            }
+            if (depth > 0) {
+                try self.advance();
+            }
+        }
+        // Consume the closing ')'
+        if (self.current_token == .right_paren) {
+            try self.advance();
+        }
+    }
+
+    /// Assign indices to names from prescan entries.
+    /// Import entries get indices 0..import_count-1,
+    /// local entries get indices import_count..total-1.
+    fn assignPreScanIndices(self: *Parser, entries: []const PreScanEntry, name_map: *std.StringHashMap(u32)) !void {
+        _ = self;
+        // Count imports
+        var import_count: u32 = 0;
+        for (entries) |e| {
+            if (e.is_import) import_count += 1;
+        }
+
+        // Assign indices: imports first, then locals
+        var import_idx: u32 = 0;
+        var local_idx: u32 = 0;
+        for (entries) |e| {
+            if (e.name) |name| {
+                const idx = if (e.is_import) blk: {
+                    const i = import_idx;
+                    break :blk i;
+                } else blk: {
+                    break :blk import_count + local_idx;
+                };
+                try name_map.put(name, idx);
+            }
+            if (e.is_import) {
+                import_idx += 1;
+            } else {
+                local_idx += 1;
+            }
+        }
+    }
+
     pub fn parseModule(self: *Parser) !wasm_core.types.Module {
         try self.expectToken(.left_paren);
 
@@ -174,6 +449,9 @@ pub const Parser = struct {
             return TextDecodeError.InvalidModule;
         }
         try self.advance();
+
+        // Pre-scan all fields to register names for forward reference resolution
+        try self.preScanNames();
 
         while (self.current_token != .right_paren and self.current_token != .eof) {
             try self.parseModuleField(self.builder);
@@ -523,8 +801,8 @@ pub const Parser = struct {
     }
 
     fn parseGlobal(self: *Parser, builder: *ModuleBuilder) !void {
-        // Skip optional name
-        _ = try self.parseOptionalName();
+        // Capture optional name for global_names registration
+        const global_name = try self.parseOptionalName();
 
         // Check if it's an import
         if (self.current_token == .left_paren) {
@@ -581,6 +859,11 @@ pub const Parser = struct {
                     .name = field_name,
                     .desc = .{ .global = .{ .value_type = value_type, .mutability = mutability } },
                 });
+
+                if (global_name) |name| {
+                    const idx: u32 = builder.countImportGlobals() - 1;
+                    try builder.global_names.put(name, idx);
+                }
                 return;
             } else {
                 // Not import, restore
@@ -659,6 +942,10 @@ pub const Parser = struct {
             .type = .{ .value_type = value_type, .mutability = mutability },
             .init = init_expr,
         });
+
+        if (global_name) |name| {
+            try builder.global_names.put(name, global_idx);
+        }
 
         // Add export if present
         if (export_name) |name| {
@@ -903,8 +1190,8 @@ pub const Parser = struct {
     }
 
     fn parseTable(self: *Parser, builder: *ModuleBuilder) !void {
-        // Skip table name if present
-        _ = try self.parseOptionalName();
+        // Capture table name for table_names registration
+        const table_name = try self.parseOptionalName();
 
         // Check for inline import: (table (import "mod" "name") ...)
         if (self.current_token == .left_paren) {
@@ -992,6 +1279,11 @@ pub const Parser = struct {
                     .desc = import_desc,
                 };
                 try builder.imports.append(self.allocator, import);
+
+                if (table_name) |name| {
+                    const idx: u32 = builder.countImportTables() - 1;
+                    try builder.table_names.put(name, idx);
+                }
 
                 return;
             } else {
@@ -1092,6 +1384,10 @@ pub const Parser = struct {
                     .name = export_name.?,
                     .desc = .{ .table = table_idx },
                 });
+
+                if (table_name) |name| {
+                    try builder.table_names.put(name, table_idx);
+                }
 
                 return;
             } else {
@@ -1243,11 +1539,15 @@ pub const Parser = struct {
                 }
 
                 // Create table
-                _ = @as(u32, @intCast(builder.tables.items.len));
+                const elem_table_idx: u32 = builder.countImportTables() + @as(u32, @intCast(builder.tables.items.len));
                 try builder.tables.append(self.allocator, .{
                     .ref_type = ref_type,
                     .limits = .{ .min = min, .max = max },
                 });
+
+                if (table_name) |name| {
+                    try builder.table_names.put(name, elem_table_idx);
+                }
 
                 // Create element segment
             } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref")) {
@@ -1267,6 +1567,10 @@ pub const Parser = struct {
                     .ref_type = ref_type,
                     .limits = .{ .min = min, .max = max },
                 });
+
+                if (table_name) |name| {
+                    try builder.table_names.put(name, table_idx);
+                }
 
                 const element = wasm_core.types.Element{
                     .type = init_ref_type,
@@ -1308,6 +1612,10 @@ pub const Parser = struct {
             .ref_type = ref_type,
             .limits = .{ .min = min, .max = max },
         });
+
+        if (table_name) |name| {
+            try builder.table_names.put(name, table_idx);
+        }
 
         // Add export if present
         if (export_name) |name| {
@@ -3462,14 +3770,20 @@ pub const Parser = struct {
         } else if (self.current_token == .identifier) {
             const id = self.current_token.identifier;
             try self.advance();
-            // Resolve named index - check locals first, then functions, then memories
+            // Resolve named index - check locals first, then all name maps
             if (self.local_names.get(id)) |idx| {
                 return idx;
             }
             if (self.builder.func_names.get(id)) |idx| {
                 return idx;
             }
+            if (self.builder.table_names.get(id)) |idx| {
+                return idx;
+            }
             if (self.builder.memory_names.get(id)) |idx| {
+                return idx;
+            }
+            if (self.builder.global_names.get(id)) |idx| {
                 return idx;
             }
             if (self.builder.type_names.get(id)) |idx| {
@@ -3983,6 +4297,9 @@ pub const Parser = struct {
 
         // Parse text format module
         self.builder.clear();
+
+        // Pre-scan all fields to register names for forward reference resolution
+        try self.preScanNames();
 
         while (self.current_token != .right_paren and self.current_token != .eof) {
             try self.parseModuleField(self.builder);

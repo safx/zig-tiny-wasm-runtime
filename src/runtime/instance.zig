@@ -243,7 +243,7 @@ pub const Instance = struct {
         defer self.allocator.free(vals);
         for (module.globals, 0..) |global, i| {
             vals[i] = switch (global.init) {
-                .instructions => |instrs| try const_expr.evaluateConstExpr(instrs, &.{}),
+                .instructions => |instrs| try const_expr.evaluateConstExpr(instrs, self.store.globals.items),
                 else => blk: {
                     try self.execOneInstruction(instractionFromInitExpr(global.init));
                     break :blk self.stack.pop().value;
@@ -259,7 +259,7 @@ pub const Instance = struct {
             refs[i] = try self.allocator.alloc(RefValue, element.init.len);
             for (element.init, 0..) |e, j| {
                 const value = switch (e) {
-                    .instructions => |instrs| try const_expr.evaluateConstExpr(instrs, &.{}),
+                    .instructions => |instrs| try const_expr.evaluateConstExpr(instrs, self.store.globals.items),
                     else => blk: {
                         try self.execOneInstruction(instractionFromInitExpr(e));
                         break :blk self.stack.pop().value;

@@ -34,6 +34,7 @@ pub fn evaluateConstExpr(instrs: []const Instruction, globals: []const GlobalIns
                 sp += 1;
             },
             .global_get => |idx| {
+                if (idx >= globals.len) return Error.InvalidConstExpr;
                 stack[sp] = globals[idx].value;
                 sp += 1;
             },
