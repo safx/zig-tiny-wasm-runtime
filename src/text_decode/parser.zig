@@ -3548,7 +3548,7 @@ pub const Parser = struct {
 
     /// Parse memory argument (offset and align)
     fn parseMemArg(self: *Parser) !wasm_core.types.Instruction.MemArg {
-        var offset: u32 = 0;
+        var offset: u64 = 0;
         var alignment: u32 = 0;
         var mem_idx: u32 = 0;
 
@@ -3571,7 +3571,7 @@ pub const Parser = struct {
         while (self.current_token == .identifier) {
             const id = self.current_token.identifier;
             if (std.mem.startsWith(u8, id, "offset=")) {
-                offset = std.math.cast(u32, try std.fmt.parseInt(u64, id[7..], 0)) orelse std.math.maxInt(u32);
+                offset = try std.fmt.parseInt(u64, id[7..], 0);
                 try self.advance();
             } else if (std.mem.startsWith(u8, id, "align=")) {
                 const align_bytes = try std.fmt.parseInt(u32, id[6..], 0);
@@ -3596,7 +3596,7 @@ pub const Parser = struct {
 
     /// Parse memory argument with lane index (offset, align, and lane)
     fn parseMemArgWithLaneIdx(self: *Parser) !wasm_core.types.Instruction.MemArgWithLaneIdx {
-        var offset: u32 = 0;
+        var offset: u64 = 0;
         var alignment: u32 = 0;
         var lane_idx: u8 = 0;
         var mem_idx: u32 = 0;
@@ -3642,7 +3642,7 @@ pub const Parser = struct {
         while (self.current_token == .identifier) {
             const id = self.current_token.identifier;
             if (std.mem.startsWith(u8, id, "offset=")) {
-                offset = std.math.cast(u32, try std.fmt.parseInt(u64, id[7..], 0)) orelse std.math.maxInt(u32);
+                offset = try std.fmt.parseInt(u64, id[7..], 0);
                 try self.advance();
             } else if (std.mem.startsWith(u8, id, "align=")) {
                 const align_bytes = try std.fmt.parseInt(u32, id[6..], 0);
@@ -4749,6 +4749,16 @@ pub const Parser = struct {
             const result = try self.parseV128ConstResult();
             try self.expectToken(.right_paren);
             return result;
+        } else if (std.mem.eql(u8, type_name, "either")) {
+            // Parse (either (result1) (result2) ...)
+            var alternatives: std.ArrayList(spec_types.command.Result) = .{};
+            defer alternatives.deinit(self.allocator);
+            while (self.current_token != .right_paren and self.current_token != .eof) {
+                const alt = try self.parseResult();
+                try alternatives.append(self.allocator, alt);
+            }
+            try self.expectToken(.right_paren);
+            return spec_types.command.Result{ .either = try alternatives.toOwnedSlice(self.allocator) };
         } else {
             try self.skipToClosingParen();
             return spec_types.command.Result{ .i32 = 0 };
@@ -4908,8 +4918,16 @@ fn freeAction(allocator: std.mem.Allocator, action: *spec_types.command.Action) 
     }
 }
 
-fn freeResult(_: std.mem.Allocator, _: *const spec_types.command.Result) void {
-    // Results don't own any memory
+fn freeResult(allocator: std.mem.Allocator, result: *const spec_types.command.Result) void {
+    switch (result.*) {
+        .either => |alternatives| {
+            for (alternatives) |*alt| {
+                freeResult(allocator, alt);
+            }
+            allocator.free(alternatives);
+        },
+        else => {}, // Other results don't own any memory
+    }
 }
 
 // Test function

@@ -634,14 +634,14 @@ fn memoryInit(reader: *BinaryReader) Error!Instruction {
 fn memArg(reader: *BinaryReader) Error!Instruction.MemArg {
     const a = try reader.readVarU32();
     const o = try reader.readVarU32();
-    return .{ .@"align" = a, .offset = o };
+    return .{ .@"align" = a, .offset = @as(u64, o) };
 }
 
 fn memArgWithLaneIdx(reader: *BinaryReader) Error!Instruction.MemArgWithLaneIdx {
     const a = try reader.readVarU32();
     const o = try reader.readVarU32();
     const l = try reader.readU8();
-    return .{ .@"align" = a, .offset = o, .lane_idx = l };
+    return .{ .@"align" = a, .offset = @as(u64, o), .lane_idx = l };
 }
 
 fn tableInitArg(reader: *BinaryReader) Error!Instruction.TableInitArg {

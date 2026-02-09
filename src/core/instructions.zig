@@ -5,13 +5,13 @@ const types = @import("./types.zig");
 pub const Instruction = union(enum) {
     pub const MemArg = struct {
         @"align": u32,
-        offset: u32,
+        offset: u64,
         mem_idx: u32 = 0,
     };
 
     pub const MemArgWithLaneIdx = struct {
         @"align": u32,
-        offset: u32,
+        offset: u64,
         lane_idx: LaneIdx,
         mem_idx: u32 = 0,
     };

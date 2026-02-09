@@ -87,8 +87,19 @@ pub const Result = union(enum) {
     vec_f32: [4]FloatType(u32),
     vec_f64: [2]FloatType(u64),
 
+    // relaxed SIMD: (either (result1) (result2))
+    either: []const Result,
+
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         switch (self) {
+            .either => |alts| {
+                try writer.print("either(", .{});
+                for (alts, 0..) |*alt, i| {
+                    if (i > 0) try writer.print(" | ", .{});
+                    try alt.format(writer);
+                }
+                try writer.print(")", .{});
+            },
             inline else => |val| try writer.print("{s}_{s}", .{ val, @tagName(self) }),
         }
     }

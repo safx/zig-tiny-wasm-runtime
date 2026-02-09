@@ -53,6 +53,12 @@ pub fn resultEquals(runtime_val: runtime.types.Value, expected: spec_types.comma
         },
         .func_ref => |exp| runtime_val == .func_ref and runtime_val.func_ref == exp,
         .extern_ref => |exp| runtime_val == .extern_ref and runtime_val.extern_ref == exp,
+        .either => |alternatives| blk: {
+            for (alternatives) |alt| {
+                if (resultEquals(runtime_val, alt)) break :blk true;
+            }
+            break :blk false;
+        },
     };
 }
 

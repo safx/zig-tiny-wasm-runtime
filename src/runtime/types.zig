@@ -323,6 +323,14 @@ pub const Value = union(core.types.ValueType) {
         };
     }
 
+    pub inline fn asU64(self: Self) u64 {
+        return switch (self) {
+            .i64 => @bitCast(self.i64),
+            .i32 => @as(u64, @as(u32, @bitCast(self.i32))),
+            else => @panic("asU64 called on non-integer type"),
+        };
+    }
+
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         switch (self) {
             .i32 => |val| try writer.print("{d}_i32", .{val}),

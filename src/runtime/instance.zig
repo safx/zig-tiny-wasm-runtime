@@ -1350,28 +1350,32 @@ pub const Instance = struct {
         std.mem.writeInt(N, @as(*[byte_size]u8, @ptrCast(&m.mem.data[m.start])), v[mem_arg.lane_idx], .little);
     }
 
-    /// returns memery and effective address for load and store operations
-    inline fn getMemoryAndEffectiveAddress(self: *Self, mem_idx: u32, offset: u32, size: u32) error{OutOfBoundsMemoryAccess}!MemoryAndEffectiveAddress {
+    /// returns memory and effective address for load and store operations
+    inline fn getMemoryAndEffectiveAddress(self: *Self, mem_idx: u32, offset: u64, size: u32) error{OutOfBoundsMemoryAccess}!MemoryAndEffectiveAddress {
         const module = self.stack.topFrame().module;
         const a = module.mem_addrs[mem_idx];
         const mem = &self.store.mems.items[a];
 
-        const ea: u32 = self.stack.pop().value.asU32();
-        const ea_start, const overflow_start = @addWithOverflow(ea, offset);
-        if (overflow_start == 1 or ea_start > mem.data.len)
+        const base: u64 = if (mem.type.is_64)
+            self.stack.pop().value.asU64()
+        else
+            @as(u64, self.stack.pop().value.asU32());
+
+        const ea_start = base +% offset;
+        if (ea_start < base or ea_start < offset or ea_start > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        const ea_end, const overflow_end = @addWithOverflow(ea_start, size);
-        if (overflow_end == 1 or ea_end > mem.data.len)
+        const ea_end = ea_start +% @as(u64, size);
+        if (ea_end < ea_start or ea_end > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        return .{ .mem = mem, .start = ea_start, .end = ea_end };
+        return .{ .mem = mem, .start = @intCast(ea_start), .end = @intCast(ea_end) };
     }
 
     const MemoryAndEffectiveAddress = struct {
         mem: *MemInst,
-        start: u32,
-        end: u32,
+        start: usize,
+        end: usize,
     };
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-size
@@ -1380,8 +1384,12 @@ pub const Instance = struct {
         const mem_addr = module.mem_addrs[mem_idx];
         const mem_inst = self.store.mems.items[mem_addr];
 
-        const sz: u32 = @intCast(mem_inst.data.len / page_size);
-        try self.stack.pushValueAs(u32, sz);
+        const sz: u64 = @intCast(mem_inst.data.len / page_size);
+        if (mem_inst.type.is_64) {
+            try self.stack.pushValueAs(u64, sz);
+        } else {
+            try self.stack.pushValueAs(u32, @intCast(sz));
+        }
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-grow
@@ -1389,26 +1397,48 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[mem_idx];
         const mem_inst = self.store.mems.items[mem_addr];
+        const is_64 = mem_inst.type.is_64;
 
-        const sz: u32 = @intCast(mem_inst.data.len / page_size);
-        const n = self.stack.pop().value.asU32();
+        const sz: u64 = @intCast(mem_inst.data.len / page_size);
+        const n: u64 = if (is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
 
         if (mem_inst.type.limits.max) |max| {
             if (n + sz > max) {
-                try self.stack.pushValueAs(i32, -1);
+                if (is_64) {
+                    try self.stack.pushValueAs(i64, -1);
+                } else {
+                    try self.stack.pushValueAs(i32, -1);
+                }
                 return;
             }
         }
 
-        const new_data = growmem(mem_inst, n, self.allocator) catch |err| {
+        const n32: u32 = std.math.cast(u32, n) orelse {
+            if (is_64) {
+                try self.stack.pushValueAs(i64, -1);
+            } else {
+                try self.stack.pushValueAs(i32, -1);
+            }
+            return;
+        };
+
+        const new_data = growmem(mem_inst, n32, self.allocator) catch |err| {
             assert(err == std.mem.Allocator.Error.OutOfMemory);
-            try self.stack.pushValueAs(i32, -1);
+            if (is_64) {
+                try self.stack.pushValueAs(i64, -1);
+            } else {
+                try self.stack.pushValueAs(i32, -1);
+            }
             return;
         };
 
         self.store.mems.items[mem_addr].data = new_data;
         self.store.mems.items[mem_addr].type.limits.min = @intCast(new_data.len);
-        try self.stack.pushValueAs(u32, sz);
+        if (is_64) {
+            try self.stack.pushValueAs(u64, sz);
+        } else {
+            try self.stack.pushValueAs(u32, @intCast(sz));
+        }
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-memories
@@ -1432,16 +1462,19 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[mem_idx];
         const mem_inst = &self.store.mems.items[mem_addr];
+        const is_64 = mem_inst.type.is_64;
 
-        const n: u32 = self.stack.pop().value.asU32();
+        const n: u64 = if (is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
         const val: u8 = @truncate(self.stack.pop().value.asU32());
-        const d: u32 = self.stack.pop().value.asU32();
+        const d: u64 = if (is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
 
-        const d_plus_n, const overflow = @addWithOverflow(d, n);
-        if (overflow == 1 or d_plus_n > mem_inst.data.len)
+        const d_plus_n = d +% n;
+        if (d_plus_n < d or d_plus_n > mem_inst.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        @memset(mem_inst.data[d..d_plus_n], val);
+        const d_usize: usize = @intCast(d);
+        const d_plus_n_usize: usize = @intCast(d_plus_n);
+        @memset(mem_inst.data[d_usize..d_plus_n_usize], val);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-copy
@@ -1449,41 +1482,47 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const mem_addr_dst = module.mem_addrs[mem_idx_dst];
         const mem_addr_src = module.mem_addrs[mem_idx_src];
-        const mem_inst_dst = self.store.mems.items[mem_addr_dst];
+        const mem_inst_dst = &self.store.mems.items[mem_addr_dst];
         const mem_inst_src = self.store.mems.items[mem_addr_src];
+        // Use dst memory's is_64 flag for the address type of n and d
+        const dst_is_64 = mem_inst_dst.type.is_64;
+        const src_is_64 = mem_inst_src.type.is_64;
 
-        var n: u32 = self.stack.pop().value.asU32();
-        var s: u32 = self.stack.pop().value.asU32();
-        var d: u32 = self.stack.pop().value.asU32();
+        const n: u64 = if (dst_is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
+        const s: u64 = if (src_is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
+        const d: u64 = if (dst_is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
 
-        const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
-        if (overflow_sn == 1 or s_plus_n > mem_inst_src.data.len)
+        const s_plus_n = s +% n;
+        if (s_plus_n < s or s_plus_n > mem_inst_src.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        const d_plus_n, const overflow_dn = @addWithOverflow(d, n);
-        if (overflow_dn == 1 or d_plus_n > mem_inst_dst.data.len)
+        const d_plus_n = d +% n;
+        if (d_plus_n < d or d_plus_n > mem_inst_dst.data.len)
             return Error.OutOfBoundsMemoryAccess;
+
+        const d_usize: usize = @intCast(d);
+        const s_usize: usize = @intCast(s);
+        const n_usize: usize = @intCast(n);
 
         if (mem_idx_dst == mem_idx_src) {
-            // Same memory: handle overlapping regions
-            while (n > 0) : (n -= 1) {
-                if (d <= s) {
-                    try self.stack.pushValueAs(u32, d);
-                    try self.stack.pushValueAs(u32, s);
-                    try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx_src } });
-                    try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx_dst } });
-                    d += 1;
-                    s += 1;
-                } else {
-                    try self.stack.pushValueAs(u32, d + n - 1);
-                    try self.stack.pushValueAs(u32, s + n - 1);
-                    try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx_src } });
-                    try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx_dst } });
+            // Same memory: use loop-based copy that handles overlap correctly
+            if (d <= s) {
+                var i: usize = 0;
+                while (i < n_usize) : (i += 1) {
+                    mem_inst_dst.data[d_usize + i] = mem_inst_dst.data[s_usize + i];
+                }
+            } else {
+                var i: usize = n_usize;
+                while (i > 0) {
+                    i -= 1;
+                    mem_inst_dst.data[d_usize + i] = mem_inst_dst.data[s_usize + i];
                 }
             }
         } else {
             // Different memories: no overlap possible, use fast memcpy
-            @memcpy(mem_inst_dst.data[d..d_plus_n], mem_inst_src.data[s..s_plus_n]);
+            const d_end: usize = @intCast(d_plus_n);
+            const s_end: usize = @intCast(s_plus_n);
+            @memcpy(mem_inst_dst.data[d_usize..d_end], mem_inst_src.data[s_usize..s_end]);
         }
     }
 
@@ -1491,30 +1530,27 @@ pub const Instance = struct {
     inline fn opMemoryInit(self: *Self, data_idx: u32, mem_idx: u32) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
         const mem_addr = module.mem_addrs[mem_idx];
-        const mem = self.store.mems.items[mem_addr];
+        const mem_inst = &self.store.mems.items[mem_addr];
         const data_addr = module.data_addrs[data_idx];
         const data = self.store.datas.items[data_addr];
+        const is_64 = mem_inst.type.is_64;
 
-        var n: u32 = self.stack.pop().value.asU32();
-        var s: u32 = self.stack.pop().value.asU32();
-        var d: u32 = self.stack.pop().value.asU32();
+        const n: u64 = if (is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
+        const s: u64 = @as(u64, self.stack.pop().value.asU32()); // source offset in data segment is always i32
+        const d: u64 = if (is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
 
-        const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
-        if (overflow_sn == 1 or s_plus_n > data.data.len)
+        const s_plus_n = s +% n;
+        if (s_plus_n < s or s_plus_n > data.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        const d_plus_n, const overflow_dn = @addWithOverflow(d, n);
-        if (overflow_dn == 1 or d_plus_n > mem.data.len)
+        const d_plus_n = d +% n;
+        if (d_plus_n < d or d_plus_n > mem_inst.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        while (n > 0) : (n -= 1) {
-            const b = data.data[s];
-            try self.stack.pushValueAs(u32, d);
-            try self.stack.pushValueAs(u32, b);
-            try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0, .mem_idx = mem_idx } });
-            s += 1;
-            d += 1;
-        }
+        const d_usize: usize = @intCast(d);
+        const s_usize: usize = @intCast(s);
+        const n_usize: usize = @intCast(n);
+        @memcpy(mem_inst.data[d_usize..d_usize + n_usize], data.data[s_usize..s_usize + n_usize]);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-data-drop-x
@@ -1660,7 +1696,7 @@ pub const Instance = struct {
         var result: @Vector(8, i16) = undefined;
         inline for (0..8) |i| {
             const prod: i32 = @as(i32, a[i]) * @as(i32, b[i]);
-            result[i] = @intCast((prod + 0x4000) >> 15);
+            result[i] = intSat(i16, i32, (prod + 0x4000) >> 15);
         }
         try self.stack.pushValueAs(@Vector(8, i16), result);
     }
