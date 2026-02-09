@@ -2208,11 +2208,34 @@ pub const Parser = struct {
     }
 
     fn parseExport(self: *Parser, builder: *ModuleBuilder) !void {
-        // Simplified export parsing - just skip for now
-        while (self.current_token != .right_paren and self.current_token != .eof) {
-            try self.advance();
-        }
-        _ = builder;
+        // Parse export name string
+        if (self.current_token != .string) return TextDecodeError.UnexpectedToken;
+        const name = self.current_token.string;
+        try self.advance();
+
+        // Parse (func/table/memory/global <idx_or_name>)
+        try self.expectToken(.left_paren);
+        if (self.current_token != .identifier) return TextDecodeError.UnexpectedToken;
+        const desc_type = self.current_token.identifier;
+        try self.advance();
+
+        const idx = try self.parseU32OrIdentifier();
+
+        try self.expectToken(.right_paren);
+
+        // Build ExportDesc based on descriptor type
+        const desc: wasm_core.types.ExportDesc = if (std.mem.eql(u8, desc_type, "func"))
+            .{ .function = idx }
+        else if (std.mem.eql(u8, desc_type, "table"))
+            .{ .table = idx }
+        else if (std.mem.eql(u8, desc_type, "memory"))
+            .{ .memory = idx }
+        else if (std.mem.eql(u8, desc_type, "global"))
+            .{ .global = idx }
+        else
+            return; // unknown descriptor type (e.g., tag) - skip
+
+        try builder.exports.append(self.allocator, .{ .name = name, .desc = desc });
     }
 
     /// Parse a value type (i32, i64, f32, f64, v128, funcref, externref, ref)
