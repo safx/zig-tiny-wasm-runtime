@@ -77,6 +77,38 @@ pub const ModuleBuilder = struct {
         self.type_names.deinit();
     }
 
+    pub fn countImportFuncs(self: *const ModuleBuilder) u32 {
+        var count: u32 = 0;
+        for (self.imports.items) |imp| {
+            if (imp.desc == .function) count += 1;
+        }
+        return count;
+    }
+
+    pub fn countImportTables(self: *const ModuleBuilder) u32 {
+        var count: u32 = 0;
+        for (self.imports.items) |imp| {
+            if (imp.desc == .table) count += 1;
+        }
+        return count;
+    }
+
+    pub fn countImportMemories(self: *const ModuleBuilder) u32 {
+        var count: u32 = 0;
+        for (self.imports.items) |imp| {
+            if (imp.desc == .memory) count += 1;
+        }
+        return count;
+    }
+
+    pub fn countImportGlobals(self: *const ModuleBuilder) u32 {
+        var count: u32 = 0;
+        for (self.imports.items) |imp| {
+            if (imp.desc == .global) count += 1;
+        }
+        return count;
+    }
+
     pub fn clear(self: *ModuleBuilder) void {
         self.types.clearRetainingCapacity();
         self.funcs.clearRetainingCapacity();
@@ -397,8 +429,8 @@ pub const Parser = struct {
             } else if (self.current_token == .identifier) {
                 // Function name or index
                 if (std.mem.startsWith(u8, self.current_token.identifier, "$")) {
-                    // Function name - skip for now, would need name resolution
-                    try init_list.append(self.allocator, .{ .ref_func = 0 });
+                    const func_idx = builder.func_names.get(self.current_token.identifier) orelse 0;
+                    try init_list.append(self.allocator, .{ .ref_func = func_idx });
                 } else {
                     // Try to parse as number
                     const func_idx = std.fmt.parseInt(u32, self.current_token.identifier, 0) catch 0;
@@ -622,7 +654,7 @@ pub const Parser = struct {
             init_expr = try self.parseInitExpression();
         }
 
-        const global_idx: u32 = @intCast(builder.globals.items.len);
+        const global_idx: u32 = builder.countImportGlobals() + @as(u32, @intCast(builder.globals.items.len));
         try builder.globals.append(self.allocator, .{
             .type = .{ .value_type = value_type, .mutability = mutability },
             .init = init_expr,
@@ -671,6 +703,9 @@ pub const Parser = struct {
 
             // Check for (type $name) or (type idx)
             if (self.current_token == .left_paren) {
+                const saved_pos_type = self.lexer.pos;
+                const saved_char_type = self.lexer.current_char;
+                const saved_token_type = self.current_token;
                 try self.advance();
                 if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
                     try self.advance();
@@ -678,10 +713,20 @@ pub const Parser = struct {
                         type_idx = try std.fmt.parseInt(u32, self.current_token.number, 0);
                         try self.advance();
                     } else if (self.current_token == .identifier) {
-                        // Type name - skip for now
+                        // Type name reference
+                        if (self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                            if (self.builder.type_names.get(self.current_token.identifier)) |idx| {
+                                type_idx = idx;
+                            }
+                        }
                         try self.advance();
                     }
                     try self.expectRightParen();
+                } else {
+                    // Not (type ...), restore position
+                    self.lexer.pos = saved_pos_type;
+                    self.lexer.current_char = saved_char_type;
+                    self.current_token = saved_token_type;
                 }
             }
 
@@ -1042,7 +1087,7 @@ pub const Parser = struct {
                 });
 
                 // Register the export for this imported table
-                const table_idx: u32 = @intCast(builder.tables.items.len);
+                const table_idx: u32 = builder.countImportTables() - 1;
                 try builder.exports.append(self.allocator, .{
                     .name = export_name.?,
                     .desc = .{ .table = table_idx },
@@ -1217,7 +1262,7 @@ pub const Parser = struct {
                 // Single ref.null initializer
                 if (min == 0) min = 1;
 
-                const table_idx: u32 = @intCast(builder.tables.items.len);
+                const table_idx: u32 = builder.countImportTables() + @as(u32, @intCast(builder.tables.items.len));
                 try builder.tables.append(self.allocator, .{
                     .ref_type = ref_type,
                     .limits = .{ .min = min, .max = max },
@@ -1258,7 +1303,7 @@ pub const Parser = struct {
             }
         }
 
-        const table_idx: u32 = @intCast(builder.tables.items.len);
+        const table_idx: u32 = builder.countImportTables() + @as(u32, @intCast(builder.tables.items.len));
         try builder.tables.append(self.allocator, .{
             .ref_type = ref_type,
             .limits = .{ .min = min, .max = max },
@@ -1438,7 +1483,7 @@ pub const Parser = struct {
             .is_64 = is_64,
         };
 
-        const mem_idx: u32 = @intCast(builder.memories.items.len);
+        const mem_idx: u32 = builder.countImportMemories() + @as(u32, @intCast(builder.memories.items.len));
         try builder.memories.append(builder.allocator, memory_type);
 
         // Register memory name if present
@@ -1729,7 +1774,7 @@ pub const Parser = struct {
                 try builder.imports.append(self.allocator, import);
 
                 if (func_name) |name| {
-                    const func_idx: u32 = @intCast(builder.imports.items.len - 1);
+                    const func_idx: u32 = builder.countImportFuncs() - 1;
                     try builder.func_names.put(name, func_idx);
                 }
 
@@ -1830,13 +1875,13 @@ pub const Parser = struct {
 
         // Register function name if present
         if (func_name) |name| {
-            const func_idx: u32 = @intCast(builder.funcs.items.len - 1);
+            const func_idx: u32 = builder.countImportFuncs() + @as(u32, @intCast(builder.funcs.items.len)) - 1;
             try builder.func_names.put(name, func_idx);
         }
 
         // Add export if present
         if (export_name) |name| {
-            const func_idx: u32 = @intCast(builder.funcs.items.len - 1);
+            const func_idx: u32 = builder.countImportFuncs() + @as(u32, @intCast(builder.funcs.items.len)) - 1;
             const exp = wasm_core.types.Export{
                 .name = name,
                 .desc = .{ .function = func_idx },
