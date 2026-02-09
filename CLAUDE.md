@@ -39,6 +39,12 @@ python3 ./run_spectec_tests.py wasm_tests/test_name.wast
 
 # Run with verbose output
 python3 ./run_spectec_tests.py --verbose wasm_tests/
+
+# Save assertion baseline for regression tracking
+python3 ./run_spectec_tests.py wasm_tests/ --save-baseline baseline.json
+
+# Compare current results against a saved baseline
+python3 ./run_spectec_tests.py wasm_tests/ --compare baseline.json
 ```
 
 ### Development
