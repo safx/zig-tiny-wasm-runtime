@@ -1502,7 +1502,7 @@ pub const Parser = struct {
                         }
                         try self.advance();
                     } else if (self.current_token == .number) {
-                        const idx = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                        const idx = try std.fmt.parseInt(u32, self.current_token.number, 0);
                         try init_list.append(self.allocator, .{ .ref_func = idx });
                         try self.advance();
                     } else if (self.current_token == .left_paren) {
@@ -1550,6 +1550,23 @@ pub const Parser = struct {
                 }
 
                 // Create element segment
+                const element = wasm_core.types.Element{
+                    .type = ref_type,
+                    .init = try self.allocator.dupe(wasm_core.types.InitExpression, init_list.items),
+                    .mode = .{ .active = .{
+                        .table_idx = elem_table_idx,
+                        .offset = .{ .i32_const = 0 },
+                    } },
+                };
+                try builder.elements.append(self.allocator, element);
+
+                if (export_name) |name| {
+                    try builder.exports.append(self.allocator, .{
+                        .name = name,
+                        .desc = .{ .table = elem_table_idx },
+                    });
+                }
+                return;
             } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref")) {
                 // (ref null func) or (ref.null func)
                 try self.advance();

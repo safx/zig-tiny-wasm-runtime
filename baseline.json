@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "timestamp": "2026-02-09T22:50:51",
-    "git_commit": "bd19f52",
+    "timestamp": "2026-02-09T23:58:22",
+    "git_commit": "8104d87",
     "git_branch": "refactor/spec-types-v1"
   },
   "summary": {
-    "files_passed": 153,
+    "files_passed": 166,
     "files_total": 237,
-    "assertions_passed": 59407,
+    "assertions_passed": 59471,
     "assertions_total": 61857
   },
   "files": {
@@ -67,9 +67,9 @@
       "status": "passed"
     },
     "block.wast": {
-      "passed": 219,
+      "passed": 222,
       "total": 222,
-      "status": "partial"
+      "status": "passed"
     },
     "br.wast": {
       "passed": 96,
@@ -107,9 +107,9 @@
       "status": "partial"
     },
     "call.wast": {
-      "passed": 88,
+      "passed": 90,
       "total": 90,
-      "status": "partial"
+      "status": "passed"
     },
     "call_indirect.wast": {
       "passed": 53,
@@ -277,12 +277,12 @@
       "status": "partial"
     },
     "func_ptrs.wast": {
-      "passed": 16,
+      "passed": 32,
       "total": 32,
-      "status": "partial"
+      "status": "passed"
     },
     "global.wast": {
-      "passed": 107,
+      "passed": 109,
       "total": 114,
       "status": "partial"
     },
@@ -317,9 +317,9 @@
       "status": "passed"
     },
     "if.wast": {
-      "passed": 235,
+      "passed": 240,
       "total": 240,
-      "status": "partial"
+      "status": "passed"
     },
     "imports.wast": {
       "passed": 139,
@@ -377,9 +377,9 @@
       "status": "passed"
     },
     "left-to-right.wast": {
-      "passed": 91,
+      "passed": 95,
       "total": 95,
-      "status": "partial"
+      "status": "passed"
     },
     "linking.wast": {
       "passed": 68,
@@ -407,9 +407,9 @@
       "status": "partial"
     },
     "load.wast": {
-      "passed": 92,
+      "passed": 96,
       "total": 96,
-      "status": "partial"
+      "status": "passed"
     },
     "load0.wast": {
       "passed": 2,
@@ -422,14 +422,14 @@
       "status": "partial"
     },
     "load2.wast": {
-      "passed": 33,
+      "passed": 37,
       "total": 37,
-      "status": "partial"
+      "status": "passed"
     },
     "load64.wast": {
-      "passed": 92,
+      "passed": 96,
       "total": 96,
-      "status": "partial"
+      "status": "passed"
     },
     "local_get.wast": {
       "passed": 35,
@@ -447,14 +447,14 @@
       "status": "passed"
     },
     "local_tee.wast": {
-      "passed": 93,
+      "passed": 97,
       "total": 97,
-      "status": "partial"
+      "status": "passed"
     },
     "loop.wast": {
-      "passed": 116,
+      "passed": 119,
       "total": 119,
-      "status": "partial"
+      "status": "passed"
     },
     "memory-multi.wast": {
       "passed": 2,
@@ -512,7 +512,7 @@
       "status": "passed"
     },
     "memory_grow.wast": {
-      "passed": 90,
+      "passed": 93,
       "total": 96,
       "status": "partial"
     },
@@ -602,9 +602,9 @@
       "status": "passed"
     },
     "nop.wast": {
-      "passed": 82,
+      "passed": 87,
       "total": 87,
-      "status": "partial"
+      "status": "passed"
     },
     "obsolete-keywords.wast": {
       "passed": 11,
@@ -707,9 +707,9 @@
       "status": "passed"
     },
     "simd_const.wast": {
-      "passed": 444,
+      "passed": 446,
       "total": 446,
-      "status": "partial"
+      "status": "passed"
     },
     "simd_conversions.wast": {
       "passed": 280,
@@ -1142,12 +1142,12 @@
       "status": "passed"
     },
     "type-equivalence.wast": {
-      "passed": 1,
+      "passed": 5,
       "total": 5,
-      "status": "partial"
+      "status": "passed"
     },
     "type-rec.wast": {
-      "passed": 14,
+      "passed": 13,
       "total": 15,
       "status": "partial"
     },
