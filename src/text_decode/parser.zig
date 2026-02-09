@@ -5099,6 +5099,42 @@ pub const Parser = struct {
             }
             try self.expectToken(.right_paren);
             return spec_types.command.Result{ .either = try alternatives.toOwnedSlice(self.allocator) };
+        } else if (std.mem.eql(u8, type_name, "ref.null")) {
+            var is_extern = false;
+            if (self.current_token == .identifier) {
+                const rt = self.current_token.identifier;
+                if (std.mem.eql(u8, rt, "extern") or std.mem.eql(u8, rt, "externref")) {
+                    is_extern = true;
+                }
+                try self.advance();
+            }
+            try self.expectToken(.right_paren);
+            if (is_extern) {
+                return spec_types.command.Result{ .extern_ref = null };
+            } else {
+                return spec_types.command.Result{ .func_ref = null };
+            }
+        } else if (std.mem.eql(u8, type_name, "ref.func")) {
+            var func_idx: u32 = 0;
+            if (self.current_token == .number) {
+                func_idx = try std.fmt.parseInt(u32, self.current_token.number, 0);
+                try self.advance();
+            } else if (self.current_token == .identifier) {
+                if (self.builder.func_names.get(self.current_token.identifier)) |idx| {
+                    func_idx = idx;
+                }
+                try self.advance();
+            }
+            try self.expectToken(.right_paren);
+            return spec_types.command.Result{ .func_ref = func_idx };
+        } else if (std.mem.eql(u8, type_name, "ref.extern")) {
+            var extern_idx: u32 = 0;
+            if (self.current_token == .number) {
+                extern_idx = try std.fmt.parseInt(u32, self.current_token.number, 0);
+                try self.advance();
+            }
+            try self.expectToken(.right_paren);
+            return spec_types.command.Result{ .extern_ref = extern_idx };
         } else {
             try self.skipToClosingParen();
             return spec_types.command.Result{ .i32 = 0 };
