@@ -3759,7 +3759,7 @@ pub const Parser = struct {
     /// Parse label index for br/br_if instructions
     fn parseLabelIndex(self: *Parser) !u32 {
         if (self.current_token == .number) {
-            const num = try std.fmt.parseInt(u32, self.current_token.number, 10);
+            const num = try std.fmt.parseInt(u32, self.current_token.number, 0);
             try self.advance();
             return num;
         } else if (self.current_token == .identifier) {
@@ -3787,7 +3787,7 @@ pub const Parser = struct {
     /// Parse u32 or identifier (for indices)
     fn parseU32OrIdentifier(self: *Parser) !u32 {
         if (self.current_token == .number) {
-            const num = try std.fmt.parseInt(u32, self.current_token.number, 10);
+            const num = try std.fmt.parseInt(u32, self.current_token.number, 0);
             try self.advance();
             return num;
         } else if (self.current_token == .identifier) {

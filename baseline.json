@@ -1,0 +1,1200 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-09T22:44:43",
+    "git_commit": "0f6fcbd",
+    "git_branch": "refactor/spec-types-v1"
+  },
+  "summary": {
+    "files_passed": 151,
+    "files_total": 237,
+    "assertions_passed": 59372,
+    "assertions_total": 61857
+  },
+  "files": {
+    "address.wast": {
+      "passed": 256,
+      "total": 256,
+      "status": "passed"
+    },
+    "address0.wast": {
+      "passed": 91,
+      "total": 91,
+      "status": "passed"
+    },
+    "address1.wast": {
+      "passed": 126,
+      "total": 126,
+      "status": "passed"
+    },
+    "address64.wast": {
+      "passed": 32,
+      "total": 238,
+      "status": "partial"
+    },
+    "align.wast": {
+      "passed": 138,
+      "total": 140,
+      "status": "partial"
+    },
+    "align0.wast": {
+      "passed": 4,
+      "total": 4,
+      "status": "passed"
+    },
+    "align64.wast": {
+      "passed": 131,
+      "total": 131,
+      "status": "passed"
+    },
+    "annotations.wast": {
+      "passed": 64,
+      "total": 64,
+      "status": "passed"
+    },
+    "binary-leb128.wast": {
+      "passed": 59,
+      "total": 59,
+      "status": "passed"
+    },
+    "binary.wast": {
+      "passed": 100,
+      "total": 107,
+      "status": "partial"
+    },
+    "binary0.wast": {
+      "passed": 2,
+      "total": 2,
+      "status": "passed"
+    },
+    "block.wast": {
+      "passed": 219,
+      "total": 222,
+      "status": "partial"
+    },
+    "br.wast": {
+      "passed": 96,
+      "total": 96,
+      "status": "passed"
+    },
+    "br_if.wast": {
+      "passed": 118,
+      "total": 118,
+      "status": "passed"
+    },
+    "br_on_non_null.wast": {
+      "passed": 2,
+      "total": 9,
+      "status": "partial"
+    },
+    "br_on_null.wast": {
+      "passed": 2,
+      "total": 7,
+      "status": "partial"
+    },
+    "br_table.wast": {
+      "passed": 24,
+      "total": 185,
+      "status": "partial"
+    },
+    "bulk.wast": {
+      "passed": 45,
+      "total": 66,
+      "status": "partial"
+    },
+    "bulk64.wast": {
+      "passed": 20,
+      "total": 45,
+      "status": "partial"
+    },
+    "call.wast": {
+      "passed": 88,
+      "total": 90,
+      "status": "partial"
+    },
+    "call_indirect.wast": {
+      "passed": 53,
+      "total": 169,
+      "status": "partial"
+    },
+    "call_indirect64.wast": {
+      "passed": 0,
+      "total": 1,
+      "status": "partial"
+    },
+    "call_ref.wast": {
+      "passed": 8,
+      "total": 31,
+      "status": "partial"
+    },
+    "comments.wast": {
+      "passed": 0,
+      "total": 3,
+      "status": "partial"
+    },
+    "const.wast": {
+      "passed": 376,
+      "total": 376,
+      "status": "passed"
+    },
+    "conversions.wast": {
+      "passed": 618,
+      "total": 618,
+      "status": "passed"
+    },
+    "custom.wast": {
+      "passed": 8,
+      "total": 8,
+      "status": "passed"
+    },
+    "data.wast": {
+      "passed": 34,
+      "total": 34,
+      "status": "passed"
+    },
+    "data0.wast": {
+      "passed": 0,
+      "total": 0,
+      "status": "passed"
+    },
+    "data1.wast": {
+      "passed": 14,
+      "total": 14,
+      "status": "passed"
+    },
+    "data_drop0.wast": {
+      "passed": 2,
+      "total": 4,
+      "status": "partial"
+    },
+    "elem.wast": {
+      "passed": 53,
+      "total": 72,
+      "status": "partial"
+    },
+    "endianness.wast": {
+      "passed": 68,
+      "total": 68,
+      "status": "passed"
+    },
+    "endianness64.wast": {
+      "passed": 68,
+      "total": 68,
+      "status": "passed"
+    },
+    "exports.wast": {
+      "passed": 35,
+      "total": 41,
+      "status": "partial"
+    },
+    "exports0.wast": {
+      "passed": 0,
+      "total": 0,
+      "status": "passed"
+    },
+    "f32.wast": {
+      "passed": 2513,
+      "total": 2513,
+      "status": "passed"
+    },
+    "f32_bitwise.wast": {
+      "passed": 363,
+      "total": 363,
+      "status": "passed"
+    },
+    "f32_cmp.wast": {
+      "passed": 2406,
+      "total": 2406,
+      "status": "passed"
+    },
+    "f64.wast": {
+      "passed": 2513,
+      "total": 2513,
+      "status": "passed"
+    },
+    "f64_bitwise.wast": {
+      "passed": 363,
+      "total": 363,
+      "status": "passed"
+    },
+    "f64_cmp.wast": {
+      "passed": 2406,
+      "total": 2406,
+      "status": "passed"
+    },
+    "fac.wast": {
+      "passed": 7,
+      "total": 7,
+      "status": "passed"
+    },
+    "float_exprs.wast": {
+      "passed": 809,
+      "total": 819,
+      "status": "partial"
+    },
+    "float_exprs0.wast": {
+      "passed": 8,
+      "total": 8,
+      "status": "passed"
+    },
+    "float_exprs1.wast": {
+      "passed": 0,
+      "total": 2,
+      "status": "partial"
+    },
+    "float_literals.wast": {
+      "passed": 175,
+      "total": 177,
+      "status": "partial"
+    },
+    "float_memory.wast": {
+      "passed": 48,
+      "total": 60,
+      "status": "partial"
+    },
+    "float_memory0.wast": {
+      "passed": 16,
+      "total": 20,
+      "status": "partial"
+    },
+    "float_memory64.wast": {
+      "passed": 48,
+      "total": 60,
+      "status": "partial"
+    },
+    "float_misc.wast": {
+      "passed": 470,
+      "total": 470,
+      "status": "passed"
+    },
+    "forward.wast": {
+      "passed": 4,
+      "total": 4,
+      "status": "passed"
+    },
+    "func.wast": {
+      "passed": 165,
+      "total": 171,
+      "status": "partial"
+    },
+    "func_ptrs.wast": {
+      "passed": 16,
+      "total": 32,
+      "status": "partial"
+    },
+    "global.wast": {
+      "passed": 104,
+      "total": 114,
+      "status": "partial"
+    },
+    "i16x8_relaxed_q15mulr_s.wast": {
+      "passed": 2,
+      "total": 2,
+      "status": "passed"
+    },
+    "i32.wast": {
+      "passed": 459,
+      "total": 459,
+      "status": "passed"
+    },
+    "i32x4_relaxed_trunc.wast": {
+      "passed": 0,
+      "total": 0,
+      "status": "passed"
+    },
+    "i64.wast": {
+      "passed": 415,
+      "total": 415,
+      "status": "passed"
+    },
+    "i8x16_relaxed_swizzle.wast": {
+      "passed": 5,
+      "total": 5,
+      "status": "passed"
+    },
+    "id.wast": {
+      "passed": 6,
+      "total": 6,
+      "status": "passed"
+    },
+    "if.wast": {
+      "passed": 235,
+      "total": 240,
+      "status": "partial"
+    },
+    "imports.wast": {
+      "passed": 139,
+      "total": 144,
+      "status": "partial"
+    },
+    "imports0.wast": {
+      "passed": 6,
+      "total": 6,
+      "status": "passed"
+    },
+    "imports1.wast": {
+      "passed": 4,
+      "total": 4,
+      "status": "passed"
+    },
+    "imports2.wast": {
+      "passed": 11,
+      "total": 14,
+      "status": "partial"
+    },
+    "imports3.wast": {
+      "passed": 8,
+      "total": 8,
+      "status": "passed"
+    },
+    "imports4.wast": {
+      "passed": 0,
+      "total": 8,
+      "status": "partial"
+    },
+    "inline-module.wast": {
+      "passed": 0,
+      "total": 0,
+      "status": "passed"
+    },
+    "instance.wast": {
+      "passed": 0,
+      "total": 12,
+      "status": "partial"
+    },
+    "int_exprs.wast": {
+      "passed": 89,
+      "total": 89,
+      "status": "passed"
+    },
+    "int_literals.wast": {
+      "passed": 50,
+      "total": 50,
+      "status": "passed"
+    },
+    "labels.wast": {
+      "passed": 28,
+      "total": 28,
+      "status": "passed"
+    },
+    "left-to-right.wast": {
+      "passed": 91,
+      "total": 95,
+      "status": "partial"
+    },
+    "linking.wast": {
+      "passed": 68,
+      "total": 133,
+      "status": "partial"
+    },
+    "linking0.wast": {
+      "passed": 3,
+      "total": 4,
+      "status": "partial"
+    },
+    "linking1.wast": {
+      "passed": 2,
+      "total": 9,
+      "status": "partial"
+    },
+    "linking2.wast": {
+      "passed": 0,
+      "total": 8,
+      "status": "partial"
+    },
+    "linking3.wast": {
+      "passed": 4,
+      "total": 10,
+      "status": "partial"
+    },
+    "load.wast": {
+      "passed": 92,
+      "total": 96,
+      "status": "partial"
+    },
+    "load0.wast": {
+      "passed": 2,
+      "total": 2,
+      "status": "passed"
+    },
+    "load1.wast": {
+      "passed": 0,
+      "total": 15,
+      "status": "partial"
+    },
+    "load2.wast": {
+      "passed": 33,
+      "total": 37,
+      "status": "partial"
+    },
+    "load64.wast": {
+      "passed": 92,
+      "total": 96,
+      "status": "partial"
+    },
+    "local_get.wast": {
+      "passed": 35,
+      "total": 35,
+      "status": "passed"
+    },
+    "local_init.wast": {
+      "passed": 4,
+      "total": 8,
+      "status": "partial"
+    },
+    "local_set.wast": {
+      "passed": 52,
+      "total": 52,
+      "status": "passed"
+    },
+    "local_tee.wast": {
+      "passed": 93,
+      "total": 97,
+      "status": "partial"
+    },
+    "loop.wast": {
+      "passed": 116,
+      "total": 119,
+      "status": "partial"
+    },
+    "memory-multi.wast": {
+      "passed": 2,
+      "total": 4,
+      "status": "partial"
+    },
+    "memory.wast": {
+      "passed": 76,
+      "total": 78,
+      "status": "partial"
+    },
+    "memory64-imports.wast": {
+      "passed": 30,
+      "total": 30,
+      "status": "passed"
+    },
+    "memory64.wast": {
+      "passed": 15,
+      "total": 59,
+      "status": "partial"
+    },
+    "memory_copy.wast": {
+      "passed": 4402,
+      "total": 4402,
+      "status": "passed"
+    },
+    "memory_copy0.wast": {
+      "passed": 6,
+      "total": 21,
+      "status": "partial"
+    },
+    "memory_copy1.wast": {
+      "passed": 4,
+      "total": 8,
+      "status": "partial"
+    },
+    "memory_copy64.wast": {
+      "passed": 4162,
+      "total": 4402,
+      "status": "partial"
+    },
+    "memory_fill.wast": {
+      "passed": 84,
+      "total": 84,
+      "status": "passed"
+    },
+    "memory_fill0.wast": {
+      "passed": 11,
+      "total": 11,
+      "status": "passed"
+    },
+    "memory_fill64.wast": {
+      "passed": 84,
+      "total": 84,
+      "status": "passed"
+    },
+    "memory_grow.wast": {
+      "passed": 90,
+      "total": 96,
+      "status": "partial"
+    },
+    "memory_grow64.wast": {
+      "passed": 45,
+      "total": 45,
+      "status": "passed"
+    },
+    "memory_init.wast": {
+      "passed": 161,
+      "total": 207,
+      "status": "partial"
+    },
+    "memory_init0.wast": {
+      "passed": 3,
+      "total": 8,
+      "status": "partial"
+    },
+    "memory_init64.wast": {
+      "passed": 81,
+      "total": 207,
+      "status": "partial"
+    },
+    "memory_redundancy.wast": {
+      "passed": 4,
+      "total": 4,
+      "status": "passed"
+    },
+    "memory_redundancy64.wast": {
+      "passed": 4,
+      "total": 4,
+      "status": "passed"
+    },
+    "memory_size.wast": {
+      "passed": 38,
+      "total": 38,
+      "status": "passed"
+    },
+    "memory_size0.wast": {
+      "passed": 7,
+      "total": 7,
+      "status": "passed"
+    },
+    "memory_size1.wast": {
+      "passed": 14,
+      "total": 14,
+      "status": "passed"
+    },
+    "memory_size2.wast": {
+      "passed": 20,
+      "total": 20,
+      "status": "passed"
+    },
+    "memory_size3.wast": {
+      "passed": 2,
+      "total": 2,
+      "status": "passed"
+    },
+    "memory_size_import.wast": {
+      "passed": 4,
+      "total": 4,
+      "status": "passed"
+    },
+    "memory_trap.wast": {
+      "passed": 180,
+      "total": 180,
+      "status": "passed"
+    },
+    "memory_trap0.wast": {
+      "passed": 13,
+      "total": 13,
+      "status": "passed"
+    },
+    "memory_trap1.wast": {
+      "passed": 167,
+      "total": 167,
+      "status": "passed"
+    },
+    "memory_trap64.wast": {
+      "passed": 168,
+      "total": 170,
+      "status": "partial"
+    },
+    "names.wast": {
+      "passed": 482,
+      "total": 482,
+      "status": "passed"
+    },
+    "nop.wast": {
+      "passed": 82,
+      "total": 87,
+      "status": "partial"
+    },
+    "obsolete-keywords.wast": {
+      "passed": 11,
+      "total": 11,
+      "status": "passed"
+    },
+    "ref.wast": {
+      "passed": 12,
+      "total": 12,
+      "status": "passed"
+    },
+    "ref_as_non_null.wast": {
+      "passed": 3,
+      "total": 5,
+      "status": "partial"
+    },
+    "ref_func.wast": {
+      "passed": 11,
+      "total": 11,
+      "status": "passed"
+    },
+    "ref_is_null.wast": {
+      "passed": 2,
+      "total": 18,
+      "status": "partial"
+    },
+    "ref_null.wast": {
+      "passed": 0,
+      "total": 32,
+      "status": "partial"
+    },
+    "relaxed_dot_product.wast": {
+      "passed": 10,
+      "total": 10,
+      "status": "passed"
+    },
+    "relaxed_laneselect.wast": {
+      "passed": 11,
+      "total": 11,
+      "status": "passed"
+    },
+    "relaxed_madd_nmadd.wast": {
+      "passed": 17,
+      "total": 17,
+      "status": "passed"
+    },
+    "relaxed_min_max.wast": {
+      "passed": 24,
+      "total": 24,
+      "status": "passed"
+    },
+    "return.wast": {
+      "passed": 83,
+      "total": 83,
+      "status": "passed"
+    },
+    "return_call.wast": {
+      "passed": 11,
+      "total": 44,
+      "status": "partial"
+    },
+    "return_call_indirect.wast": {
+      "passed": 34,
+      "total": 76,
+      "status": "partial"
+    },
+    "return_call_ref.wast": {
+      "passed": 15,
+      "total": 46,
+      "status": "partial"
+    },
+    "select.wast": {
+      "passed": 36,
+      "total": 154,
+      "status": "partial"
+    },
+    "simd_address.wast": {
+      "passed": 46,
+      "total": 46,
+      "status": "passed"
+    },
+    "simd_align.wast": {
+      "passed": 54,
+      "total": 54,
+      "status": "passed"
+    },
+    "simd_bit_shift.wast": {
+      "passed": 250,
+      "total": 250,
+      "status": "passed"
+    },
+    "simd_bitwise.wast": {
+      "passed": 167,
+      "total": 167,
+      "status": "passed"
+    },
+    "simd_boolean.wast": {
+      "passed": 275,
+      "total": 275,
+      "status": "passed"
+    },
+    "simd_const.wast": {
+      "passed": 444,
+      "total": 446,
+      "status": "partial"
+    },
+    "simd_conversions.wast": {
+      "passed": 280,
+      "total": 280,
+      "status": "passed"
+    },
+    "simd_f32x4.wast": {
+      "passed": 788,
+      "total": 788,
+      "status": "passed"
+    },
+    "simd_f32x4_arith.wast": {
+      "passed": 1819,
+      "total": 1819,
+      "status": "passed"
+    },
+    "simd_f32x4_cmp.wast": {
+      "passed": 2605,
+      "total": 2605,
+      "status": "passed"
+    },
+    "simd_f32x4_pmin_pmax.wast": {
+      "passed": 3886,
+      "total": 3886,
+      "status": "passed"
+    },
+    "simd_f32x4_rounding.wast": {
+      "passed": 200,
+      "total": 200,
+      "status": "passed"
+    },
+    "simd_f64x2.wast": {
+      "passed": 801,
+      "total": 801,
+      "status": "passed"
+    },
+    "simd_f64x2_arith.wast": {
+      "passed": 1822,
+      "total": 1822,
+      "status": "passed"
+    },
+    "simd_f64x2_cmp.wast": {
+      "passed": 2683,
+      "total": 2683,
+      "status": "passed"
+    },
+    "simd_f64x2_pmin_pmax.wast": {
+      "passed": 3886,
+      "total": 3886,
+      "status": "passed"
+    },
+    "simd_f64x2_rounding.wast": {
+      "passed": 200,
+      "total": 200,
+      "status": "passed"
+    },
+    "simd_i16x8_arith.wast": {
+      "passed": 192,
+      "total": 192,
+      "status": "passed"
+    },
+    "simd_i16x8_arith2.wast": {
+      "passed": 170,
+      "total": 170,
+      "status": "passed"
+    },
+    "simd_i16x8_cmp.wast": {
+      "passed": 463,
+      "total": 463,
+      "status": "passed"
+    },
+    "simd_i16x8_extadd_pairwise_i8x16.wast": {
+      "passed": 20,
+      "total": 20,
+      "status": "passed"
+    },
+    "simd_i16x8_extmul_i8x16.wast": {
+      "passed": 116,
+      "total": 116,
+      "status": "passed"
+    },
+    "simd_i16x8_q15mulr_sat_s.wast": {
+      "passed": 29,
+      "total": 29,
+      "status": "passed"
+    },
+    "simd_i16x8_sat_arith.wast": {
+      "passed": 220,
+      "total": 220,
+      "status": "passed"
+    },
+    "simd_i32x4_arith.wast": {
+      "passed": 192,
+      "total": 192,
+      "status": "passed"
+    },
+    "simd_i32x4_arith2.wast": {
+      "passed": 147,
+      "total": 147,
+      "status": "passed"
+    },
+    "simd_i32x4_cmp.wast": {
+      "passed": 473,
+      "total": 473,
+      "status": "passed"
+    },
+    "simd_i32x4_dot_i16x8.wast": {
+      "passed": 29,
+      "total": 31,
+      "status": "partial"
+    },
+    "simd_i32x4_extadd_pairwise_i16x8.wast": {
+      "passed": 20,
+      "total": 20,
+      "status": "passed"
+    },
+    "simd_i32x4_extmul_i16x8.wast": {
+      "passed": 116,
+      "total": 116,
+      "status": "passed"
+    },
+    "simd_i32x4_trunc_sat_f32x4.wast": {
+      "passed": 106,
+      "total": 106,
+      "status": "passed"
+    },
+    "simd_i32x4_trunc_sat_f64x2.wast": {
+      "passed": 106,
+      "total": 106,
+      "status": "passed"
+    },
+    "simd_i64x2_arith.wast": {
+      "passed": 198,
+      "total": 198,
+      "status": "passed"
+    },
+    "simd_i64x2_arith2.wast": {
+      "passed": 23,
+      "total": 23,
+      "status": "passed"
+    },
+    "simd_i64x2_cmp.wast": {
+      "passed": 112,
+      "total": 112,
+      "status": "passed"
+    },
+    "simd_i64x2_extmul_i32x4.wast": {
+      "passed": 116,
+      "total": 116,
+      "status": "passed"
+    },
+    "simd_i8x16_arith.wast": {
+      "passed": 129,
+      "total": 129,
+      "status": "passed"
+    },
+    "simd_i8x16_arith2.wast": {
+      "passed": 209,
+      "total": 209,
+      "status": "passed"
+    },
+    "simd_i8x16_cmp.wast": {
+      "passed": 443,
+      "total": 443,
+      "status": "passed"
+    },
+    "simd_i8x16_sat_arith.wast": {
+      "passed": 212,
+      "total": 212,
+      "status": "passed"
+    },
+    "simd_int_to_int_extend.wast": {
+      "passed": 252,
+      "total": 252,
+      "status": "passed"
+    },
+    "simd_lane.wast": {
+      "passed": 463,
+      "total": 463,
+      "status": "passed"
+    },
+    "simd_linking.wast": {
+      "passed": 0,
+      "total": 0,
+      "status": "passed"
+    },
+    "simd_load.wast": {
+      "passed": 25,
+      "total": 25,
+      "status": "passed"
+    },
+    "simd_load16_lane.wast": {
+      "passed": 35,
+      "total": 35,
+      "status": "passed"
+    },
+    "simd_load32_lane.wast": {
+      "passed": 23,
+      "total": 23,
+      "status": "passed"
+    },
+    "simd_load64_lane.wast": {
+      "passed": 15,
+      "total": 15,
+      "status": "passed"
+    },
+    "simd_load8_lane.wast": {
+      "passed": 51,
+      "total": 51,
+      "status": "passed"
+    },
+    "simd_load_extend.wast": {
+      "passed": 102,
+      "total": 102,
+      "status": "passed"
+    },
+    "simd_load_splat.wast": {
+      "passed": 124,
+      "total": 124,
+      "status": "passed"
+    },
+    "simd_load_zero.wast": {
+      "passed": 37,
+      "total": 37,
+      "status": "passed"
+    },
+    "simd_memory-multi.wast": {
+      "passed": 0,
+      "total": 0,
+      "status": "passed"
+    },
+    "simd_select.wast": {
+      "passed": 6,
+      "total": 6,
+      "status": "passed"
+    },
+    "simd_splat.wast": {
+      "passed": 181,
+      "total": 181,
+      "status": "passed"
+    },
+    "simd_store.wast": {
+      "passed": 26,
+      "total": 26,
+      "status": "passed"
+    },
+    "simd_store16_lane.wast": {
+      "passed": 35,
+      "total": 35,
+      "status": "passed"
+    },
+    "simd_store32_lane.wast": {
+      "passed": 23,
+      "total": 23,
+      "status": "passed"
+    },
+    "simd_store64_lane.wast": {
+      "passed": 15,
+      "total": 15,
+      "status": "passed"
+    },
+    "simd_store8_lane.wast": {
+      "passed": 51,
+      "total": 51,
+      "status": "passed"
+    },
+    "skip-stack-guard-page.wast": {
+      "passed": 10,
+      "total": 10,
+      "status": "passed"
+    },
+    "stack.wast": {
+      "passed": 5,
+      "total": 5,
+      "status": "passed"
+    },
+    "start.wast": {
+      "passed": 4,
+      "total": 11,
+      "status": "partial"
+    },
+    "start0.wast": {
+      "passed": 3,
+      "total": 6,
+      "status": "partial"
+    },
+    "store.wast": {
+      "passed": 67,
+      "total": 67,
+      "status": "passed"
+    },
+    "store0.wast": {
+      "passed": 2,
+      "total": 2,
+      "status": "passed"
+    },
+    "store1.wast": {
+      "passed": 0,
+      "total": 4,
+      "status": "partial"
+    },
+    "store2.wast": {
+      "passed": 20,
+      "total": 20,
+      "status": "passed"
+    },
+    "switch.wast": {
+      "passed": 27,
+      "total": 27,
+      "status": "passed"
+    },
+    "table-sub.wast": {
+      "passed": 2,
+      "total": 2,
+      "status": "passed"
+    },
+    "table.wast": {
+      "passed": 24,
+      "total": 29,
+      "status": "partial"
+    },
+    "table_copy.wast": {
+      "passed": 1399,
+      "total": 1649,
+      "status": "partial"
+    },
+    "table_copy64.wast": {
+      "passed": 1385,
+      "total": 1649,
+      "status": "partial"
+    },
+    "table_copy_mixed.wast": {
+      "passed": 3,
+      "total": 3,
+      "status": "passed"
+    },
+    "table_fill.wast": {
+      "passed": 18,
+      "total": 44,
+      "status": "partial"
+    },
+    "table_fill64.wast": {
+      "passed": 15,
+      "total": 79,
+      "status": "partial"
+    },
+    "table_get.wast": {
+      "passed": 9,
+      "total": 14,
+      "status": "partial"
+    },
+    "table_get64.wast": {
+      "passed": 4,
+      "total": 9,
+      "status": "partial"
+    },
+    "table_grow.wast": {
+      "passed": 34,
+      "total": 69,
+      "status": "partial"
+    },
+    "table_init.wast": {
+      "passed": 705,
+      "total": 729,
+      "status": "partial"
+    },
+    "table_init64.wast": {
+      "passed": 755,
+      "total": 819,
+      "status": "partial"
+    },
+    "table_set.wast": {
+      "passed": 15,
+      "total": 25,
+      "status": "partial"
+    },
+    "table_set64.wast": {
+      "passed": 8,
+      "total": 18,
+      "status": "partial"
+    },
+    "table_size.wast": {
+      "passed": 38,
+      "total": 38,
+      "status": "passed"
+    },
+    "table_size64.wast": {
+      "passed": 0,
+      "total": 36,
+      "status": "partial"
+    },
+    "tag.wast": {
+      "passed": 4,
+      "total": 4,
+      "status": "passed"
+    },
+    "throw.wast": {
+      "passed": 3,
+      "total": 5,
+      "status": "partial"
+    },
+    "throw_ref.wast": {
+      "passed": 2,
+      "total": 7,
+      "status": "partial"
+    },
+    "token.wast": {
+      "passed": 26,
+      "total": 26,
+      "status": "passed"
+    },
+    "traps.wast": {
+      "passed": 32,
+      "total": 32,
+      "status": "passed"
+    },
+    "traps0.wast": {
+      "passed": 14,
+      "total": 14,
+      "status": "passed"
+    },
+    "try_table.wast": {
+      "passed": 11,
+      "total": 52,
+      "status": "partial"
+    },
+    "type-canon.wast": {
+      "passed": 0,
+      "total": 0,
+      "status": "passed"
+    },
+    "type-equivalence.wast": {
+      "passed": 1,
+      "total": 5,
+      "status": "partial"
+    },
+    "type-rec.wast": {
+      "passed": 14,
+      "total": 15,
+      "status": "partial"
+    },
+    "type.wast": {
+      "passed": 2,
+      "total": 2,
+      "status": "passed"
+    },
+    "unreachable.wast": {
+      "passed": 63,
+      "total": 63,
+      "status": "passed"
+    },
+    "unreached-invalid.wast": {
+      "passed": 121,
+      "total": 121,
+      "status": "passed"
+    },
+    "unreached-valid.wast": {
+      "passed": 10,
+      "total": 10,
+      "status": "passed"
+    },
+    "unwind.wast": {
+      "passed": 49,
+      "total": 49,
+      "status": "passed"
+    },
+    "utf8-custom-section-id.wast": {
+      "passed": 176,
+      "total": 176,
+      "status": "passed"
+    },
+    "utf8-import-field.wast": {
+      "passed": 176,
+      "total": 176,
+      "status": "passed"
+    },
+    "utf8-import-module.wast": {
+      "passed": 176,
+      "total": 176,
+      "status": "passed"
+    },
+    "utf8-invalid-encoding.wast": {
+      "passed": 176,
+      "total": 176,
+      "status": "passed"
+    }
+  }
+}
