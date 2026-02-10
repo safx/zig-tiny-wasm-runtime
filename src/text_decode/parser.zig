@@ -450,6 +450,14 @@ pub const Parser = struct {
         }
         try self.advance();
 
+        // Skip optional "definition" keyword (wast-specific, e.g., "(module definition $M ...)")
+        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "definition")) {
+            try self.advance();
+        }
+
+        // Skip optional module name (e.g., $Mm in "(module $Mm ...)")
+        _ = try self.parseOptionalName();
+
         // Pre-scan all fields to register names for forward reference resolution
         try self.preScanNames();
 
@@ -4323,8 +4331,10 @@ pub const Parser = struct {
         const module_start_pos = self.lexer.pos - "module".len - 1;
         try self.advance();
 
-        // Skip optional "definition" keyword
+        // Skip optional "definition" keyword (definition-only modules should not be instantiated)
+        var is_definition = false;
         if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "definition")) {
+            is_definition = true;
             try self.advance();
         }
 
@@ -4424,8 +4434,11 @@ pub const Parser = struct {
 
         _ = try self.builder.build();
 
-        const module_text = self.input[module_start_pos..module_end_pos];
-        const module_data = try self.allocator.dupe(u8, module_text);
+        // Definition-only modules are validated but not instantiated
+        const module_data = if (is_definition) null else blk: {
+            const module_text = self.input[module_start_pos..module_end_pos];
+            break :blk try self.allocator.dupe(u8, module_text);
+        };
 
         return spec_types.command.Command{
             .module = .{
