@@ -2648,7 +2648,9 @@ pub const Parser = struct {
                             try instrs.append(self.allocator, .{ .global_get = val });
                             try self.advance();
                         } else if (self.current_token == .identifier) {
-                            // TODO: Named global resolution
+                            const name = self.current_token.identifier;
+                            const global_idx = self.builder.global_names.get(name) orelse 0;
+                            try instrs.append(self.allocator, .{ .global_get = global_idx });
                             try self.advance();
                         }
                         try self.expectRightParen();
