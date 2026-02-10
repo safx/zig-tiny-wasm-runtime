@@ -1839,6 +1839,7 @@ pub const Parser = struct {
 
         var offset: wasm_core.types.InitExpression = .{ .i32_const = 0 };
         var mem_idx: u32 = 0;
+        var is_active: bool = false;
 
         // Check for (memory idx) or (offset ...) or offset expression
         while (self.current_token == .left_paren) {
@@ -1871,10 +1872,12 @@ pub const Parser = struct {
                     try self.advance();
                 }
                 try self.expectRightParen();
+                is_active = true;
             } else if (std.mem.eql(u8, instr_name, "offset")) {
                 try self.advance();
                 offset = try self.parseInitExpression();
                 try self.expectRightParen(); // close offset
+                is_active = true;
                 break;
             } else {
                 // Restore and parse as init expression
@@ -1882,6 +1885,7 @@ pub const Parser = struct {
                 self.lexer.current_char = saved_char;
                 self.current_token = saved_token;
                 offset = try self.parseInitExpression();
+                is_active = true;
                 break;
             }
         }
@@ -1899,12 +1903,10 @@ pub const Parser = struct {
 
         const data = wasm_core.types.Data{
             .init = try data_list.toOwnedSlice(self.allocator),
-            .mode = .{
-                .active = .{
-                    .mem_idx = mem_idx,
-                    .offset = offset,
-                },
-            },
+            .mode = if (is_active)
+                .{ .active = .{ .mem_idx = mem_idx, .offset = offset } }
+            else
+                .passive,
         };
 
         try builder.datas.append(builder.allocator, data);
