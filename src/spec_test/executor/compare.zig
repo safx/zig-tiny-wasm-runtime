@@ -51,8 +51,18 @@ pub fn resultEquals(runtime_val: runtime.types.Value, expected: spec_types.comma
             }
             break :blk true;
         },
-        .func_ref => |exp| runtime_val == .func_ref and runtime_val.func_ref == exp,
-        .extern_ref => |exp| runtime_val == .extern_ref and runtime_val.extern_ref == exp,
+        .func_ref => |exp| blk: {
+            if (runtime_val == .func_ref) break :blk runtime_val.func_ref == exp;
+            // null ref is compatible across ref types
+            if (exp == null and runtime_val == .extern_ref and runtime_val.extern_ref == null) break :blk true;
+            break :blk false;
+        },
+        .extern_ref => |exp| blk: {
+            if (runtime_val == .extern_ref) break :blk runtime_val.extern_ref == exp;
+            // null ref is compatible across ref types
+            if (exp == null and runtime_val == .func_ref and runtime_val.func_ref == null) break :blk true;
+            break :blk false;
+        },
         .either => |alternatives| blk: {
             for (alternatives) |alt| {
                 if (resultEquals(runtime_val, alt)) break :blk true;

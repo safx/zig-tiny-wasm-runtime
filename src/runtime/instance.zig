@@ -239,11 +239,31 @@ pub const Instance = struct {
         try self.stack.push(.{ .frame = aux_frame_init });
 
         // 8: Get `val*`
+        // Count imported globals for extended constant expression support
+        var num_import_globals: u32 = 0;
+        for (extern_vals) |ev| {
+            if (ev == .global) num_import_globals += 1;
+        }
+
         const vals = try self.allocator.alloc(Value, module.globals.len);
         defer self.allocator.free(vals);
         for (module.globals, 0..) |global, i| {
             vals[i] = switch (global.init) {
                 .instructions => |instrs| try const_expr.evaluateConstExpr(instrs, self.store.globals.items),
+                .global_get => |idx| blk: {
+                    if (idx < num_import_globals) {
+                        // Imported global: use aux_module frame (has correct store mapping)
+                        try self.execOneInstruction(instractionFromInitExpr(global.init));
+                        break :blk self.stack.pop().value;
+                    } else {
+                        // Local global: use previously computed values
+                        const local_idx = idx - num_import_globals;
+                        if (local_idx < i) {
+                            break :blk vals[local_idx];
+                        }
+                        return error.InstantiationFailed;
+                    }
+                },
                 else => blk: {
                     try self.execOneInstruction(instractionFromInitExpr(global.init));
                     break :blk self.stack.pop().value;

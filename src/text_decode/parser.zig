@@ -143,6 +143,8 @@ pub const Parser = struct {
     local_names: std.StringHashMap(u32),
     label_stack: std.ArrayList(?[]const u8),
     builder: *ModuleBuilder,
+    // Position of last consumed left_paren (for module text extraction)
+    last_left_paren_pos: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator, input: []const u8, builder: *ModuleBuilder) !Parser {
         var lexer = Lexer.init(input);
@@ -2371,7 +2373,11 @@ pub const Parser = struct {
                     } else if (std.mem.eql(u8, ref_type, "func")) {
                         return .func_ref;
                     }
-                    // For other ref types (GC types, $name), return externref as fallback
+                    // For named types ($t) treat as funcref (most common for typed function refs)
+                    if (ref_type.len > 0 and ref_type[0] == '$') {
+                        return .func_ref;
+                    }
+                    // For other ref types (GC heap types), return externref as fallback
                     return .extern_ref;
                 } else if (self.current_token == .number) {
                     // Numeric type index (ref null 0) - treat as funcref
@@ -2632,14 +2638,7 @@ pub const Parser = struct {
                         }
                         try self.expectRightParen();
                     } else if (std.mem.eql(u8, instr_name, "ref.null")) {
-                        var rt: wasm_core.types.RefType = .funcref;
-                        if (self.current_token == .identifier) {
-                            const type_name = self.current_token.identifier;
-                            if (std.mem.eql(u8, type_name, "extern") or std.mem.eql(u8, type_name, "externref")) {
-                                rt = .externref;
-                            }
-                            try self.advance();
-                        }
+                        const rt = try self.parseRefType();
                         try instrs.append(self.allocator, .{ .ref_null = rt });
                         try self.expectRightParen();
                     } else if (std.mem.eql(u8, instr_name, "global.get")) {
@@ -3971,7 +3970,7 @@ pub const Parser = struct {
                 std.mem.eql(u8, id, "exnref") or std.mem.eql(u8, id, "nullexnref"))
             {
                 try self.advance();
-                return .funcref;
+                return .externref;
             } else if (id.len > 0 and id[0] == '$') {
                 // Named type reference ($t) - treat as funcref
                 try self.advance();
@@ -4342,8 +4341,8 @@ pub const Parser = struct {
     fn parseModuleCommand(self: *Parser) !spec_types.command.Command {
         const line = self.lexer.line;
         // current token is "module"
-        // Need to include the '(' before "module"
-        const module_start_pos = self.lexer.pos - "module".len - 1;
+        // Use the saved position of '(' from parseWastScript
+        const module_start_pos = self.last_left_paren_pos;
         try self.advance();
 
         // Skip optional "definition" keyword (definition-only modules should not be instantiated)
@@ -5082,11 +5081,17 @@ pub const Parser = struct {
             try self.expectToken(.right_paren);
             return spec_types.command.Value{ .v128 = value };
         } else if (std.mem.eql(u8, type_name, "ref.null")) {
-            // Parse ref type: funcref, externref, func, extern, etc.
+            // Parse ref type: funcref, externref, func, extern, any, exn, etc.
             var is_extern = false;
             if (self.current_token == .identifier) {
                 const rt = self.current_token.identifier;
-                if (std.mem.eql(u8, rt, "extern") or std.mem.eql(u8, rt, "externref")) {
+                if (std.mem.eql(u8, rt, "extern") or std.mem.eql(u8, rt, "externref") or
+                    std.mem.eql(u8, rt, "any") or std.mem.eql(u8, rt, "anyref") or
+                    std.mem.eql(u8, rt, "none") or std.mem.eql(u8, rt, "nullref") or
+                    std.mem.eql(u8, rt, "noextern") or std.mem.eql(u8, rt, "nullexternref") or
+                    std.mem.eql(u8, rt, "exn") or std.mem.eql(u8, rt, "noexn") or
+                    std.mem.eql(u8, rt, "exnref") or std.mem.eql(u8, rt, "nullexnref"))
+                {
                     is_extern = true;
                 }
                 try self.advance();
@@ -5220,11 +5225,23 @@ pub const Parser = struct {
             return spec_types.command.Result{ .either = try alternatives.toOwnedSlice(self.allocator) };
         } else if (std.mem.eql(u8, type_name, "ref.null")) {
             var is_extern = false;
+            var is_func = false;
             if (self.current_token == .identifier) {
                 const rt = self.current_token.identifier;
-                if (std.mem.eql(u8, rt, "extern") or std.mem.eql(u8, rt, "externref")) {
+                if (std.mem.eql(u8, rt, "extern") or std.mem.eql(u8, rt, "externref") or
+                    std.mem.eql(u8, rt, "any") or std.mem.eql(u8, rt, "anyref") or
+                    std.mem.eql(u8, rt, "none") or std.mem.eql(u8, rt, "nullref") or
+                    std.mem.eql(u8, rt, "noextern") or std.mem.eql(u8, rt, "nullexternref") or
+                    std.mem.eql(u8, rt, "exn") or std.mem.eql(u8, rt, "noexn") or
+                    std.mem.eql(u8, rt, "exnref") or std.mem.eql(u8, rt, "nullexnref"))
+                {
                     is_extern = true;
+                } else if (std.mem.eql(u8, rt, "func") or std.mem.eql(u8, rt, "funcref") or
+                    std.mem.eql(u8, rt, "nofunc") or std.mem.eql(u8, rt, "nullfuncref"))
+                {
+                    is_func = true;
                 }
+                // For $name or unknown types, default to func_ref
                 try self.advance();
             }
             try self.expectToken(.right_paren);
@@ -5290,6 +5307,8 @@ pub fn parseWastScript(allocator: std.mem.Allocator, input: []const u8) ![]spec_
             continue;
         }
 
+        // Save position of '(' for module text extraction
+        parser.last_left_paren_pos = parser.lexer.pos - 1;
         try parser.advance(); // consume '('
 
         if (parser.current_token != .identifier) {

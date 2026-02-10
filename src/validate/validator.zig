@@ -70,7 +70,7 @@ pub const ModuleValidator = struct {
         }
 
         { // under the context c'
-            const cp = try Context.newLimitedContext(module, self.allocator);
+            var cp = try Context.newLimitedContext(module, self.allocator);
 
             for (module.tables) |table|
                 try validateTableType(table);
@@ -78,8 +78,16 @@ pub const ModuleValidator = struct {
             for (module.memories) |memory|
                 try validateMemoryType(memory);
 
-            for (module.globals) |global|
+            // Validate globals progressively: each global can reference previously defined globals
+            // (extended constant expressions proposal)
+            for (module.globals) |global| {
                 try validateGlobal(cp, global);
+                // Extend context with this global for subsequent globals
+                const new_globals = try self.allocator.alloc(core.types.GlobalType, cp.globals.len + 1);
+                @memcpy(new_globals[0..cp.globals.len], cp.globals);
+                new_globals[cp.globals.len] = global.type;
+                cp.globals = new_globals;
+            }
 
             for (module.elements) |elem|
                 try validateElement(cp, elem);

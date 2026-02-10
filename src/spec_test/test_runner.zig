@@ -345,7 +345,9 @@ pub const SpecTestRunner = struct {
         switch (action.*) {
             .invoke => |inv| {
                 const mod_inst = if (inv.module) |name|
-                    registered_modules.get(name) orelse return error.ModuleNotFound
+                    registered_modules.get(name) orelse
+                        self.engine.getModuleInstByName(name) orelse
+                        return error.ModuleNotFound
                 else
                     current_module orelse return error.NoCurrentModule;
 
@@ -362,7 +364,9 @@ pub const SpecTestRunner = struct {
             },
             .get => |get| {
                 const mod_inst = if (get.module) |name|
-                    registered_modules.get(name) orelse return error.ModuleNotFound
+                    registered_modules.get(name) orelse
+                        self.engine.getModuleInstByName(name) orelse
+                        return error.ModuleNotFound
                 else
                     current_module orelse return error.NoCurrentModule;
 
