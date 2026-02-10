@@ -1082,7 +1082,8 @@ fn validateData(c: Context, data: Data) Error!void {
     switch (data.mode) {
         .active => |dat| {
             try c.checkMem(dat.mem_idx);
-            try validateInitExpression(c, dat.offset, .i32);
+            const addr_type = try c.memAddrType(dat.mem_idx);
+            try validateInitExpression(c, dat.offset, addr_type);
         },
         else => {},
     }

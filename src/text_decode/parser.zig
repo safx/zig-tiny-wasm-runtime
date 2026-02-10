@@ -1741,8 +1741,14 @@ pub const Parser = struct {
                     try self.advance();
                 }
                 try self.expectRightParen();
+            } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "data")) {
+                // Inline data — restore and break to handle after i32/i64 check
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+                break;
             } else {
-                // Not export, restore and skip
+                // Not export or data, restore and skip
                 self.lexer.pos = saved_pos;
                 self.lexer.current_char = saved_char;
                 self.current_token = saved_token;
@@ -1767,7 +1773,70 @@ pub const Parser = struct {
             try self.advance(); // skip the memory type
         }
 
-        // Skip any inline data or other nested expressions after memory type
+        // Check for inline data segment: (data "bytes" ...)
+        if (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+
+            try self.advance(); // consume '('
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "data")) {
+                try self.advance(); // consume 'data'
+
+                // Parse data strings
+                var data_list: std.ArrayList(u8) = .{};
+                defer data_list.deinit(self.allocator);
+                while (self.current_token == .string) {
+                    const unescaped = try self.unescapeString(self.current_token.string);
+                    defer self.allocator.free(unescaped);
+                    try data_list.appendSlice(self.allocator, unescaped);
+                    try self.advance();
+                }
+                try self.expectRightParen(); // close (data ...)
+
+                // Calculate pages: ceil(len / 65536)
+                const data_len = data_list.items.len;
+                const page_size: usize = 65536;
+                const min_pages: u32 = @intCast((data_len + page_size - 1) / page_size);
+
+                // Create memory with min = max = pages needed
+                const mem_idx: u32 = builder.countImportMemories() + @as(u32, @intCast(builder.memories.items.len));
+                try builder.memories.append(builder.allocator, .{
+                    .limits = .{ .min = min_pages, .max = min_pages },
+                    .is_64 = is_64,
+                });
+
+                if (memory_name) |name| {
+                    try builder.memory_names.put(name, mem_idx);
+                }
+                if (export_name) |name| {
+                    try builder.exports.append(self.allocator, .{
+                        .name = name,
+                        .desc = .{ .memory = mem_idx },
+                    });
+                }
+
+                // Create active data segment at offset 0
+                if (data_len > 0) {
+                    const offset_expr: wasm_core.types.InitExpression = if (is_64)
+                        .{ .i64_const = 0 }
+                    else
+                        .{ .i32_const = 0 };
+                    try builder.datas.append(builder.allocator, .{
+                        .init = try data_list.toOwnedSlice(self.allocator),
+                        .mode = .{ .active = .{ .mem_idx = mem_idx, .offset = offset_expr } },
+                    });
+                }
+                return;
+            } else {
+                // Not data — restore
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+            }
+        }
+
+        // Skip any other nested expressions
         while (self.current_token == .left_paren) {
             var depth: u32 = 1;
             try self.advance(); // consume '('
