@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "timestamp": "2026-02-10T20:27:05",
-    "git_commit": "0e7339a",
+    "timestamp": "2026-02-10T21:14:42",
+    "git_commit": "d64f2a3",
     "git_branch": "refactor/spec-types-v1"
   },
   "summary": {
-    "files_passed": 187,
+    "files_passed": 193,
     "files_total": 237,
-    "assertions_passed": 60837,
+    "assertions_passed": 61036,
     "assertions_total": 61857
   },
   "files": {
@@ -1037,9 +1037,9 @@
       "status": "passed"
     },
     "table_copy64.wast": {
-      "passed": 1635,
+      "passed": 1649,
       "total": 1649,
-      "status": "partial"
+      "status": "passed"
     },
     "table_copy_mixed.wast": {
       "passed": 3,
@@ -1052,9 +1052,9 @@
       "status": "passed"
     },
     "table_fill64.wast": {
-      "passed": 15,
+      "passed": 79,
       "total": 79,
-      "status": "partial"
+      "status": "passed"
     },
     "table_get.wast": {
       "passed": 14,
@@ -1062,12 +1062,12 @@
       "status": "passed"
     },
     "table_get64.wast": {
-      "passed": 4,
+      "passed": 9,
       "total": 9,
-      "status": "partial"
+      "status": "passed"
     },
     "table_grow.wast": {
-      "passed": 36,
+      "passed": 66,
       "total": 69,
       "status": "partial"
     },
@@ -1077,9 +1077,9 @@
       "status": "passed"
     },
     "table_init64.wast": {
-      "passed": 779,
+      "passed": 819,
       "total": 819,
-      "status": "partial"
+      "status": "passed"
     },
     "table_set.wast": {
       "passed": 25,
@@ -1087,9 +1087,9 @@
       "status": "passed"
     },
     "table_set64.wast": {
-      "passed": 8,
+      "passed": 18,
       "total": 18,
-      "status": "partial"
+      "status": "passed"
     },
     "table_size.wast": {
       "passed": 38,
@@ -1097,9 +1097,9 @@
       "status": "passed"
     },
     "table_size64.wast": {
-      "passed": 0,
+      "passed": 36,
       "total": 36,
-      "status": "partial"
+      "status": "passed"
     },
     "tag.wast": {
       "passed": 4,

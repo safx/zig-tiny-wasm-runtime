@@ -1085,11 +1085,13 @@ pub const Parser = struct {
             if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
                 try self.advance();
             }
-            // Skip optional address type (i32/i64 for table64)
+            // Capture optional address type (i32/i64 for table64)
+            var table_is_64 = false;
             if (self.current_token == .identifier and
                 (std.mem.eql(u8, self.current_token.identifier, "i32") or
                 std.mem.eql(u8, self.current_token.identifier, "i64")))
             {
+                table_is_64 = std.mem.eql(u8, self.current_token.identifier, "i64");
                 try self.advance();
             }
 
@@ -1135,7 +1137,7 @@ pub const Parser = struct {
                 }
             }
 
-            break :blk wasm_core.types.ImportDesc{ .table = .{ .limits = .{ .min = min, .max = max }, .ref_type = ref_type } };
+            break :blk wasm_core.types.ImportDesc{ .table = .{ .limits = .{ .min = min, .max = max }, .ref_type = ref_type, .is_64 = table_is_64 } };
         } else if (std.mem.eql(u8, desc_type, "memory")) blk: {
             // Skip optional $name
             if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
@@ -1232,11 +1234,13 @@ pub const Parser = struct {
                 var max: ?u32 = null;
                 var ref_type: wasm_core.types.RefType = .funcref;
 
-                // Optional table address type (i32 or i64 for table64)
+                // Capture optional table address type (i32 or i64 for table64)
+                var import_is_64 = false;
                 if (self.current_token == .identifier and
                     (std.mem.eql(u8, self.current_token.identifier, "i32") or
                     std.mem.eql(u8, self.current_token.identifier, "i64")))
                 {
+                    import_is_64 = std.mem.eql(u8, self.current_token.identifier, "i64");
                     try self.advance();
                 }
 
@@ -1279,6 +1283,7 @@ pub const Parser = struct {
                 const table_type = wasm_core.types.TableType{
                     .limits = .{ .min = min, .max = max },
                     .ref_type = ref_type,
+                    .is_64 = import_is_64,
                 };
 
                 const import_desc = wasm_core.types.ImportDesc{
@@ -1356,11 +1361,13 @@ pub const Parser = struct {
                 var max2: ?u32 = null;
                 var ref_type2: wasm_core.types.RefType = .funcref;
 
-                // Skip optional address type
+                // Capture optional address type
+                var export_import_is_64 = false;
                 if (self.current_token == .identifier and
                     (std.mem.eql(u8, self.current_token.identifier, "i32") or
                     std.mem.eql(u8, self.current_token.identifier, "i64")))
                 {
+                    export_import_is_64 = std.mem.eql(u8, self.current_token.identifier, "i64");
                     try self.advance();
                 }
 
@@ -1381,6 +1388,7 @@ pub const Parser = struct {
                 const table_type = wasm_core.types.TableType{
                     .limits = .{ .min = min2, .max = max2 },
                     .ref_type = ref_type2,
+                    .is_64 = export_import_is_64,
                 };
 
                 try builder.imports.append(self.allocator, .{
@@ -1414,11 +1422,13 @@ pub const Parser = struct {
         var max: ?u32 = null;
         var ref_type: wasm_core.types.RefType = .funcref;
 
-        // Optional table address type (i32 or i64 for table64)
+        // Capture optional table address type (i32 or i64 for table64)
+        var local_is_64 = false;
         if (self.current_token == .identifier and
             (std.mem.eql(u8, self.current_token.identifier, "i32") or
             std.mem.eql(u8, self.current_token.identifier, "i64")))
         {
+            local_is_64 = std.mem.eql(u8, self.current_token.identifier, "i64");
             try self.advance();
         }
 
@@ -1554,6 +1564,7 @@ pub const Parser = struct {
                 try builder.tables.append(self.allocator, .{
                     .ref_type = ref_type,
                     .limits = .{ .min = min, .max = max },
+                    .is_64 = local_is_64,
                 });
 
                 if (table_name) |name| {
@@ -1594,6 +1605,7 @@ pub const Parser = struct {
                 try builder.tables.append(self.allocator, .{
                     .ref_type = ref_type,
                     .limits = .{ .min = min, .max = max },
+                    .is_64 = local_is_64,
                 });
 
                 if (table_name) |name| {
@@ -1639,6 +1651,7 @@ pub const Parser = struct {
         try builder.tables.append(self.allocator, .{
             .ref_type = ref_type,
             .limits = .{ .min = min, .max = max },
+            .is_64 = local_is_64,
         });
 
         if (table_name) |name| {

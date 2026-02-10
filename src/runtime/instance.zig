@@ -980,7 +980,11 @@ pub const Instance = struct {
 
         const ft_expect = module.types[arg.type_idx];
 
-        const i: u32 = self.stack.pop().value.asU32();
+        const is_64 = tab.type.is_64;
+        const i: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
         if (i >= tab.elem.len)
             return Error.UndefinedElement;
 
@@ -1085,7 +1089,11 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
-        const i: u32 = self.stack.pop().value.asU32();
+        const is_64 = tab.type.is_64;
+        const i: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
 
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
@@ -1100,7 +1108,11 @@ pub const Instance = struct {
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
         const val = self.stack.pop().value;
-        const i: u32 = self.stack.pop().value.asU32();
+        const is_64 = tab.type.is_64;
+        const i: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
 
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
@@ -1113,7 +1125,11 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
-        try self.stack.pushValueAs(u32, @as(u32, @intCast(tab.elem.len)));
+        if (tab.type.is_64) {
+            try self.stack.pushValueAs(u64, @as(u64, @intCast(tab.elem.len)));
+        } else {
+            try self.stack.pushValueAs(u32, @as(u32, @intCast(tab.elem.len)));
+        }
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-grow-x
@@ -1121,12 +1137,20 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
+        const is_64 = tab.type.is_64;
 
-        const n: u32 = self.stack.pop().value.asU32();
+        const n: u32 = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            self.stack.pop().value.asU32();
         const val = self.stack.pop().value;
 
         if (tab.type.limits.max != null and @as(usize, @intCast(n)) + tab.elem.len > tab.type.limits.max.?) {
-            try self.stack.pushValueAs(i32, -1);
+            if (is_64) {
+                try self.stack.pushValueAs(i64, -1);
+            } else {
+                try self.stack.pushValueAs(i32, -1);
+            }
             return;
         }
 
@@ -1134,14 +1158,22 @@ pub const Instance = struct {
 
         const new_elem = growtable(tab, n, RefValue.fromValue(val), self.allocator) catch |err| {
             assert(err == std.mem.Allocator.Error.OutOfMemory);
-            try self.stack.pushValueAs(i32, -1);
+            if (is_64) {
+                try self.stack.pushValueAs(i64, -1);
+            } else {
+                try self.stack.pushValueAs(i32, -1);
+            }
             return;
         };
 
         self.store.tables.items[ta].elem = new_elem;
         self.store.tables.items[ta].type.limits.min = @intCast(new_elem.len);
 
-        try self.stack.pushValueAs(u32, sz);
+        if (is_64) {
+            try self.stack.pushValueAs(u64, @as(u64, sz));
+        } else {
+            try self.stack.pushValueAs(u32, sz);
+        }
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-tables
@@ -1165,10 +1197,17 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
+        const is_64 = tab.type.is_64;
 
-        var n: u32 = self.stack.pop().value.asU32();
+        var n: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
         const val = self.stack.pop().value;
-        var i: u32 = self.stack.pop().value.asU32();
+        var i: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
 
         const i_plus_n, const overflow = @addWithOverflow(i, n);
         if (overflow == 1 or i_plus_n > tab.elem.len)
@@ -1188,10 +1227,21 @@ pub const Instance = struct {
         const tab_d = self.store.tables.items[ta_d];
         const ta_s = module.table_addrs[arg.table_idx_src];
         const tab_s = self.store.tables.items[ta_s];
+        const dst_is_64 = tab_d.type.is_64;
+        const src_is_64 = tab_s.type.is_64;
 
-        var n: u32 = self.stack.pop().value.asU32();
-        var s: u32 = self.stack.pop().value.asU32();
-        var d: u32 = self.stack.pop().value.asU32();
+        var n: usize = if (dst_is_64 or src_is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
+        var s: usize = if (src_is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
+        var d: usize = if (dst_is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
 
         const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
         if (overflow_sn == 1 or s_plus_n > tab_s.elem.len)
@@ -1203,15 +1253,31 @@ pub const Instance = struct {
 
         while (n > 0) : (n -= 1) {
             if (d <= s) {
-                try self.stack.pushValueAs(u32, d);
-                try self.stack.pushValueAs(u32, s);
+                if (dst_is_64) {
+                    try self.stack.pushValueAs(u64, @as(u64, @intCast(d)));
+                } else {
+                    try self.stack.pushValueAs(u32, @as(u32, @intCast(d)));
+                }
+                if (src_is_64) {
+                    try self.stack.pushValueAs(u64, @as(u64, @intCast(s)));
+                } else {
+                    try self.stack.pushValueAs(u32, @as(u32, @intCast(s)));
+                }
                 try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
                 try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
                 d += 1;
                 s += 1;
             } else {
-                try self.stack.pushValueAs(u32, d + n - 1);
-                try self.stack.pushValueAs(u32, s + n - 1);
+                if (dst_is_64) {
+                    try self.stack.pushValueAs(u64, @as(u64, @intCast(d + n - 1)));
+                } else {
+                    try self.stack.pushValueAs(u32, @as(u32, @intCast(d + n - 1)));
+                }
+                if (src_is_64) {
+                    try self.stack.pushValueAs(u64, @as(u64, @intCast(s + n - 1)));
+                } else {
+                    try self.stack.pushValueAs(u32, @as(u32, @intCast(s + n - 1)));
+                }
                 try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
                 try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
             }
@@ -1225,22 +1291,30 @@ pub const Instance = struct {
         const tab = self.store.tables.items[ta];
         const ea = module.elem_addrs[arg.elem_idx];
         const elem = self.store.elems.items[ea];
+        const is_64 = tab.type.is_64;
 
         var n: u32 = self.stack.pop().value.asU32();
         var s: u32 = self.stack.pop().value.asU32();
-        var d: u32 = self.stack.pop().value.asU32();
+        var d: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
 
         const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
         if (overflow_sn == 1 or s_plus_n > elem.elem.len)
             return Error.OutOfBoundsTableAccess;
 
-        const d_plus_n, const overflow_dn = @addWithOverflow(d, n);
+        const d_plus_n, const overflow_dn = @addWithOverflow(d, @as(usize, n));
         if (overflow_dn == 1 or d_plus_n > tab.elem.len)
             return Error.OutOfBoundsTableAccess;
 
         while (n > 0) : (n -= 1) {
             const ref_val = elem.elem[s];
-            try self.stack.pushValueAs(u32, d);
+            if (is_64) {
+                try self.stack.pushValueAs(u64, @as(u64, @intCast(d)));
+            } else {
+                try self.stack.pushValueAs(u32, @as(u32, @intCast(d)));
+            }
             try self.stack.push(.{ .value = Value.fromRefValue(ref_val) });
             try self.execOneInstruction(.{ .table_set = arg.table_idx });
             d += 1;

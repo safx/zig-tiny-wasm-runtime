@@ -204,6 +204,12 @@ pub const Context = struct {
         return if (mem.is_64) .i64 else .i32;
     }
 
+    /// Returns the address type (i32 or i64) for the given table index.
+    pub fn tableAddrType(self: Self, idx: TableIdx) Error!ValueType {
+        const table = try self.getTable(idx);
+        return if (table.is_64) .i64 else .i32;
+    }
+
     pub fn getGlobal(self: Self, idx: GlobalIdx) Error!GlobalType {
         return if (idx < self.globals.len) self.globals[idx] else Error.UnknownGlobal;
     }

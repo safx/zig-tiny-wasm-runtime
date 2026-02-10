@@ -227,7 +227,8 @@ pub const ModuleValidator = struct {
                 if (table.ref_type != .funcref)
                     return Error.TypeMismatch;
 
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.tableAddrType(arg.table_idx);
+                try type_stack.popWithCheckingValueType(addr_type);
                 const ft = try c.getType(arg.type_idx);
                 try type_stack.popValuesWithCheckingValueType(ft.parameter_types);
                 try type_stack.appendValueType(ft.result_types);
@@ -291,22 +292,25 @@ pub const ModuleValidator = struct {
             // table instructions
             .table_get => |table_idx| {
                 const table = try c.getTable(table_idx);
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.tableAddrType(table_idx);
+                try type_stack.popWithCheckingValueType(addr_type);
                 try type_stack.pushValueType(valueTypeFromRefType(table.ref_type));
             },
             .table_set => |table_idx| {
                 const table = try c.getTable(table_idx);
+                const addr_type = try c.tableAddrType(table_idx);
                 try type_stack.popWithCheckingValueType(valueTypeFromRefType(table.ref_type));
-                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(addr_type);
             },
             .table_init => |arg| {
                 const table = try c.getTable(arg.table_idx);
                 const elem = try c.getElem(arg.elem_idx);
                 if (table.ref_type != elem)
                     return Error.TypeMismatch;
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.tableAddrType(arg.table_idx);
+                try type_stack.popWithCheckingValueType(.i32); // count (always i32)
+                try type_stack.popWithCheckingValueType(.i32); // src elem offset (always i32)
+                try type_stack.popWithCheckingValueType(addr_type); // dst table offset
             },
             .elem_drop => |elem_idx| _ = try c.getElem(elem_idx),
             .table_copy => |arg| {
@@ -314,25 +318,32 @@ pub const ModuleValidator = struct {
                 const table_dst = try c.getTable(arg.table_idx_dst);
                 if (table_src.ref_type != table_dst.ref_type)
                     return Error.TypeMismatch;
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
+                const dst_type = try c.tableAddrType(arg.table_idx_dst);
+                const src_type = try c.tableAddrType(arg.table_idx_src);
+                // count type: i64 if either table is 64-bit
+                const count_type: ValueType = if (dst_type == .i64 or src_type == .i64) .i64 else .i32;
+                try type_stack.popWithCheckingValueType(count_type); // count
+                try type_stack.popWithCheckingValueType(src_type); // src offset
+                try type_stack.popWithCheckingValueType(dst_type); // dst offset
             },
             .table_grow => |table_idx| {
                 const table = try c.getTable(table_idx);
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.tableAddrType(table_idx);
+                try type_stack.popWithCheckingValueType(addr_type);
                 try type_stack.popWithCheckingValueType(valueTypeFromRefType(table.ref_type));
-                try type_stack.pushValueType(.i32);
+                try type_stack.pushValueType(addr_type);
             },
             .table_size => |table_idx| {
                 _ = try c.getTable(table_idx);
-                try type_stack.pushValueType(.i32);
+                const addr_type = try c.tableAddrType(table_idx);
+                try type_stack.pushValueType(addr_type);
             },
             .table_fill => |table_idx| {
                 const table = try c.getTable(table_idx);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(valueTypeFromRefType(table.ref_type));
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.tableAddrType(table_idx);
+                try type_stack.popWithCheckingValueType(addr_type); // count
+                try type_stack.popWithCheckingValueType(valueTypeFromRefType(table.ref_type)); // value
+                try type_stack.popWithCheckingValueType(addr_type); // offset
             },
 
             // memory instructions
@@ -1068,7 +1079,8 @@ fn validateElement(c: Context, element: Element) Error!void {
 
     switch (element.mode) {
         .active => |eat| {
-            try validateInitExpression(c, eat.offset, .i32);
+            const addr_type = try c.tableAddrType(eat.table_idx);
+            try validateInitExpression(c, eat.offset, addr_type);
 
             const tt = try c.getTable(eat.table_idx);
             if (element.type != tt.ref_type)

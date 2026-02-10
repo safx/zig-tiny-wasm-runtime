@@ -185,8 +185,13 @@ pub const ModuleLoader = struct {
 
     fn table(self: *Self) Error!types.TableType {
         const rtype = try self.refType();
+        // Peek at the flags byte to detect table64 (bit 2 = 0x04)
+        const flags_pos = self.reader.position;
+        const flags = try self.reader.readU8();
+        const is_64 = (flags & 0x04) != 0;
+        self.reader.position = flags_pos;
         const limit = try self.limits();
-        return .{ .limits = limit, .ref_type = rtype };
+        return .{ .limits = limit, .ref_type = rtype, .is_64 = is_64 };
     }
 
     fn memtype(self: *Self) Error!types.MemoryType {

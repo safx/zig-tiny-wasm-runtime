@@ -119,6 +119,7 @@ pub const ExportDesc = union(wasm.ExternalKind) {
 pub const TableType = struct {
     limits: Limits,
     ref_type: RefType,
+    is_64: bool = false,
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         _ = try writer.print("{f}:{f}", .{ self.limits, self.ref_type });
