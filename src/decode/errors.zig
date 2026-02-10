@@ -29,6 +29,7 @@ pub const Error = error{
     MalformedMutId,
     MalformedBlockType,
     MalformedLaneIndex,
+    MalformedMemopFlags,
     InvalidLaneLength,
     TypeMismatch,
     OtherError,

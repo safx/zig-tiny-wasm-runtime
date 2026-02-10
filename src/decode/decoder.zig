@@ -633,12 +633,14 @@ fn memoryInit(reader: *BinaryReader) Error!Instruction {
 
 fn memArg(reader: *BinaryReader) Error!Instruction.MemArg {
     const a = try reader.readVarU32();
+    if (a >= 128) return Error.MalformedMemopFlags;
     const o = try reader.readVarU32();
     return .{ .@"align" = a, .offset = @as(u64, o) };
 }
 
 fn memArgWithLaneIdx(reader: *BinaryReader) Error!Instruction.MemArgWithLaneIdx {
     const a = try reader.readVarU32();
+    if (a >= 128) return Error.MalformedMemopFlags;
     const o = try reader.readVarU32();
     const l = try reader.readU8();
     return .{ .@"align" = a, .offset = @as(u64, o), .lane_idx = l };

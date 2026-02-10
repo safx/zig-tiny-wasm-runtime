@@ -44,6 +44,7 @@ pub const ModuleLoader = struct {
         var data_count: ?u32 = null;
 
         var sections: [13]bool = .{false} ** 13;
+        var last_section_id: u8 = 0;
         while (!self.reader.eof()) {
             const sec = try self.section();
             switch (sec) {
@@ -63,11 +64,12 @@ pub const ModuleLoader = struct {
             }
 
             if (sec != .custom) {
-                const current_section = @intFromEnum(sec);
-                if (sections[current_section])
+                const current_section: u8 = @intFromEnum(sec);
+                if (sections[current_section] or current_section < last_section_id)
                     return Error.UnexpectedContentAfterLastSection;
 
                 sections[current_section] = true;
+                last_section_id = current_section;
             }
         }
 

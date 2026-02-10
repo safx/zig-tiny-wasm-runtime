@@ -501,6 +501,7 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, field_name, "export")) {
             try self.parseExport(builder);
         } else if (std.mem.eql(u8, field_name, "start")) {
+            if (builder.start != null) return TextDecodeError.InvalidModule;
             const idx = try self.parseU32OrIdentifier();
             builder.start = idx;
         } else if (field_name.len > 0 and field_name[0] == '@') {
