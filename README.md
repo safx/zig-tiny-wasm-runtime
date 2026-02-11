@@ -191,18 +191,37 @@ This interpreter implements **WebAssembly 1.0 core specification** with **select
    - Functions and blocks can return multiple values
    - Multi-value block types
 
+8. **Memory64** (64-bit memory addressing)
+   - Full u64 address handling for all memory operations
+   - Dynamic address type selection (i32/i64) based on memory type
+   - 100% pass rate on all memory64 spec tests
+
+9. **Multi-Memory** (multiple memory instances per module)
+   - Multiple memory addresses per module instance
+   - `memory.copy` supports copying between different memories
+   - All memory instructions accept memory index parameter
+
+10. **Table64** (64-bit table addressing)
+    - Dynamic address type (i32/i64) for all table operations
+    - 100% pass rate on all table64 spec tests
+
+11. **Extended Constant Expressions**
+    - Arithmetic in constant expressions: `i32.add`, `i32.sub`, `i32.mul`
+    - 64-bit arithmetic: `i64.add`, `i64.sub`, `i64.mul`
+    - `global.get` of imported globals in initializer expressions
+
 ### 🔧 **Additional Capabilities**
-- Text format (.wast/.wat) parsing (syntax only, not full execution)
+- Text format (.wast/.wat) parsing and execution via spec test runner
 - Binary format (.wasm) decoding and execution
-- Module validation
-- Import/export system
-- Memory bounds checking
+- Module validation (types, control flow, stack usage)
+- Import/export system with inter-module linking
+- Memory bounds checking (traps on out-of-bounds access)
 
 ## Test Suite Status
 
 - **237/237 test files** from [spectec](https://github.com/Wasm-DSL/spectec) successfully parse and load
+- **61,562/61,857 (99.5%)** assertions pass across the test suite
 - Test files cover WebAssembly 1.0, 2.0, and some 3.0 features
-- **Note**: Current test runner validates parsing/loading only, not complete feature execution
 
 ## Known Limitations
 
@@ -211,10 +230,7 @@ The following WebAssembly 3.0 features are **not implemented**:
 - ❌ **Tail Calls** (`return_call`, `return_call_indirect`, `return_call_ref`)
 - ❌ **Exception Handling** (`throw`, `throw_ref`, `try_table`, exception tags)
 - ❌ **Garbage Collection** (struct, array, i31ref, and related GC instructions)
-- ❌ **Multi-Memory** (multiple memory instances per module)
-- ❌ **Memory64** (64-bit memory addressing)
 - ❌ **Extended Reference Types** (`br_on_null`, `br_on_non_null`, `call_ref`, `ref.as_non_null`)
-- ❌ **Extended Constant Expressions** (arithmetic in constant expressions)
 
 These features can be parsed from .wast files but their instructions are not executed.
 
