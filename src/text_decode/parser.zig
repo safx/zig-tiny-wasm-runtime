@@ -2144,7 +2144,7 @@ pub const Parser = struct {
 
                     if (std.mem.eql(u8, kw, "type")) {
                         try self.advance(); // consume 'type'
-                        explicit_type_idx = try self.parseU32OrIdentifier();
+                        explicit_type_idx = try self.parseTypeIndex();
                         try self.expectRightParen();
                     } else if (std.mem.eql(u8, kw, "param")) {
                         try self.advance();
@@ -2266,7 +2266,7 @@ pub const Parser = struct {
                 try self.expectRightParen();
             } else if (std.mem.eql(u8, keyword, "type")) {
                 try self.advance(); // consume 'type'
-                explicit_type_idx = try self.parseU32OrIdentifier();
+                explicit_type_idx = try self.parseTypeIndex();
                 try self.expectRightParen();
             }
         }
@@ -2970,6 +2970,7 @@ pub const Parser = struct {
             .call_indirect => {
                 // Parse optional table name, (type idx) or inline (param)/(result)
                 var type_idx: u32 = 0;
+                var has_explicit_type = false;
                 var table_idx: u32 = 0;
 
                 // Check for table name or number first: call_indirect $table (type ...)
@@ -2986,6 +2987,7 @@ pub const Parser = struct {
                     try self.advance(); // consume '('
                     if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
                         try self.advance(); // consume 'type'
+                        has_explicit_type = true;
 
                         // Parse type index or name
                         if (self.current_token == .number) {
@@ -3040,6 +3042,7 @@ pub const Parser = struct {
                         self.current_token = saved_token;
 
                         const block_type = try self.parseBlockType();
+                        has_explicit_type = true;
                         if (block_type == .type_index) {
                             type_idx = block_type.type_index;
                         } else {
@@ -3085,6 +3088,23 @@ pub const Parser = struct {
                         self.lexer.current_char = saved_lexer_char;
                         self.current_token = saved_token;
                     }
+                }
+
+                // If no explicit type was given, default to () → () (empty func type)
+                if (!has_explicit_type) {
+                    // Search existing types for () → ()
+                    var found_empty: ?u32 = null;
+                    for (self.builder.types.items, 0..) |ft, i| {
+                        if (ft.parameter_types.len == 0 and ft.result_types.len == 0) {
+                            found_empty = @intCast(i);
+                            break;
+                        }
+                    }
+                    type_idx = found_empty orelse blk: {
+                        const idx: u32 = @intCast(self.builder.types.items.len);
+                        try self.builder.types.append(self.allocator, .{ .parameter_types = &.{}, .result_types = &.{} });
+                        break :blk idx;
+                    };
                 }
 
                 return .{ .call_indirect = .{
@@ -3892,6 +3912,23 @@ pub const Parser = struct {
             return 0;
         }
         std.debug.print("Error: parseLabelIndex: Unexpected token at line {d}: col {d}: {s}\n", .{ self.lexer.line, self.lexer.getColumn(), self.lexer.getCurrentLine() });
+        return TextDecodeError.UnexpectedToken;
+    }
+
+    /// Parse a type index — number or $name resolved via type_names only
+    fn parseTypeIndex(self: *Parser) !u32 {
+        if (self.current_token == .number) {
+            const num = try std.fmt.parseInt(u32, self.current_token.number, 0);
+            try self.advance();
+            return num;
+        } else if (self.current_token == .identifier) {
+            const id = self.current_token.identifier;
+            try self.advance();
+            if (self.builder.type_names.get(id)) |idx| {
+                return idx;
+            }
+            return 0;
+        }
         return TextDecodeError.UnexpectedToken;
     }
 
