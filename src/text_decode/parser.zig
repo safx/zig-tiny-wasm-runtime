@@ -1255,11 +1255,13 @@ pub const Parser = struct {
             if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
                 try self.advance();
             }
-            // Skip optional address type (i32/i64 for memory64)
+            // Parse optional address type (i32/i64 for memory64)
+            var memory_is_64 = false;
             if (self.current_token == .identifier and
                 (std.mem.eql(u8, self.current_token.identifier, "i32") or
                 std.mem.eql(u8, self.current_token.identifier, "i64")))
             {
+                memory_is_64 = std.mem.eql(u8, self.current_token.identifier, "i64");
                 try self.advance();
             }
 
@@ -1277,7 +1279,7 @@ pub const Parser = struct {
                 try self.advance();
             }
 
-            break :blk wasm_core.types.ImportDesc{ .memory = .{ .limits = .{ .min = min, .max = max } } };
+            break :blk wasm_core.types.ImportDesc{ .memory = .{ .limits = .{ .min = min, .max = max }, .is_64 = memory_is_64 } };
         } else if (std.mem.eql(u8, desc_type, "tag")) blk: {
             // Exception handling tags - skip content, create dummy function import
             while (self.current_token != .right_paren and self.current_token != .eof) {
