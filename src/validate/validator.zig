@@ -1206,6 +1206,21 @@ fn validateConstExprInstructions(c: Context, instrs: []const Instruction) Error!
                     return Error.TypeMismatch;
                 sp -= 1;
             },
+            .v128_const => {
+                type_stack[sp] = .v128;
+                sp += 1;
+            },
+            .ref_null => |ref_type| {
+                type_stack[sp] = switch (ref_type) {
+                    .funcref => .func_ref,
+                    .externref => .extern_ref,
+                };
+                sp += 1;
+            },
+            .ref_func => {
+                type_stack[sp] = .func_ref;
+                sp += 1;
+            },
             .end => break,
             else => return Error.TypeMismatch,
         }

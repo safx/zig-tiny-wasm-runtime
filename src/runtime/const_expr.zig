@@ -68,6 +68,21 @@ pub fn evaluateConstExpr(instrs: []const Instruction, globals: []const GlobalIns
                 sp -= 1;
                 stack[sp - 1].i64 *%= stack[sp].i64;
             },
+            .v128_const => |v| {
+                stack[sp] = .{ .v128 = v };
+                sp += 1;
+            },
+            .ref_null => |ref_type| {
+                stack[sp] = switch (ref_type) {
+                    .funcref => .{ .func_ref = null },
+                    .externref => .{ .extern_ref = null },
+                };
+                sp += 1;
+            },
+            .ref_func => |idx| {
+                stack[sp] = .{ .func_ref = idx };
+                sp += 1;
+            },
             .end => break,
             else => return Error.InvalidConstExpr,
         }

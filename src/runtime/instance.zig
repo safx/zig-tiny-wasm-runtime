@@ -280,6 +280,19 @@ pub const Instance = struct {
             for (element.init, 0..) |e, j| {
                 const value = switch (e) {
                     .instructions => |instrs| try const_expr.evaluateConstExpr(instrs, self.store.globals.items),
+                    .global_get => |idx| blk: {
+                        // Imported globals: read from store; local globals: read from vals
+                        if (idx < num_import_globals) {
+                            try self.execOneInstruction(instractionFromInitExpr(e));
+                            break :blk self.stack.pop().value;
+                        } else {
+                            const local_idx = idx - num_import_globals;
+                            if (local_idx < vals.len) {
+                                break :blk vals[local_idx];
+                            }
+                            return error.InstantiationFailed;
+                        }
+                    },
                     else => blk: {
                         try self.execOneInstruction(instractionFromInitExpr(e));
                         break :blk self.stack.pop().value;

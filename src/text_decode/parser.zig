@@ -1701,11 +1701,17 @@ pub const Parser = struct {
                     });
                 }
                 return;
-            } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref")) {
+            } else if (self.current_token == .identifier and
+                (std.mem.eql(u8, self.current_token.identifier, "ref") or
+                std.mem.eql(u8, self.current_token.identifier, "ref.null")))
+            {
                 // (ref null func) or (ref.null func)
+                const is_combined_ref_null = std.mem.eql(u8, self.current_token.identifier, "ref.null");
                 try self.advance();
-                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "null")) {
-                    try self.advance();
+                if (!is_combined_ref_null) {
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "null")) {
+                        try self.advance();
+                    }
                 }
                 const init_ref_type = try self.parseRefType();
                 try self.expectRightParen();
@@ -1724,9 +1730,11 @@ pub const Parser = struct {
                     try builder.table_names.put(name, table_idx);
                 }
 
+                const init_slice = try self.allocator.alloc(wasm_core.types.InitExpression, 1);
+                init_slice[0] = .{ .ref_null = init_ref_type };
                 const element = wasm_core.types.Element{
                     .type = init_ref_type,
-                    .init = &.{.{ .ref_null = init_ref_type }},
+                    .init = init_slice,
                     .mode = .{ .active = .{
                         .table_idx = table_idx,
                         .offset = if (local_is_64) .{ .i64_const = 0 } else .{ .i32_const = 0 },
@@ -1758,6 +1766,10 @@ pub const Parser = struct {
                     if (depth > 0) {
                         try self.advance();
                     }
+                }
+                // Consume the closing ')' so it isn't mistaken for the table's closing paren
+                if (self.current_token == .right_paren) {
+                    try self.advance();
                 }
             }
         }
