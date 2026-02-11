@@ -159,13 +159,13 @@ This interpreter implements **WebAssembly 1.0 core specification** with **select
    - All standard SIMD operations (i8x16, i16x8, i32x4, i64x2, f32x4, f64x2)
    - Vector load/store operations with lane access
    - SIMD arithmetic, comparison, and bitwise operations
-   - Approximately 236 SIMD instructions fully implemented
+   - 236 standard SIMD instructions fully implemented
 
 2. **Relaxed SIMD Instructions**
    - Non-deterministic SIMD operations for performance
    - Relaxed min/max, madd/nmadd operations
    - Relaxed lane selection and truncation
-   - 18 relaxed SIMD instructions implemented
+   - 21 relaxed SIMD instructions implemented
 
 3. **Bulk Memory Operations**
    - `memory.copy` - Fast memory-to-memory copying
