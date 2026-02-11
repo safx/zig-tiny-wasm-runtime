@@ -78,6 +78,7 @@ pub const SpecTestRunner = struct {
 
         var passed: u32 = 0;
         var failed: u32 = 0;
+        var skipped: u32 = 0;
         var total: u32 = 0;
 
         for (commands) |cmd| {
@@ -188,10 +189,10 @@ pub const SpecTestRunner = struct {
                         // Try to instantiate the module — expect it to trap
                         const text_decode = @import("wasm-text-decode");
                         const module = text_decode.parseWastModule(self.allocator, data) catch |parse_err| {
-                            // Parse failure counts as a trap (module couldn't load)
-                            passed += 1;
-                            if (self.verbose_level >= 2) {
-                                self.debugPrint("✓ assert_trap passed (parse error: {})\n", .{parse_err});
+                            // Can't parse module, so can't test if instantiation traps
+                            skipped += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("⊘ assert_trap skipped (line {}): module parse error: {}\n", .{ a.line, parse_err });
                             }
                             continue;
                         };
@@ -339,9 +340,9 @@ pub const SpecTestRunner = struct {
                     if (arg.module_data) |data| {
                         const text_decode = @import("wasm-text-decode");
                         const module = text_decode.parseWastModule(self.allocator, data) catch |parse_err| {
-                            passed += 1;
-                            if (self.verbose_level >= 2) {
-                                self.debugPrint("✓ assert_unlinkable passed (parse error: {})\n", .{parse_err});
+                            skipped += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("⊘ assert_unlinkable skipped (line {}): module parse error: {}\n", .{ arg.line, parse_err });
                             }
                             continue;
                         };
@@ -357,9 +358,9 @@ pub const SpecTestRunner = struct {
                             }
                         }
                     } else {
-                        passed += 1;
-                        if (self.verbose_level >= 2) {
-                            self.debugPrint("✓ assert_unlinkable (skipped - no module data)\n", .{});
+                        skipped += 1;
+                        if (self.verbose_level >= 1) {
+                            self.debugPrint("⊘ assert_unlinkable skipped (line {}): no module data\n", .{arg.line});
                         }
                     }
                 },
@@ -368,9 +369,9 @@ pub const SpecTestRunner = struct {
                     if (arg.module_data) |data| {
                         const text_decode = @import("wasm-text-decode");
                         const module = text_decode.parseWastModule(self.allocator, data) catch |parse_err| {
-                            passed += 1;
-                            if (self.verbose_level >= 2) {
-                                self.debugPrint("✓ assert_uninstantiable passed (parse error: {})\n", .{parse_err});
+                            skipped += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("⊘ assert_uninstantiable skipped (line {}): module parse error: {}\n", .{ arg.line, parse_err });
                             }
                             continue;
                         };
@@ -386,9 +387,9 @@ pub const SpecTestRunner = struct {
                             }
                         }
                     } else {
-                        passed += 1;
-                        if (self.verbose_level >= 2) {
-                            self.debugPrint("✓ assert_uninstantiable (skipped - no module data)\n", .{});
+                        skipped += 1;
+                        if (self.verbose_level >= 1) {
+                            self.debugPrint("⊘ assert_uninstantiable skipped (line {}): no module data\n", .{arg.line});
                         }
                     }
                 },
@@ -407,7 +408,11 @@ pub const SpecTestRunner = struct {
         }
 
         if (self.verbose_level >= 1) {
-            self.debugPrint("Test Results: {d}/{d} assertions passed\n", .{ passed, total });
+            self.debugPrint("Test Results: {d}/{d} assertions passed", .{ passed, total });
+            if (skipped > 0) {
+                self.debugPrint(" ({d} skipped)", .{skipped});
+            }
+            self.debugPrint("\n", .{});
             if (failed > 0) {
                 self.debugPrint("  Failed: {d}\n", .{failed});
             }

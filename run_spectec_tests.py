@@ -49,12 +49,18 @@ def build_spec_test(build_dir: Path = Path(".")) -> Path:
     return spec_test_path
 
 
-def parse_assertion_counts(output: str) -> Tuple[int, int]:
-    """Parse 'Test Results: N/M assertions passed' from spec_test stderr output."""
-    match = re.search(r'Test Results: (\d+)/(\d+) assertions passed', output)
+def parse_assertion_counts(output: str) -> Tuple[int, int, int]:
+    """Parse 'Test Results: N/M assertions passed (K skipped)' from spec_test stderr output.
+
+    Returns (passed, total, skipped).
+    """
+    match = re.search(r'Test Results: (\d+)/(\d+) assertions passed(?:\s*\((\d+) skipped\))?', output)
     if match:
-        return int(match.group(1)), int(match.group(2))
-    return 0, 0
+        passed = int(match.group(1))
+        total = int(match.group(2))
+        skipped = int(match.group(3)) if match.group(3) else 0
+        return passed, total, skipped
+    return 0, 0, 0
 
 
 def run_test_file(spec_test: Path, test_file: Path, output_dir: Path, verbose: bool = False) -> Dict[str, Any]:
@@ -77,12 +83,13 @@ def run_test_file(spec_test: Path, test_file: Path, output_dir: Path, verbose: b
         result = run_command(cmd)
 
         # Parse assertion counts from stderr (spec_test uses std.debug.print -> stderr)
-        passed, total = parse_assertion_counts(result.stderr)
+        passed, total, skipped = parse_assertion_counts(result.stderr)
+        failed = total - passed - skipped
 
         if result.returncode != 0:
             # Runtime panic or crash
             status = "crashed"
-        elif total > 0 and passed == total:
+        elif total > 0 and failed == 0:
             status = "passed"
         elif total > 0:
             status = "partial"
@@ -96,6 +103,7 @@ def run_test_file(spec_test: Path, test_file: Path, output_dir: Path, verbose: b
             "status": status,
             "assertions_passed": passed,
             "assertions_total": total,
+            "assertions_skipped": skipped,
         }
     except Exception as e:
         return {
@@ -103,6 +111,7 @@ def run_test_file(spec_test: Path, test_file: Path, output_dir: Path, verbose: b
             "status": "crashed",
             "assertions_passed": 0,
             "assertions_total": 0,
+            "assertions_skipped": 0,
             "error": str(e),
         }
 
@@ -129,27 +138,37 @@ def save_baseline(results: List[Dict[str, Any]], output_path: str):
     """Save test results as a JSON baseline file."""
     total_passed = sum(r["assertions_passed"] for r in results)
     total_assertions = sum(r["assertions_total"] for r in results)
+    total_skipped = sum(r.get("assertions_skipped", 0) for r in results)
     files_passed = sum(1 for r in results if r["status"] == "passed")
+
+    summary = {
+        "files_passed": files_passed,
+        "files_total": len(results),
+        "assertions_passed": total_passed,
+        "assertions_total": total_assertions,
+    }
+    if total_skipped > 0:
+        summary["assertions_skipped"] = total_skipped
+
+    files = {}
+    for r in results:
+        entry = {
+            "passed": r["assertions_passed"],
+            "total": r["assertions_total"],
+            "status": r["status"],
+        }
+        s = r.get("assertions_skipped", 0)
+        if s > 0:
+            entry["skipped"] = s
+        files[r["file"]] = entry
 
     baseline = {
         "metadata": {
             "timestamp": datetime.now().isoformat(timespec="seconds"),
             **get_git_info(),
         },
-        "summary": {
-            "files_passed": files_passed,
-            "files_total": len(results),
-            "assertions_passed": total_passed,
-            "assertions_total": total_assertions,
-        },
-        "files": {
-            r["file"]: {
-                "passed": r["assertions_passed"],
-                "total": r["assertions_total"],
-                "status": r["status"],
-            }
-            for r in results
-        },
+        "summary": summary,
+        "files": files,
     }
 
     with open(output_path, "w") as f:
@@ -175,11 +194,13 @@ def compare_with_baseline(results: List[Dict[str, Any]], baseline_path: str):
     # Current totals
     cur_assertions_passed = sum(r["assertions_passed"] for r in results)
     cur_assertions_total = sum(r["assertions_total"] for r in results)
+    cur_assertions_skipped = sum(r.get("assertions_skipped", 0) for r in results)
     cur_files_passed = sum(1 for r in results if r["status"] == "passed")
     cur_files_total = len(results)
 
     # Previous totals
     prev_assertions_passed = prev_summary.get("assertions_passed", 0)
+    prev_assertions_skipped = prev_summary.get("assertions_skipped", 0)
     prev_files_passed = prev_summary.get("files_passed", 0)
     prev_files_total = prev_summary.get("files_total", 0)
 
@@ -192,6 +213,12 @@ def compare_with_baseline(results: List[Dict[str, Any]], baseline_path: str):
     a_delta = cur_assertions_passed - prev_assertions_passed
     a_sign = "+" if a_delta >= 0 else ""
     print(f"  Assertions: {prev_assertions_passed} -> {cur_assertions_passed} ({a_sign}{a_delta})")
+
+    # Skipped delta
+    s_delta = cur_assertions_skipped - prev_assertions_skipped
+    if cur_assertions_skipped > 0 or prev_assertions_skipped > 0:
+        s_sign = "+" if s_delta >= 0 else ""
+        print(f"  Skipped:    {prev_assertions_skipped} -> {cur_assertions_skipped} ({s_sign}{s_delta})")
 
     # File delta
     f_delta = cur_files_passed - prev_files_passed
@@ -215,18 +242,28 @@ def compare_with_baseline(results: List[Dict[str, Any]], baseline_path: str):
             prev_p = prev.get("passed", 0)
             cur_t = cur["assertions_total"]
             prev_t = prev.get("total", 0)
+            cur_s = cur.get("assertions_skipped", 0)
+            prev_s = prev.get("skipped", 0)
             delta = cur_p - prev_p
+            skip_note = ""
+            if cur_s != prev_s:
+                s_delta = cur_s - prev_s
+                s_sign = "+" if s_delta >= 0 else ""
+                skip_note = f" [skipped: {prev_s}->{cur_s} ({s_sign}{s_delta})]"
 
             if delta > 0:
                 if prev.get("status") == "crashed":
-                    improved.append(f"    {fname}: CRASH -> {cur_p}/{cur_t} (new)")
+                    improved.append(f"    {fname}: CRASH -> {cur_p}/{cur_t} (new){skip_note}")
                 else:
-                    improved.append(f"    {fname}: {prev_p}/{prev_t} -> {cur_p}/{cur_t} (+{delta})")
+                    improved.append(f"    {fname}: {prev_p}/{prev_t} -> {cur_p}/{cur_t} (+{delta}){skip_note}")
             elif delta < 0:
                 if cur["status"] == "crashed":
-                    regressed.append(f"    {fname}: {prev_p}/{prev_t} -> CRASH ({delta})")
+                    regressed.append(f"    {fname}: {prev_p}/{prev_t} -> CRASH ({delta}){skip_note}")
                 else:
-                    regressed.append(f"    {fname}: {prev_p}/{prev_t} -> {cur_p}/{cur_t} ({delta})")
+                    regressed.append(f"    {fname}: {prev_p}/{prev_t} -> {cur_p}/{cur_t} ({delta}){skip_note}")
+            elif skip_note:
+                # passed count unchanged but skipped changed
+                improved.append(f"    {fname}: {prev_p}/{prev_t} -> {cur_p}/{cur_t} (=){skip_note}")
         elif cur and not prev:
             improved.append(f"    {fname}: (new file) {cur['assertions_passed']}/{cur['assertions_total']}")
         elif prev and not cur:
@@ -330,6 +367,8 @@ def main():
     # Compute totals
     total_assertions_passed = sum(r["assertions_passed"] for r in results)
     total_assertions = sum(r["assertions_total"] for r in results)
+    total_assertions_skipped = sum(r.get("assertions_skipped", 0) for r in results)
+    total_assertions_failed = total_assertions - total_assertions_passed - total_assertions_skipped
     files_passed = sum(1 for r in results if r["status"] == "passed")
     files_total = len(results)
 
@@ -340,7 +379,9 @@ def main():
 
     # Summary
     print(f"\nResults: {files_passed}/{files_total} files passed")
-    print(f"Assertions: {total_assertions_passed}/{total_assertions} ({pct:.1f}%)")
+    skip_str = f", {total_assertions_skipped} skipped" if total_assertions_skipped > 0 else ""
+    fail_str = f", {total_assertions_failed} failed" if total_assertions_failed > 0 else ""
+    print(f"Assertions: {total_assertions_passed}/{total_assertions} ({pct:.1f}%{skip_str}{fail_str})")
 
     # Partial files detail
     partial = [r for r in results if r["status"] == "partial"]
@@ -348,7 +389,9 @@ def main():
         partial.sort(key=lambda r: r["assertions_passed"] - r["assertions_total"])
         print(f"\nPartial files ({len(partial)}):")
         for r in partial:
-            print(f"  {r['file']}: {r['assertions_passed']}/{r['assertions_total']}")
+            s = r.get("assertions_skipped", 0)
+            skip_str = f" ({s} skipped)" if s > 0 else ""
+            print(f"  {r['file']}: {r['assertions_passed']}/{r['assertions_total']}{skip_str}")
 
     # Crashed files detail
     crashed = [r for r in results if r["status"] == "crashed"]
