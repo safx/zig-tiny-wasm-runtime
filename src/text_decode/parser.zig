@@ -379,8 +379,8 @@ pub const Parser = struct {
 
     /// Handle standalone import: already consumed "import" keyword.
     /// Parse (import "mod" "name" (desc_type $name ...))
-    /// Uses save/restore to peek into the descriptor without consuming its '(',
-    /// so that preScanSkipField can correctly track nesting depth.
+    /// Uses save/restore to peek at descriptor type and name without
+    /// consuming the '(' — so preScanSkipField handles full nesting.
     fn preScanHandleStandaloneImport(
         self: *Parser,
         func_entries: *std.ArrayList(PreScanEntry),
@@ -393,27 +393,25 @@ pub const Parser = struct {
         // Skip "field_name" string
         if (self.current_token == .string) try self.advance();
 
-        // Expect (desc_type $name ...)
+        // Expect (desc_type ...)
         if (self.current_token != .left_paren) return;
 
-        // Save state before consuming descriptor '(' — peek only
-        const sp_pos = self.lexer.pos;
-        const sp_char = self.lexer.current_char;
-        const sp_token = self.current_token;
-        const sp_line = self.lexer.line;
+        // Save state BEFORE consuming descriptor '('
+        const save_pos = self.lexer.pos;
+        const save_char = self.lexer.current_char;
+        const save_token = self.current_token;
 
-        try self.advance(); // consume '('
+        try self.advance(); // peek past '('
 
         if (self.current_token != .identifier) {
-            // Restore and let preScanSkipField handle the rest
-            self.lexer.pos = sp_pos;
-            self.lexer.current_char = sp_char;
-            self.current_token = sp_token;
-            self.lexer.line = sp_line;
+            // Restore — let preScanSkipField handle it
+            self.lexer.pos = save_pos;
+            self.lexer.current_char = save_char;
+            self.current_token = save_token;
             return;
         }
         const desc_type = self.current_token.identifier;
-        try self.advance(); // consume desc type keyword
+        try self.advance(); // peek past keyword
 
         // Read optional $name inside the descriptor
         const name = self.preScanReadOptionalName();
@@ -427,15 +425,13 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, desc_type, "global")) {
             try global_entries.append(self.allocator, .{ .name = name, .is_import = true });
         } else if (std.mem.eql(u8, desc_type, "tag")) {
-            // Tags are imported as functions in our model
-            try func_entries.append(self.allocator, .{ .name = name, .is_import = true });
+            // Tags are not supported — don't add any import entry
         }
 
-        // Restore — leave the descriptor '(' unconsumed for preScanSkipField
-        self.lexer.pos = sp_pos;
-        self.lexer.current_char = sp_char;
-        self.current_token = sp_token;
-        self.lexer.line = sp_line;
+        // Restore so preScanSkipField() handles the full (desc ...) nesting
+        self.lexer.pos = save_pos;
+        self.lexer.current_char = save_char;
+        self.current_token = save_token;
     }
 
     /// Skip to the closing ')' of the current field (depth-tracking).
@@ -1131,6 +1127,15 @@ pub const Parser = struct {
         const import_desc = if (std.mem.eql(u8, desc_type, "func")) blk: {
             // Parse function type index or signature
             var type_idx: u32 = 0;
+            var has_explicit_type = false;
+
+            // Skip optional $name
+            if (self.current_token == .identifier and
+                self.current_token.identifier.len > 0 and
+                self.current_token.identifier[0] == '$')
+            {
+                try self.advance();
+            }
 
             // Check for (type $name) or (type idx)
             if (self.current_token == .left_paren) {
@@ -1139,6 +1144,7 @@ pub const Parser = struct {
                 const saved_token_type = self.current_token;
                 try self.advance();
                 if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
+                    has_explicit_type = true;
                     try self.advance();
                     if (self.current_token == .number) {
                         type_idx = try std.fmt.parseInt(u32, self.current_token.number, 0);
@@ -1161,19 +1167,89 @@ pub const Parser = struct {
                 }
             }
 
-            // Skip remaining signature
-            while (self.current_token != .right_paren and self.current_token != .eof) {
-                if (self.current_token == .left_paren) {
-                    var depth: u32 = 1;
-                    try self.advance();
-                    while (depth > 0 and self.current_token != .eof) {
-                        if (self.current_token == .left_paren) depth += 1 else if (self.current_token == .right_paren) depth -= 1;
-                        if (depth > 0) try self.advance();
+            if (has_explicit_type) {
+                // Skip remaining signature (param/result clauses after explicit type)
+                while (self.current_token != .right_paren and self.current_token != .eof) {
+                    if (self.current_token == .left_paren) {
+                        var depth: u32 = 1;
+                        try self.advance();
+                        while (depth > 0 and self.current_token != .eof) {
+                            if (self.current_token == .left_paren) depth += 1 else if (self.current_token == .right_paren) depth -= 1;
+                            if (depth > 0) try self.advance();
+                        }
+                        if (self.current_token == .right_paren) try self.advance();
+                    } else {
+                        try self.advance();
                     }
-                    if (self.current_token == .right_paren) try self.advance();
-                } else {
-                    try self.advance();
                 }
+            } else {
+                // No explicit type — parse param/result to determine function type
+                var import_params: std.ArrayList(wasm_core.types.ValueType) = .{};
+                defer import_params.deinit(self.allocator);
+                var import_results: std.ArrayList(wasm_core.types.ValueType) = .{};
+                defer import_results.deinit(self.allocator);
+
+                while (self.current_token == .left_paren) {
+                    const sp_pos = self.lexer.pos;
+                    const sp_char = self.lexer.current_char;
+                    const sp_token = self.current_token;
+                    try self.advance();
+                    if (self.current_token == .identifier) {
+                        if (std.mem.eql(u8, self.current_token.identifier, "param")) {
+                            try self.advance();
+                            while (self.current_token != .right_paren and self.current_token != .eof) {
+                                // Skip $name param labels
+                                if (self.current_token == .identifier and
+                                    self.current_token.identifier.len > 0 and
+                                    self.current_token.identifier[0] == '$')
+                                {
+                                    try self.advance();
+                                    continue;
+                                }
+                                if (try self.parseValueType()) |vt| {
+                                    try import_params.append(self.allocator, vt);
+                                } else break;
+                            }
+                            try self.expectRightParen();
+                        } else if (std.mem.eql(u8, self.current_token.identifier, "result")) {
+                            try self.advance();
+                            while (self.current_token != .right_paren and self.current_token != .eof) {
+                                if (try self.parseValueType()) |vt| {
+                                    try import_results.append(self.allocator, vt);
+                                } else break;
+                            }
+                            try self.expectRightParen();
+                        } else {
+                            // Unknown clause, restore and stop parsing
+                            self.lexer.pos = sp_pos;
+                            self.lexer.current_char = sp_char;
+                            self.current_token = sp_token;
+                            break;
+                        }
+                    } else {
+                        self.lexer.pos = sp_pos;
+                        self.lexer.current_char = sp_char;
+                        self.current_token = sp_token;
+                        break;
+                    }
+                }
+
+                // Skip any remaining content in the descriptor
+                while (self.current_token != .right_paren and self.current_token != .eof) {
+                    if (self.current_token == .left_paren) {
+                        var depth: u32 = 1;
+                        try self.advance();
+                        while (depth > 0 and self.current_token != .eof) {
+                            if (self.current_token == .left_paren) depth += 1 else if (self.current_token == .right_paren) depth -= 1;
+                            if (depth > 0) try self.advance();
+                        }
+                        if (self.current_token == .right_paren) try self.advance();
+                    } else {
+                        try self.advance();
+                    }
+                }
+
+                type_idx = try builder.findOrAddFuncType(self.allocator, import_params.items, import_results.items);
             }
             break :blk wasm_core.types.ImportDesc{ .function = type_idx };
         } else if (std.mem.eql(u8, desc_type, "global")) blk: {
@@ -1301,8 +1377,9 @@ pub const Parser = struct {
             }
 
             break :blk wasm_core.types.ImportDesc{ .memory = .{ .limits = .{ .min = min, .max = max }, .is_64 = memory_is_64 } };
-        } else if (std.mem.eql(u8, desc_type, "tag")) blk: {
-            // Exception handling tags - skip content, create dummy function import
+        } else if (std.mem.eql(u8, desc_type, "tag")) {
+            // Exception handling tags — skip content, don't create import
+            // Our runtime doesn't support tags; skipping avoids resolver failures
             while (self.current_token != .right_paren and self.current_token != .eof) {
                 if (self.current_token == .left_paren) {
                     var depth2: u32 = 1;
@@ -1316,14 +1393,8 @@ pub const Parser = struct {
                     try self.advance();
                 }
             }
-            // Create an empty function type for the tag import
-            const func_type = wasm_core.types.FuncType{
-                .parameter_types = &.{},
-                .result_types = &.{},
-            };
-            const tag_type_idx: u32 = @intCast(builder.types.items.len);
-            try builder.types.append(self.allocator, func_type);
-            break :blk wasm_core.types.ImportDesc{ .function = tag_type_idx };
+            try self.expectRightParen(); // close descriptor ')'
+            return; // don't create import entry
         } else {
             return TextDecodeError.UnexpectedToken;
         };

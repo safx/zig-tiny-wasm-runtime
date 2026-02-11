@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "timestamp": "2026-02-11T22:45:22",
-    "git_commit": "93bb054",
+    "timestamp": "2026-02-12T01:17:21",
+    "git_commit": "cf7bace",
     "git_branch": "refactor/spec-types-v1"
   },
   "summary": {
     "files_passed": 213,
     "files_total": 237,
-    "assertions_passed": 61584,
+    "assertions_passed": 61587,
     "assertions_total": 61857
   },
   "files": {
@@ -322,7 +322,7 @@
       "status": "passed"
     },
     "imports.wast": {
-      "passed": 136,
+      "passed": 139,
       "total": 144,
       "status": "partial"
     },
