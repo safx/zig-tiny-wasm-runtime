@@ -379,6 +379,8 @@ pub const Parser = struct {
 
     /// Handle standalone import: already consumed "import" keyword.
     /// Parse (import "mod" "name" (desc_type $name ...))
+    /// Uses save/restore to peek into the descriptor without consuming its '(',
+    /// so that preScanSkipField can correctly track nesting depth.
     fn preScanHandleStandaloneImport(
         self: *Parser,
         func_entries: *std.ArrayList(PreScanEntry),
@@ -391,11 +393,25 @@ pub const Parser = struct {
         // Skip "field_name" string
         if (self.current_token == .string) try self.advance();
 
-        // Expect (desc_type ...)
+        // Expect (desc_type $name ...)
         if (self.current_token != .left_paren) return;
+
+        // Save state before consuming descriptor '(' — peek only
+        const sp_pos = self.lexer.pos;
+        const sp_char = self.lexer.current_char;
+        const sp_token = self.current_token;
+        const sp_line = self.lexer.line;
+
         try self.advance(); // consume '('
 
-        if (self.current_token != .identifier) return;
+        if (self.current_token != .identifier) {
+            // Restore and let preScanSkipField handle the rest
+            self.lexer.pos = sp_pos;
+            self.lexer.current_char = sp_char;
+            self.current_token = sp_token;
+            self.lexer.line = sp_line;
+            return;
+        }
         const desc_type = self.current_token.identifier;
         try self.advance(); // consume desc type keyword
 
@@ -414,7 +430,12 @@ pub const Parser = struct {
             // Tags are imported as functions in our model
             try func_entries.append(self.allocator, .{ .name = name, .is_import = true });
         }
-        // The remaining content will be skipped by preScanSkipField
+
+        // Restore — leave the descriptor '(' unconsumed for preScanSkipField
+        self.lexer.pos = sp_pos;
+        self.lexer.current_char = sp_char;
+        self.current_token = sp_token;
+        self.lexer.line = sp_line;
     }
 
     /// Skip to the closing ')' of the current field (depth-tracking).
