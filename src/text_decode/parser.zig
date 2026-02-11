@@ -115,6 +115,29 @@ pub const ModuleBuilder = struct {
         return count;
     }
 
+    /// Search existing types for a structural match; return its index if found,
+    /// otherwise append a new type and return the new index.
+    pub fn findOrAddFuncType(
+        self: *ModuleBuilder,
+        allocator: std.mem.Allocator,
+        param_types: []const wasm_core.types.ValueType,
+        result_types: []const wasm_core.types.ValueType,
+    ) !u32 {
+        for (self.types.items, 0..) |ft, i| {
+            if (std.mem.eql(wasm_core.types.ValueType, ft.parameter_types, param_types) and
+                std.mem.eql(wasm_core.types.ValueType, ft.result_types, result_types))
+            {
+                return @intCast(i);
+            }
+        }
+        const idx: u32 = @intCast(self.types.items.len);
+        try self.types.append(allocator, .{
+            .parameter_types = try allocator.dupe(wasm_core.types.ValueType, param_types),
+            .result_types = try allocator.dupe(wasm_core.types.ValueType, result_types),
+        });
+        return idx;
+    }
+
     pub fn clear(self: *ModuleBuilder) void {
         self.types.clearRetainingCapacity();
         self.funcs.clearRetainingCapacity();
@@ -143,6 +166,8 @@ pub const Parser = struct {
     local_names: std.StringHashMap(u32),
     label_stack: std.ArrayList(?[]const u8),
     builder: *ModuleBuilder,
+    // Two-pass parsing: true after explicit (type ...) definitions have been parsed
+    types_pass_done: bool = false,
     // Position of last consumed left_paren (for module text extraction)
     last_left_paren_pos: usize = 0,
 
@@ -444,6 +469,72 @@ pub const Parser = struct {
         }
     }
 
+    /// Pass 1 of two-pass parsing: parse only explicit (type ...) definitions.
+    /// This ensures explicit types get indices 0..N-1 before any implicit types
+    /// are added by functions, call_indirect, or block types.
+    fn parseTypeFieldsPass(self: *Parser) !void {
+        // Save lexer state
+        const saved_pos = self.lexer.pos;
+        const saved_char = self.lexer.current_char;
+        const saved_token = self.current_token;
+        const saved_line = self.lexer.line;
+
+        while (self.current_token != .right_paren and self.current_token != .eof) {
+            if (self.current_token != .left_paren) break;
+
+            try self.advance(); // consume '('
+
+            if (self.current_token != .identifier) {
+                // Not a recognized field, skip
+                try self.skipToClosingParen();
+                continue;
+            }
+
+            const field_name = self.current_token.identifier;
+
+            // Handle @annotations with raw character skip (content may contain
+            // characters the lexer cannot tokenize)
+            if (field_name.len > 0 and field_name[0] == '@') {
+                var depth: u32 = 0;
+                while (self.lexer.pos < self.lexer.input.len) {
+                    const ch = self.lexer.input[self.lexer.pos];
+                    if (ch == '(') {
+                        depth += 1;
+                    } else if (ch == ')') {
+                        if (depth == 0) break;
+                        depth -= 1;
+                    } else if (ch == '\n') {
+                        self.lexer.line += 1;
+                    }
+                    self.lexer.pos += 1;
+                }
+                if (self.lexer.pos < self.lexer.input.len) {
+                    self.lexer.pos += 1; // skip ')'
+                }
+                self.lexer.current_char = if (self.lexer.pos < self.lexer.input.len) self.lexer.input[self.lexer.pos] else null;
+                self.current_token = try self.lexer.nextToken();
+                continue;
+            }
+
+            try self.advance(); // consume field keyword
+
+            if (std.mem.eql(u8, field_name, "type")) {
+                // Parse the type definition — adds to builder.types
+                try self.parseType(self.builder);
+                try self.expectToken(.right_paren); // closing ')' of (type ...)
+            } else {
+                // Skip non-type field
+                try self.skipToClosingParen();
+            }
+        }
+
+        // Restore lexer state (builder state with types is kept)
+        self.lexer.pos = saved_pos;
+        self.lexer.current_char = saved_char;
+        self.current_token = saved_token;
+        self.lexer.line = saved_line;
+    }
+
     pub fn parseModule(self: *Parser) !wasm_core.types.Module {
         try self.expectToken(.left_paren);
 
@@ -463,6 +554,12 @@ pub const Parser = struct {
         // Pre-scan all fields to register names for forward reference resolution
         try self.preScanNames();
 
+        // Pass 1: parse explicit (type ...) definitions only
+        self.types_pass_done = false;
+        try self.parseTypeFieldsPass();
+
+        // Pass 2: parse all fields (types are skipped)
+        self.types_pass_done = true;
         while (self.current_token != .right_paren and self.current_token != .eof) {
             try self.parseModuleField(self.builder);
         }
@@ -483,7 +580,19 @@ pub const Parser = struct {
         try self.advance();
 
         if (std.mem.eql(u8, field_name, "type")) {
-            try self.parseType(builder);
+            if (self.types_pass_done) {
+                // Already parsed in pass 1 — skip content
+                while (self.current_token != .right_paren and self.current_token != .eof) {
+                    if (self.current_token == .left_paren) {
+                        try self.advance();
+                        try self.skipToClosingParen();
+                    } else {
+                        try self.advance();
+                    }
+                }
+            } else {
+                try self.parseType(builder);
+            }
         } else if (std.mem.eql(u8, field_name, "memory")) {
             try self.parseMemory(builder);
         } else if (std.mem.eql(u8, field_name, "data")) {
@@ -2178,16 +2287,11 @@ pub const Parser = struct {
                     }
                 }
 
-                // Use explicit type index if provided, otherwise create new type
-                const type_idx: u32 = if (explicit_type_idx) |tidx| tidx else blk: {
-                    const func_type = wasm_core.types.FuncType{
-                        .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, params.items),
-                        .result_types = try self.allocator.dupe(wasm_core.types.ValueType, results.items),
-                    };
-                    const idx: u32 = @intCast(builder.types.items.len);
-                    try builder.types.append(self.allocator, func_type);
-                    break :blk idx;
-                };
+                // Use explicit type index if provided, otherwise find/add implicit type
+                const type_idx: u32 = if (explicit_type_idx) |tidx|
+                    tidx
+                else
+                    try builder.findOrAddFuncType(self.allocator, params.items, results.items);
 
                 const import_desc = wasm_core.types.ImportDesc{
                     .function = type_idx,
@@ -2271,6 +2375,23 @@ pub const Parser = struct {
             }
         }
 
+        // Fix local name indices when (type $sig) is used without inline params.
+        // The type's parameters occupy indices 0..param_count-1, so locals must
+        // be offset by param_count.
+        if (explicit_type_idx) |tidx| {
+            if (params.items.len == 0 and tidx < self.builder.types.items.len) {
+                const type_param_count: u32 = @intCast(
+                    self.builder.types.items[tidx].parameter_types.len,
+                );
+                if (type_param_count > 0) {
+                    var it = self.local_names.iterator();
+                    while (it.next()) |entry| {
+                        entry.value_ptr.* += type_param_count;
+                    }
+                }
+            }
+        }
+
         // Parse remaining function body (instructions) - any instructions after attributes
         try self.parseInstructions(&instructions);
 
@@ -2281,15 +2402,11 @@ pub const Parser = struct {
         try self.fixBlockEnds(instructions.items);
 
         // Use explicit type index if provided, otherwise create new type
-        const func_type_idx: u32 = if (explicit_type_idx) |tidx| tidx else blk: {
-            const ft = wasm_core.types.FuncType{
-                .parameter_types = try self.allocator.dupe(wasm_core.types.ValueType, params.items),
-                .result_types = try self.allocator.dupe(wasm_core.types.ValueType, results.items),
-            };
-            const idx: u32 = @intCast(builder.types.items.len);
-            try builder.types.append(self.allocator, ft);
-            break :blk idx;
-        };
+        // Use explicit type index if provided, otherwise find/add implicit type
+        const func_type_idx: u32 = if (explicit_type_idx) |tidx|
+            tidx
+        else
+            try builder.findOrAddFuncType(self.allocator, params.items, results.items);
 
         // Create function
         const func = wasm_core.types.Func{
@@ -2558,19 +2675,12 @@ pub const Parser = struct {
             return .{ .value_type = result_types.items[0] };
         }
 
-        // Multiple params/results or params with results - create a function type
-        const func_type = wasm_core.types.FuncType{
-            .parameter_types = if (param_types.items.len > 0)
-                try self.allocator.dupe(wasm_core.types.ValueType, param_types.items)
-            else
-                &.{},
-            .result_types = if (result_types.items.len > 0)
-                try self.allocator.dupe(wasm_core.types.ValueType, result_types.items)
-            else
-                &.{},
-        };
-        const type_idx: u32 = @intCast(self.builder.types.items.len);
-        try self.builder.types.append(self.allocator, func_type);
+        // Multiple params/results or params with results - find or create a function type
+        const type_idx = try self.builder.findOrAddFuncType(
+            self.allocator,
+            param_types.items,
+            result_types.items,
+        );
         return .{ .type_index = type_idx };
     }
 
@@ -3046,17 +3156,12 @@ pub const Parser = struct {
                         if (block_type == .type_index) {
                             type_idx = block_type.type_index;
                         } else {
-                            // Create a new type for this inline signature
-                            const func_type = switch (block_type) {
-                                .empty => wasm_core.types.FuncType{ .parameter_types = &.{}, .result_types = &.{} },
-                                .value_type => |vt| wasm_core.types.FuncType{
-                                    .parameter_types = &.{},
-                                    .result_types = try self.allocator.dupe(wasm_core.types.ValueType, &.{vt}),
-                                },
+                            // Find or create type for this inline signature
+                            type_idx = switch (block_type) {
+                                .empty => try self.builder.findOrAddFuncType(self.allocator, &.{}, &.{}),
+                                .value_type => |vt| try self.builder.findOrAddFuncType(self.allocator, &.{}, &.{vt}),
                                 .type_index => unreachable,
                             };
-                            type_idx = @intCast(self.builder.types.items.len);
-                            try self.builder.types.append(self.allocator, func_type);
                         }
                     } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "table")) {
                         // (table idx) without type specification - use type 0
@@ -3092,19 +3197,7 @@ pub const Parser = struct {
 
                 // If no explicit type was given, default to () → () (empty func type)
                 if (!has_explicit_type) {
-                    // Search existing types for () → ()
-                    var found_empty: ?u32 = null;
-                    for (self.builder.types.items, 0..) |ft, i| {
-                        if (ft.parameter_types.len == 0 and ft.result_types.len == 0) {
-                            found_empty = @intCast(i);
-                            break;
-                        }
-                    }
-                    type_idx = found_empty orelse blk: {
-                        const idx: u32 = @intCast(self.builder.types.items.len);
-                        try self.builder.types.append(self.allocator, .{ .parameter_types = &.{}, .result_types = &.{} });
-                        break :blk idx;
-                    };
+                    type_idx = try self.builder.findOrAddFuncType(self.allocator, &.{}, &.{});
                 }
 
                 return .{ .call_indirect = .{
@@ -4474,6 +4567,12 @@ pub const Parser = struct {
         // Pre-scan all fields to register names for forward reference resolution
         try self.preScanNames();
 
+        // Pass 1: parse explicit (type ...) definitions only
+        self.types_pass_done = false;
+        try self.parseTypeFieldsPass();
+
+        // Pass 2: parse all fields (types are skipped)
+        self.types_pass_done = true;
         while (self.current_token != .right_paren and self.current_token != .eof) {
             try self.parseModuleField(self.builder);
         }
