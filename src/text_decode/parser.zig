@@ -1580,7 +1580,7 @@ pub const Parser = struct {
                     .init = try self.allocator.dupe(wasm_core.types.InitExpression, init_list.items),
                     .mode = .{ .active = .{
                         .table_idx = elem_table_idx,
-                        .offset = .{ .i32_const = 0 },
+                        .offset = if (local_is_64) .{ .i64_const = 0 } else .{ .i32_const = 0 },
                     } },
                 };
                 try builder.elements.append(self.allocator, element);
@@ -1618,7 +1618,10 @@ pub const Parser = struct {
                 const element = wasm_core.types.Element{
                     .type = init_ref_type,
                     .init = &.{.{ .ref_null = init_ref_type }},
-                    .mode = .{ .active = .{ .table_idx = table_idx, .offset = .{ .i32_const = 0 } } },
+                    .mode = .{ .active = .{
+                        .table_idx = table_idx,
+                        .offset = if (local_is_64) .{ .i64_const = 0 } else .{ .i32_const = 0 },
+                    } },
                 };
                 try builder.elements.append(self.allocator, element);
 
@@ -2909,26 +2912,17 @@ pub const Parser = struct {
             // Parametric instructions
             .drop => return .drop,
             .select => {
-                // Check for optional (result ...)
-                // We need to peek ahead to see if it's (result ...) without consuming tokens
-                const next = try self.peekToken();
-                if (next == .left_paren) {
-                    // Save lexer state to peek further
+                // Check for optional (result ...) — typed select
+                // current_token is already the token after 'select', so check it directly
+                if (self.current_token == .left_paren) {
+                    // Save full state to restore if not (result ...)
                     const saved_pos = self.lexer.pos;
                     const saved_char = self.lexer.current_char;
+                    const saved_token = self.current_token;
 
-                    // Peek past the '('
-                    _ = try self.lexer.nextToken(); // consume '(' in lexer
-                    const after_paren = try self.lexer.peekToken();
-
-                    // Restore lexer state
-                    self.lexer.pos = saved_pos;
-                    self.lexer.current_char = saved_char;
-
-                    // Check if it's 'result'
-                    if (after_paren == .identifier and std.mem.eql(u8, after_paren.identifier, "result")) {
-                        // It's (result ...), so parse it
-                        try self.advance(); // consume '('
+                    try self.advance(); // consume '('
+                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "result")) {
+                        // It's (result ...), parse typed select
                         try self.advance(); // consume 'result'
 
                         var types = std.ArrayList(wasm_core.types.ValueType){};
@@ -2947,7 +2941,10 @@ pub const Parser = struct {
                         const types_slice = try self.allocator.dupe(wasm_core.types.ValueType, types.items);
                         return .{ .selectv = types_slice };
                     }
-                    // Not (result ...), so it's a plain select followed by another S-expression
+                    // Not (result ...), restore state — plain select followed by another S-expression
+                    self.lexer.pos = saved_pos;
+                    self.lexer.current_char = saved_char;
+                    self.current_token = saved_token;
                 }
                 return .select;
             },
@@ -5252,6 +5249,11 @@ pub const Parser = struct {
                 return spec_types.command.Result{ .func_ref = null };
             }
         } else if (std.mem.eql(u8, type_name, "ref.func")) {
+            if (self.current_token == .right_paren) {
+                // (ref.func) without argument = any non-null funcref
+                try self.advance(); // consume ')'
+                return spec_types.command.Result{ .func_ref = std.math.maxInt(u32) };
+            }
             var func_idx: u32 = 0;
             if (self.current_token == .number) {
                 func_idx = try std.fmt.parseInt(u32, self.current_token.number, 0);

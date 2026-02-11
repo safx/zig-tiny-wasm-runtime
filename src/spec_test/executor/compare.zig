@@ -52,6 +52,10 @@ pub fn resultEquals(runtime_val: runtime.types.Value, expected: spec_types.comma
             break :blk true;
         },
         .func_ref => |exp| blk: {
+            // Sentinel maxInt(u32): match any non-null funcref — (ref.func) without argument
+            if (exp != null and exp.? == std.math.maxInt(u32)) {
+                break :blk runtime_val == .func_ref and runtime_val.func_ref != null;
+            }
             if (runtime_val == .func_ref) break :blk runtime_val.func_ref == exp;
             // null ref is compatible across ref types
             if (exp == null and runtime_val == .extern_ref and runtime_val.extern_ref == null) break :blk true;
