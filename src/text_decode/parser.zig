@@ -4646,13 +4646,16 @@ pub const Parser = struct {
         const line = self.lexer.line;
         try self.advance();
 
+        // Save position of '(' for potential module text capture
+        const inner_paren_pos = self.lexer.pos - 1;
         try self.expectToken(.left_paren);
 
         var action: spec_types.command.Action = undefined;
         var has_action = false;
+        var module_data: ?[]const u8 = null;
 
         if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "module")) {
-            // Skip module
+            // Skip module content but capture the text
             var depth: u32 = 1;
             try self.advance();
             while (depth > 0 and self.current_token != .eof) {
@@ -4665,6 +4668,9 @@ pub const Parser = struct {
                     try self.advance();
                 }
             }
+            // Capture module text: (module ...)
+            const module_end_pos = self.lexer.pos;
+            module_data = try self.allocator.dupe(u8, self.input[inner_paren_pos..module_end_pos]);
             if (self.current_token == .right_paren) {
                 try self.advance();
             }
@@ -4700,6 +4706,7 @@ pub const Parser = struct {
                 .line = line,
                 .action = action,
                 .error_text = failure,
+                .module_data = module_data,
             },
         };
     }
@@ -4737,7 +4744,8 @@ pub const Parser = struct {
         const line = self.lexer.line;
         try self.advance();
 
-        // Expect (module ...) - skip the module content
+        // Expect (module ...) - save position for text capture
+        const module_paren_pos = self.lexer.pos - 1;
         try self.expectToken(.left_paren);
 
         if (self.current_token != .identifier or !std.mem.eql(u8, self.current_token.identifier, "module")) {
@@ -4757,6 +4765,9 @@ pub const Parser = struct {
                 try self.advance();
             }
         }
+        // Capture module text: (module ...)
+        const module_end_pos = self.lexer.pos;
+        const module_data = try self.allocator.dupe(u8, self.input[module_paren_pos..module_end_pos]);
         if (self.current_token == .right_paren) {
             try self.advance();
         }
@@ -4776,6 +4787,7 @@ pub const Parser = struct {
                     .line = line,
                     .file_name = try self.allocator.dupe(u8, ""),
                     .error_text = failure,
+                    .module_data = module_data,
                 },
             },
             .assert_uninstantiable => spec_types.command.Command{
@@ -4783,6 +4795,7 @@ pub const Parser = struct {
                     .line = line,
                     .file_name = try self.allocator.dupe(u8, ""),
                     .error_text = failure,
+                    .module_data = module_data,
                 },
             },
         };
@@ -5552,6 +5565,7 @@ pub fn freeCommand(allocator: std.mem.Allocator, cmd: *spec_types.command.Comman
         .assert_trap => |at| {
             freeAction(allocator, @constCast(&at.action));
             allocator.free(at.error_text);
+            if (at.module_data) |data| allocator.free(data);
         },
         .assert_invalid => |ai| {
             allocator.free(ai.file_name);
@@ -5564,6 +5578,16 @@ pub fn freeCommand(allocator: std.mem.Allocator, cmd: *spec_types.command.Comman
             if (am.module_data) |data| allocator.free(data);
             if (am.module_binary) |data| allocator.free(data);
             allocator.free(am.error_text);
+        },
+        .assert_unlinkable => |au| {
+            allocator.free(au.file_name);
+            allocator.free(au.error_text);
+            if (au.module_data) |data| allocator.free(data);
+        },
+        .assert_uninstantiable => |au| {
+            allocator.free(au.file_name);
+            allocator.free(au.error_text);
+            if (au.module_data) |data| allocator.free(data);
         },
         else => {},
     }

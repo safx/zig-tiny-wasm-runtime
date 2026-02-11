@@ -183,16 +183,43 @@ pub const SpecTestRunner = struct {
                 },
                 .assert_trap => |*a| {
                     total += 1;
-                    if (self.doAction(&a.action, current_module, &registered_modules)) |results| {
-                        self.allocator.free(results);
-                        failed += 1;
-                        if (self.verbose_level >= 1) {
-                            self.debugPrint("✗ assert_trap failed (line {}): expected trap\n", .{a.line});
+                    if (a.module_data) |data| {
+                        // Module form: (assert_trap (module ...) "msg")
+                        // Try to instantiate the module — expect it to trap
+                        const text_decode = @import("wasm-text-decode");
+                        const module = text_decode.parseWastModule(self.allocator, data) catch |parse_err| {
+                            // Parse failure counts as a trap (module couldn't load)
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_trap passed (parse error: {})\n", .{parse_err});
+                            }
+                            continue;
+                        };
+                        // Don't defer module.deinit() — runtime may hold references
+                        if (self.engine.loadModule(module, "")) |_| {
+                            failed += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ assert_trap failed (line {}): module instantiated successfully (expected trap)\n", .{a.line});
+                            }
+                        } else |_| {
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_trap passed (instantiation trap)\n", .{});
+                            }
                         }
-                    } else |_| {
-                        passed += 1;
-                        if (self.verbose_level >= 2) {
-                            self.debugPrint("✓ assert_trap passed\n", .{});
+                    } else {
+                        // Action form: (assert_trap (invoke ...) "msg")
+                        if (self.doAction(&a.action, current_module, &registered_modules)) |results| {
+                            self.allocator.free(results);
+                            failed += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ assert_trap failed (line {}): expected trap\n", .{a.line});
+                            }
+                        } else |_| {
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_trap passed\n", .{});
+                            }
                         }
                     }
                 },
@@ -307,11 +334,62 @@ pub const SpecTestRunner = struct {
                         self.debugPrint("✓ assert_malformed (skipped - no module data)\n", .{});
                     }
                 },
-                .assert_unlinkable, .assert_uninstantiable => {
+                .assert_unlinkable => |arg| {
                     total += 1;
-                    passed += 1;
-                    if (self.verbose_level >= 2) {
-                        self.debugPrint("✓ {s} (skipped)\n", .{@tagName(cmd)});
+                    if (arg.module_data) |data| {
+                        const text_decode = @import("wasm-text-decode");
+                        const module = text_decode.parseWastModule(self.allocator, data) catch |parse_err| {
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_unlinkable passed (parse error: {})\n", .{parse_err});
+                            }
+                            continue;
+                        };
+                        if (self.engine.loadModule(module, "")) |_| {
+                            failed += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ assert_unlinkable failed (line {}): module loaded successfully (expected link error)\n", .{arg.line});
+                            }
+                        } else |err| {
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_unlinkable passed (error: {})\n", .{err});
+                            }
+                        }
+                    } else {
+                        passed += 1;
+                        if (self.verbose_level >= 2) {
+                            self.debugPrint("✓ assert_unlinkable (skipped - no module data)\n", .{});
+                        }
+                    }
+                },
+                .assert_uninstantiable => |arg| {
+                    total += 1;
+                    if (arg.module_data) |data| {
+                        const text_decode = @import("wasm-text-decode");
+                        const module = text_decode.parseWastModule(self.allocator, data) catch |parse_err| {
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_uninstantiable passed (parse error: {})\n", .{parse_err});
+                            }
+                            continue;
+                        };
+                        if (self.engine.loadModule(module, "")) |_| {
+                            failed += 1;
+                            if (self.verbose_level >= 1) {
+                                self.debugPrint("✗ assert_uninstantiable failed (line {}): module loaded successfully (expected error)\n", .{arg.line});
+                            }
+                        } else |err| {
+                            passed += 1;
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("✓ assert_uninstantiable passed (error: {})\n", .{err});
+                            }
+                        }
+                    } else {
+                        passed += 1;
+                        if (self.verbose_level >= 2) {
+                            self.debugPrint("✓ assert_uninstantiable (skipped - no module data)\n", .{});
+                        }
                     }
                 },
                 .register => |r| {

@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "timestamp": "2026-02-11T18:44:55",
-    "git_commit": "42c8184",
+    "timestamp": "2026-02-11T20:20:12",
+    "git_commit": "3ccc6f4",
     "git_branch": "refactor/spec-types-v1"
   },
   "summary": {
     "files_passed": 210,
     "files_total": 237,
-    "assertions_passed": 61587,
+    "assertions_passed": 61562,
     "assertions_total": 61857
   },
   "files": {
@@ -322,7 +322,7 @@
       "status": "passed"
     },
     "imports.wast": {
-      "passed": 139,
+      "passed": 134,
       "total": 144,
       "status": "partial"
     },
@@ -382,14 +382,14 @@
       "status": "passed"
     },
     "linking.wast": {
-      "passed": 127,
+      "passed": 112,
       "total": 133,
       "status": "partial"
     },
     "linking0.wast": {
-      "passed": 3,
+      "passed": 4,
       "total": 4,
-      "status": "partial"
+      "status": "passed"
     },
     "linking1.wast": {
       "passed": 9,
@@ -402,9 +402,9 @@
       "status": "passed"
     },
     "linking3.wast": {
-      "passed": 6,
+      "passed": 10,
       "total": 10,
-      "status": "partial"
+      "status": "passed"
     },
     "load.wast": {
       "passed": 96,
@@ -467,9 +467,9 @@
       "status": "passed"
     },
     "memory64-imports.wast": {
-      "passed": 30,
+      "passed": 22,
       "total": 30,
-      "status": "passed"
+      "status": "partial"
     },
     "memory64.wast": {
       "passed": 59,
@@ -1102,9 +1102,9 @@
       "status": "passed"
     },
     "tag.wast": {
-      "passed": 4,
+      "passed": 2,
       "total": 4,
-      "status": "passed"
+      "status": "partial"
     },
     "throw.wast": {
       "passed": 3,

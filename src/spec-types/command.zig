@@ -165,6 +165,7 @@ pub const AssertTrapCommandArg = struct {
     line: u32,
     action: Action,
     error_text: []const u8, // Error string from test file
+    module_data: ?[]const u8 = null, // WAT source for (assert_trap (module ...) "msg") form
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         _ = try writer.print("{f} (-> \"{s}\") (line:{d})", .{ self.action, self.error_text, self.line });
@@ -209,6 +210,7 @@ pub const AssertUnlinkableCommandArg = struct {
     line: u32,
     file_name: []const u8,
     error_text: []const u8, // Error string from test file
+    module_data: ?[]const u8 = null, // WAT source for module instantiation
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         _ = try writer.print("{s} (-> \"{s}\") (line:{d})", .{ self.file_name, self.error_text, self.line });
@@ -219,6 +221,7 @@ pub const AssertUninstantiableCommandArg = struct {
     line: u32,
     file_name: []const u8,
     error_text: []const u8, // Error string from test file
+    module_data: ?[]const u8 = null, // WAT source for module instantiation
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         _ = try writer.print("{s} (-> \"{s}\") (line:{d})", .{ self.file_name, self.error_text, self.line });
