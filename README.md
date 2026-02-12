@@ -220,7 +220,7 @@ This interpreter implements **WebAssembly 1.0 core specification** with **select
 ## Test Suite Status
 
 - **237/237 test files** from [spectec](https://github.com/Wasm-DSL/spectec) successfully parse and load
-- **61,562/61,857 (99.5%)** assertions pass across the test suite
+- **61,604/61,857 (99.6%)** assertions pass across the test suite
 - Test files cover WebAssembly 1.0, 2.0, and some 3.0 features
 
 ## Known Limitations
@@ -231,7 +231,6 @@ The following WebAssembly 3.0 features are **not implemented**:
 - ❌ **Exception Handling** (`throw`, `throw_ref`, `try_table`, exception tags)
 - ❌ **Garbage Collection** (struct, array, i31ref, and related GC instructions)
 - ❌ **Extended Reference Types** (`br_on_null`, `br_on_non_null`, `call_ref`, `ref.as_non_null`)
-- ❌ **Multi-Memory** (modules with multiple memory instances)
 
 These features can be parsed from .wast files but their instructions are not executed.
 
