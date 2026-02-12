@@ -38,7 +38,7 @@ pub fn main() !void {
             for (inst.exports, 0..) |exp, i| {
                 std.debug.print("export[{}] = {s} ", .{ i, exp.name });
                 if (exp.value == .function) {
-                    std.debug.print("(func: {any})\n", .{engine.instance.store.funcs.items[exp.value.function].type});
+                    std.debug.print("(func: {f})\n", .{engine.instance.store.funcs.items[exp.value.function].type});
                 } else {
                     std.debug.print("({s}) \n", .{@tagName(exp.value)});
                 }

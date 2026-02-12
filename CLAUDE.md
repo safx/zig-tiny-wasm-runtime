@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a WebAssembly interpreter written in Zig 0.15. It implements WebAssembly 1.0 core specification with selected 2.0 extensions, primarily SIMD operations. The test suite includes 237 test files from the spectec repository (WebAssembly 3.0 branch) that successfully parse and load. This educational project demonstrates understanding of WebAssembly fundamentals and key extension features.
 
-**Important**: The test runner validates parsing and module loading only, not complete feature execution. Passing tests indicate syntax compatibility rather than full implementation of all features present in test files.
+**Important**: The test runner executes spec test assertions (assert_return, assert_trap, assert_invalid, etc.) against parsed and loaded modules. The 99.6% pass rate reflects actual execution correctness for implemented features. Remaining failures are due to unimplemented WebAssembly 3.0 features (tail calls, exception handling, GC types, typed references).
 
 ## Commands
 
@@ -31,7 +31,7 @@ zig build test
 # Setup WebAssembly test suite from spectec (wasm-3.0 branch)
 make setup-tests
 
-# Run all WebAssembly spec tests (validates parsing/loading)
+# Run all WebAssembly spec tests
 make test
 
 # Run specific test file
@@ -39,6 +39,12 @@ python3 ./run_spectec_tests.py wasm_tests/test_name.wast
 
 # Run with verbose output
 python3 ./run_spectec_tests.py --verbose wasm_tests/
+
+# Save assertion baseline for regression tracking
+python3 ./run_spectec_tests.py wasm_tests/ --save-baseline baseline.json
+
+# Compare current results against a saved baseline
+python3 ./run_spectec_tests.py wasm_tests/ --compare baseline.json
 ```
 
 ### Development
@@ -74,8 +80,8 @@ Key architectural decisions:
 
 - The project uses Zig 0.15.2 and may need updates for newer Zig versions
 - When modifying instruction implementations, ensure both the decode and runtime modules are updated
-- The test suite (237 test files from spectec wasm-3.0 branch) validates parsing and loading - always run `make test` after changes
-- **Test limitations**: The current test runner only validates that modules can be parsed and loaded, not that all instructions execute correctly
+- The test suite (237 test files from spectec wasm-3.0 branch) runs 61,857 assertions - always run `make test` after changes
+- **Test coverage**: 61,604/61,857 (99.6%) assertions pass. Remaining 253 failures are due to unimplemented 3.0 features (tail calls, exception handling, GC types, typed references)
 - Text format (.wast/.wat) files are handled by the spec_test binary, binary format (.wasm) by the main interpreter
 - The project links with libc (uses C allocator) so platform-specific issues may arise
-- Features like tail calls, exception handling, GC, multi-memory, and memory64 are not implemented despite test files being present
+- Features like tail calls, exception handling, GC, and typed references are not implemented despite test files being present

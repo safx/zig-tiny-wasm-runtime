@@ -14,4 +14,8 @@ pub const Error = error{
     IncompatibleImportType,
     UnknownImport,
     CallStackExhausted,
+    OtherError,
+    InvalidConstExpr,
+    StackUnderflow,
+    TypeMismatch,
 };

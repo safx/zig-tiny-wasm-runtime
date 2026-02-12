@@ -20,7 +20,7 @@ pub const ValidationType = enum(u8) {
         return @intFromEnum(v);
     }
 
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         try writer.print("{s}", .{@tagName(self)});
     }
 };
@@ -96,5 +96,13 @@ pub const TypeStack = struct {
 };
 
 fn validationTypeFromValueType(ty: ValueType) ValidationType {
-    return @enumFromInt(@intFromEnum(ty));
+    return switch (ty) {
+        .i32 => .i32,
+        .i64 => .i64,
+        .f32 => .f32,
+        .f64 => .f64,
+        .v128 => .v128,
+        .func_ref => .func_ref,
+        .extern_ref => .extern_ref,
+    };
 }

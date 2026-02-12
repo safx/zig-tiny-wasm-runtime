@@ -1,5 +1,6 @@
 const std = @import("std");
 pub const SpecTestRunneer = @import("./test_runner.zig").SpecTestRunner;
+pub const executor = @import("./executor/mod.zig");
 
 test "Wasm spec test" {
     // try doWasmSpecTest();

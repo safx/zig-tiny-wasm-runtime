@@ -67,12 +67,10 @@ pub const ModuleValidator = struct {
             for (module.exports) |exp|
                 try validateExport(c, exp);
 
-            if (c.mems.len > 1)
-                return Error.MultipleMemories;
         }
 
         { // under the context c'
-            const cp = try Context.newLimitedContext(module, self.allocator);
+            var cp = try Context.newLimitedContext(module, self.allocator);
 
             for (module.tables) |table|
                 try validateTableType(table);
@@ -80,8 +78,16 @@ pub const ModuleValidator = struct {
             for (module.memories) |memory|
                 try validateMemoryType(memory);
 
-            for (module.globals) |global|
+            // Validate globals progressively: each global can reference previously defined globals
+            // (extended constant expressions proposal)
+            for (module.globals) |global| {
                 try validateGlobal(cp, global);
+                // Extend context with this global for subsequent globals
+                const new_globals = try self.allocator.alloc(core.types.GlobalType, cp.globals.len + 1);
+                @memcpy(new_globals[0..cp.globals.len], cp.globals);
+                new_globals[cp.globals.len] = global.type;
+                cp.globals = new_globals;
+            }
 
             for (module.elements) |elem|
                 try validateElement(cp, elem);
@@ -229,7 +235,8 @@ pub const ModuleValidator = struct {
                 if (table.ref_type != .funcref)
                     return Error.TypeMismatch;
 
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.tableAddrType(arg.table_idx);
+                try type_stack.popWithCheckingValueType(addr_type);
                 const ft = try c.getType(arg.type_idx);
                 try type_stack.popValuesWithCheckingValueType(ft.parameter_types);
                 try type_stack.appendValueType(ft.result_types);
@@ -293,22 +300,25 @@ pub const ModuleValidator = struct {
             // table instructions
             .table_get => |table_idx| {
                 const table = try c.getTable(table_idx);
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.tableAddrType(table_idx);
+                try type_stack.popWithCheckingValueType(addr_type);
                 try type_stack.pushValueType(valueTypeFromRefType(table.ref_type));
             },
             .table_set => |table_idx| {
                 const table = try c.getTable(table_idx);
+                const addr_type = try c.tableAddrType(table_idx);
                 try type_stack.popWithCheckingValueType(valueTypeFromRefType(table.ref_type));
-                try type_stack.popWithCheckingValueType(.i32);
+                try type_stack.popWithCheckingValueType(addr_type);
             },
             .table_init => |arg| {
                 const table = try c.getTable(arg.table_idx);
                 const elem = try c.getElem(arg.elem_idx);
                 if (table.ref_type != elem)
                     return Error.TypeMismatch;
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.tableAddrType(arg.table_idx);
+                try type_stack.popWithCheckingValueType(.i32); // count (always i32)
+                try type_stack.popWithCheckingValueType(.i32); // src elem offset (always i32)
+                try type_stack.popWithCheckingValueType(addr_type); // dst table offset
             },
             .elem_drop => |elem_idx| _ = try c.getElem(elem_idx),
             .table_copy => |arg| {
@@ -316,25 +326,32 @@ pub const ModuleValidator = struct {
                 const table_dst = try c.getTable(arg.table_idx_dst);
                 if (table_src.ref_type != table_dst.ref_type)
                     return Error.TypeMismatch;
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
+                const dst_type = try c.tableAddrType(arg.table_idx_dst);
+                const src_type = try c.tableAddrType(arg.table_idx_src);
+                // count type: i64 if either table is 64-bit
+                const count_type: ValueType = if (dst_type == .i64 or src_type == .i64) .i64 else .i32;
+                try type_stack.popWithCheckingValueType(count_type); // count
+                try type_stack.popWithCheckingValueType(src_type); // src offset
+                try type_stack.popWithCheckingValueType(dst_type); // dst offset
             },
             .table_grow => |table_idx| {
                 const table = try c.getTable(table_idx);
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.tableAddrType(table_idx);
+                try type_stack.popWithCheckingValueType(addr_type);
                 try type_stack.popWithCheckingValueType(valueTypeFromRefType(table.ref_type));
-                try type_stack.pushValueType(.i32);
+                try type_stack.pushValueType(addr_type);
             },
             .table_size => |table_idx| {
                 _ = try c.getTable(table_idx);
-                try type_stack.pushValueType(.i32);
+                const addr_type = try c.tableAddrType(table_idx);
+                try type_stack.pushValueType(addr_type);
             },
             .table_fill => |table_idx| {
                 const table = try c.getTable(table_idx);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(valueTypeFromRefType(table.ref_type));
-                try type_stack.popWithCheckingValueType(.i32);
+                const addr_type = try c.tableAddrType(table_idx);
+                try type_stack.popWithCheckingValueType(addr_type); // count
+                try type_stack.popWithCheckingValueType(valueTypeFromRefType(table.ref_type)); // value
+                try type_stack.popWithCheckingValueType(addr_type); // offset
             },
 
             // memory instructions
@@ -361,36 +378,45 @@ pub const ModuleValidator = struct {
             .i64_store8 => |mem_arg| try opStore(i64, 8, mem_arg, type_stack, c),
             .i64_store16 => |mem_arg| try opStore(i64, 16, mem_arg, type_stack, c),
             .i64_store32 => |mem_arg| try opStore(i64, 32, mem_arg, type_stack, c),
-            .memory_size => {
-                try c.checkMem(0);
-                try type_stack.pushValueType(.i32);
+            .memory_size => |mem_idx| {
+                try c.checkMem(mem_idx);
+                const addr_type = try c.memAddrType(mem_idx);
+                try type_stack.pushValueType(addr_type);
             },
-            .memory_grow => {
-                try c.checkMem(0);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.pushValueType(.i32);
+            .memory_grow => |mem_idx| {
+                try c.checkMem(mem_idx);
+                const addr_type = try c.memAddrType(mem_idx);
+                try type_stack.popWithCheckingValueType(addr_type);
+                try type_stack.pushValueType(addr_type);
             },
-            .memory_init => |data_idx| {
-                try c.checkMem(0);
-                try c.checkData(data_idx);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
+            .memory_init => |arg| {
+                try c.checkMem(arg.mem_idx);
+                try c.checkData(arg.data_idx);
+                const addr_type = try c.memAddrType(arg.mem_idx);
+                try type_stack.popWithCheckingValueType(.i32); // count (always i32)
+                try type_stack.popWithCheckingValueType(.i32); // src offset (always i32)
+                try type_stack.popWithCheckingValueType(addr_type); // dst offset
             },
             .data_drop => |data_idx| {
                 try c.checkData(data_idx);
             },
-            .memory_copy => {
-                try c.checkMem(0);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
+            .memory_copy => |arg| {
+                try c.checkMem(arg.mem_idx_dst);
+                try c.checkMem(arg.mem_idx_src);
+                const dst_type = try c.memAddrType(arg.mem_idx_dst);
+                const src_type = try c.memAddrType(arg.mem_idx_src);
+                // count type: i64 if either memory is 64-bit
+                const count_type: ValueType = if (dst_type == .i64 or src_type == .i64) .i64 else .i32;
+                try type_stack.popWithCheckingValueType(count_type); // count
+                try type_stack.popWithCheckingValueType(src_type); // src offset
+                try type_stack.popWithCheckingValueType(dst_type); // dst offset
             },
-            .memory_fill => {
-                try c.checkMem(0);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
-                try type_stack.popWithCheckingValueType(.i32);
+            .memory_fill => |mem_idx| {
+                try c.checkMem(mem_idx);
+                const addr_type = try c.memAddrType(mem_idx);
+                try type_stack.popWithCheckingValueType(addr_type); // count
+                try type_stack.popWithCheckingValueType(.i32); // value (always i32)
+                try type_stack.popWithCheckingValueType(addr_type); // dst offset
             },
 
             // numeric instructions (1)
@@ -642,16 +668,16 @@ pub const ModuleValidator = struct {
             .v128_xor => try vvBinOp(type_stack),
             .v128_bitselect => try vvTernOp(type_stack),
             .v128_any_true => try vvTestOp(type_stack),
-            .v128_load8_lane => |mem_arg| try vLoadLane(8, mem_arg, type_stack),
-            .v128_load16_lane => |mem_arg| try vLoadLane(16, mem_arg, type_stack),
-            .v128_load32_lane => |mem_arg| try vLoadLane(32, mem_arg, type_stack),
-            .v128_load64_lane => |mem_arg| try vLoadLane(64, mem_arg, type_stack),
-            .v128_store8_lane => try vStoreLane(type_stack),
-            .v128_store16_lane => try vStoreLane(type_stack),
-            .v128_store32_lane => try vStoreLane(type_stack),
-            .v128_store64_lane => try vStoreLane(type_stack),
-            .v128_load32_zero => try vLoadZero(type_stack),
-            .v128_load64_zero => try vLoadZero(type_stack),
+            .v128_load8_lane => |mem_arg| try vLoadLane(8, mem_arg, type_stack, c),
+            .v128_load16_lane => |mem_arg| try vLoadLane(16, mem_arg, type_stack, c),
+            .v128_load32_lane => |mem_arg| try vLoadLane(32, mem_arg, type_stack, c),
+            .v128_load64_lane => |mem_arg| try vLoadLane(64, mem_arg, type_stack, c),
+            .v128_store8_lane => |mem_arg| try vStoreLane(mem_arg, type_stack, c),
+            .v128_store16_lane => |mem_arg| try vStoreLane(mem_arg, type_stack, c),
+            .v128_store32_lane => |mem_arg| try vStoreLane(mem_arg, type_stack, c),
+            .v128_store64_lane => |mem_arg| try vStoreLane(mem_arg, type_stack, c),
+            .v128_load32_zero => |mem_arg| try vLoadZero(mem_arg, type_stack, c),
+            .v128_load64_zero => |mem_arg| try vLoadZero(mem_arg, type_stack, c),
             .f32x4_demote_f64x2_zero => try vCvtOp(type_stack),
             .f64x2_promote_low_f32x4 => try vCvtOp(type_stack),
             .i8x16_abs => try vUnOp(type_stack),
@@ -796,27 +822,30 @@ pub const ModuleValidator = struct {
             .f64x2_convert_low_i32x4_u => try vCvtOp(type_stack),
 
             // Relaxed SIMD instructions
-            .i8x16_relaxed_swizzle => unreachable,
-            .i32x4_relaxed_trunc_f32x4_s => unreachable,
-            .i32x4_relaxed_trunc_f32x4_u => unreachable,
-            .i32x4_relaxed_trunc_f64x2_s_zero => unreachable,
-            .i32x4_relaxed_trunc_f64x2_u_zero => unreachable,
-            .f32x4_relaxed_madd => unreachable,
-            .f32x4_relaxed_nmadd => unreachable,
-            .f64x2_relaxed_madd => unreachable,
-            .f64x2_relaxed_nmadd => unreachable,
-            .i8x16_relaxed_laneselect => unreachable,
-            .i16x8_relaxed_laneselect => unreachable,
-            .i32x4_relaxed_laneselect => unreachable,
-            .i64x2_relaxed_laneselect => unreachable,
-            .f32x4_relaxed_min => unreachable,
-            .f32x4_relaxed_max => unreachable,
-            .f64x2_relaxed_min => unreachable,
-            .f64x2_relaxed_max => unreachable,
-            .i16x8_relaxed_q15mulr_s => unreachable,
-            .i16x8_relaxed_dot_i8x16_i7x16_s => unreachable,
-            .i32x4_relaxed_dot_i8x16_i7x16_add_s => unreachable,
-            .f32x4_relaxed_dot_bf16x8_add_f32x4 => unreachable,
+            // Unary/convert: [v128] -> [v128]
+            .i32x4_relaxed_trunc_f32x4_s => try vCvtOp(type_stack),
+            .i32x4_relaxed_trunc_f32x4_u => try vCvtOp(type_stack),
+            .i32x4_relaxed_trunc_f64x2_s_zero => try vCvtOp(type_stack),
+            .i32x4_relaxed_trunc_f64x2_u_zero => try vCvtOp(type_stack),
+            // Binary: [v128 v128] -> [v128]
+            .i8x16_relaxed_swizzle => try vBinOp(type_stack),
+            .f32x4_relaxed_min => try vBinOp(type_stack),
+            .f32x4_relaxed_max => try vBinOp(type_stack),
+            .f64x2_relaxed_min => try vBinOp(type_stack),
+            .f64x2_relaxed_max => try vBinOp(type_stack),
+            .i16x8_relaxed_q15mulr_s => try vBinOp(type_stack),
+            .i16x8_relaxed_dot_i8x16_i7x16_s => try vBinOp(type_stack),
+            // Ternary: [v128 v128 v128] -> [v128]
+            .f32x4_relaxed_madd => try vTernOp(type_stack),
+            .f32x4_relaxed_nmadd => try vTernOp(type_stack),
+            .f64x2_relaxed_madd => try vTernOp(type_stack),
+            .f64x2_relaxed_nmadd => try vTernOp(type_stack),
+            .i8x16_relaxed_laneselect => try vTernOp(type_stack),
+            .i16x8_relaxed_laneselect => try vTernOp(type_stack),
+            .i32x4_relaxed_laneselect => try vTernOp(type_stack),
+            .i64x2_relaxed_laneselect => try vTernOp(type_stack),
+            .i32x4_relaxed_dot_i8x16_i7x16_add_s => try vTernOp(type_stack),
+            .f32x4_relaxed_dot_bf16x8_add_f32x4 => try vTernOp(type_stack),
         }
         return ip + 1;
     }
@@ -832,9 +861,10 @@ inline fn exp2(n: u32) error{NegativeNumberAlignment}!u32 {
 inline fn opLoad(comptime T: type, comptime N: type, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8)
         return Error.NegativeNumberAlignment;
-    try c.checkMem(0);
+    try c.checkMem(mem_arg.mem_idx);
 
-    try type_stack.popWithCheckingValueType(.i32);
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
+    try type_stack.popWithCheckingValueType(addr_type);
     const t = valueTypeOf(T);
     try type_stack.pushValueType(t);
 }
@@ -842,18 +872,20 @@ inline fn opLoad(comptime T: type, comptime N: type, mem_arg: Instruction.MemArg
 inline fn opV128Load(comptime N: type, comptime M: u8, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8 * M)
         return Error.NegativeNumberAlignment;
-    try c.checkMem(0);
+    try c.checkMem(mem_arg.mem_idx);
 
-    try type_stack.popWithCheckingValueType(.i32);
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
+    try type_stack.popWithCheckingValueType(addr_type);
     try type_stack.pushValueType(.v128);
 }
 
 inline fn opV128LoadSplat(comptime N: type, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > @bitSizeOf(N) / 8)
         return Error.NegativeNumberAlignment;
-    try c.checkMem(0);
+    try c.checkMem(mem_arg.mem_idx);
 
-    try type_stack.popWithCheckingValueType(.i32);
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
+    try type_stack.popWithCheckingValueType(addr_type);
     try type_stack.pushValueType(.v128);
 }
 
@@ -866,11 +898,12 @@ inline fn opVSprat(comptime T: type, type_stack: *TypeStack) Error!void {
 inline fn opStore(comptime T: type, comptime bit_size: u32, mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > bit_size / 8)
         return Error.NegativeNumberAlignment;
-    try c.checkMem(0);
+    try c.checkMem(mem_arg.mem_idx);
 
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
     const t = valueTypeOf(T);
     try type_stack.popWithCheckingValueType(t);
-    try type_stack.popWithCheckingValueType(.i32);
+    try type_stack.popWithCheckingValueType(addr_type);
 }
 
 inline fn instrOp(comptime R: type, comptime T: type, type_stack: *TypeStack) Error!void {
@@ -925,6 +958,13 @@ inline fn vUnOp(type_stack: *TypeStack) Error!void {
 
 inline fn vBinOp(type_stack: *TypeStack) Error!void {
     try binOp(i128, type_stack);
+}
+
+inline fn vTernOp(type_stack: *TypeStack) Error!void {
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.popWithCheckingValueType(.v128);
+    try type_stack.pushValueType(.v128);
 }
 
 inline fn vShiftOp(type_stack: *TypeStack) Error!void {
@@ -991,26 +1031,32 @@ const vExtmul = vBinOp;
 const vDot = vBinOp;
 const vExtaddPairwise = vUnOp;
 
-inline fn vLoadLane(comptime N: u8, mem_arg: Instruction.MemArgWithLaneIdx, type_stack: *TypeStack) Error!void {
+inline fn vLoadLane(comptime N: u8, mem_arg: Instruction.MemArgWithLaneIdx, type_stack: *TypeStack, c: Context) Error!void {
     if (try exp2(mem_arg.@"align") > N / 8)
         return Error.NegativeNumberAlignment;
+    try c.checkMem(mem_arg.mem_idx);
 
     if (mem_arg.lane_idx >= 128 / N)
         return Error.InvalidLaneIndex;
 
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
     try type_stack.popWithCheckingValueType(.v128);
-    try type_stack.popWithCheckingValueType(.i32);
+    try type_stack.popWithCheckingValueType(addr_type);
     try type_stack.pushValueType(.v128);
 }
 
-inline fn vLoadZero(type_stack: *TypeStack) Error!void {
-    try type_stack.popWithCheckingValueType(.i32);
+inline fn vLoadZero(mem_arg: Instruction.MemArg, type_stack: *TypeStack, c: Context) Error!void {
+    try c.checkMem(mem_arg.mem_idx);
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
+    try type_stack.popWithCheckingValueType(addr_type);
     try type_stack.pushValueType(.v128);
 }
 
-inline fn vStoreLane(type_stack: *TypeStack) Error!void {
+inline fn vStoreLane(mem_arg: Instruction.MemArgWithLaneIdx, type_stack: *TypeStack, c: Context) Error!void {
+    try c.checkMem(mem_arg.mem_idx);
+    const addr_type = try c.memAddrType(mem_arg.mem_idx);
     try type_stack.popWithCheckingValueType(.v128);
-    try type_stack.popWithCheckingValueType(.i32);
+    try type_stack.popWithCheckingValueType(addr_type);
 }
 
 fn validateImport(c: Context, imp: Import) Error!void {
@@ -1041,7 +1087,8 @@ fn validateElement(c: Context, element: Element) Error!void {
 
     switch (element.mode) {
         .active => |eat| {
-            try validateInitExpression(c, eat.offset, .i32);
+            const addr_type = try c.tableAddrType(eat.table_idx);
+            try validateInitExpression(c, eat.offset, addr_type);
 
             const tt = try c.getTable(eat.table_idx);
             if (element.type != tt.ref_type)
@@ -1055,7 +1102,8 @@ fn validateData(c: Context, data: Data) Error!void {
     switch (data.mode) {
         .active => |dat| {
             try c.checkMem(dat.mem_idx);
-            try validateInitExpression(c, dat.offset, .i32);
+            const addr_type = try c.memAddrType(dat.mem_idx);
+            try validateInitExpression(c, dat.offset, addr_type);
         },
         else => {},
     }
@@ -1111,10 +1159,83 @@ fn validateInitExpression(c: Context, init_expr: InitExpression, expected_type: 
             const g = try c.getGlobal(idx);
             break :blk g.value_type == expected_type;
         },
+        .instructions => |instrs| blk: {
+            const result_type = try validateConstExprInstructions(c, instrs);
+            break :blk result_type == expected_type;
+        },
     };
 
     if (!ok)
         return Error.TypeMismatch;
+}
+
+fn validateConstExprInstructions(c: Context, instrs: []const Instruction) Error!ValueType {
+    var type_stack: [8]ValueType = undefined;
+    var sp: usize = 0;
+
+    for (instrs) |instr| {
+        switch (instr) {
+            .i32_const => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
+                type_stack[sp] = .i32;
+                sp += 1;
+            },
+            .i64_const => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
+                type_stack[sp] = .i64;
+                sp += 1;
+            },
+            .f32_const => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
+                type_stack[sp] = .f32;
+                sp += 1;
+            },
+            .f64_const => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
+                type_stack[sp] = .f64;
+                sp += 1;
+            },
+            .global_get => |idx| {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
+                const g = try c.getGlobal(idx);
+                type_stack[sp] = g.value_type;
+                sp += 1;
+            },
+            .i32_add, .i32_sub, .i32_mul => {
+                if (sp < 2 or type_stack[sp - 1] != .i32 or type_stack[sp - 2] != .i32)
+                    return Error.TypeMismatch;
+                sp -= 1;
+            },
+            .i64_add, .i64_sub, .i64_mul => {
+                if (sp < 2 or type_stack[sp - 1] != .i64 or type_stack[sp - 2] != .i64)
+                    return Error.TypeMismatch;
+                sp -= 1;
+            },
+            .v128_const => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
+                type_stack[sp] = .v128;
+                sp += 1;
+            },
+            .ref_null => |ref_type| {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
+                type_stack[sp] = switch (ref_type) {
+                    .funcref => .func_ref,
+                    .externref => .extern_ref,
+                };
+                sp += 1;
+            },
+            .ref_func => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
+                type_stack[sp] = .func_ref;
+                sp += 1;
+            },
+            .end => break,
+            else => return Error.TypeMismatch,
+        }
+    }
+
+    if (sp != 1) return Error.TypeMismatch;
+    return type_stack[0];
 }
 
 fn valueTypeOf(comptime ty: type) ValueType {

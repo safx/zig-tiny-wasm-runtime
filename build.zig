@@ -6,11 +6,18 @@ pub fn build(b: *std.Build) void {
 
     const core = ModuleInfo.init(b, "wasm-core", "src/core/mod.zig", &.{});
     const decode = ModuleInfo.init(b, "wasm-decode", "src/decode/mod.zig", &.{core});
-    const text_decode = ModuleInfo.init(b, "wasm-text-decode", "src/text_decode/mod.zig", &.{core});
     const validate = ModuleInfo.init(b, "wasm-validate", "src/validate/mod.zig", &.{core});
     const runtime = ModuleInfo.init(b, "wasm-runtime", "src/runtime/mod.zig", &.{ core, decode, validate });
-    const spec = ModuleInfo.init(b, "wasm-spec-test", "src/spec_test/mod.zig", &.{ core, decode, validate, runtime });
-    const all_modules = .{ core, decode, text_decode, validate, runtime, spec };
+    
+    // Pure type definitions (no runtime dependency)
+    const spec_types = ModuleInfo.init(b, "spec-types", "src/spec-types/mod.zig", &.{});
+    
+    // Error string mapping (depends on decode, validate, runtime)
+    const spec_test_errors = ModuleInfo.init(b, "spec-test-errors", "src/spec-test-errors/mod.zig", &.{ decode, validate, runtime });
+    
+    const text_decode = ModuleInfo.init(b, "wasm-text-decode", "src/text_decode/mod.zig", &.{ core, spec_types });
+    const spec = ModuleInfo.init(b, "wasm-spec-test", "src/spec_test/mod.zig", &.{ core, decode, text_decode, validate, runtime, spec_types, spec_test_errors });
+    const all_modules = .{ core, decode, text_decode, validate, runtime, spec_types, spec_test_errors, spec };
 
     {
         const modules = .{ core, decode, runtime };

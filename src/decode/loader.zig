@@ -44,6 +44,7 @@ pub const ModuleLoader = struct {
         var data_count: ?u32 = null;
 
         var sections: [13]bool = .{false} ** 13;
+        var last_section_id: u8 = 0;
         while (!self.reader.eof()) {
             const sec = try self.section();
             switch (sec) {
@@ -63,11 +64,12 @@ pub const ModuleLoader = struct {
             }
 
             if (sec != .custom) {
-                const current_section = @intFromEnum(sec);
-                if (sections[current_section])
+                const current_section: u8 = @intFromEnum(sec);
+                if (sections[current_section] or current_section < last_section_id)
                     return Error.UnexpectedContentAfterLastSection;
 
                 sections[current_section] = true;
+                last_section_id = current_section;
             }
         }
 
@@ -185,15 +187,26 @@ pub const ModuleLoader = struct {
 
     fn table(self: *Self) Error!types.TableType {
         const rtype = try self.refType();
+        // Peek at the flags byte to detect table64 (bit 2 = 0x04)
+        const flags_pos = self.reader.position;
+        const flags = try self.reader.readU8();
+        const is_64 = (flags & 0x04) != 0;
+        self.reader.position = flags_pos;
         const limit = try self.limits();
-        return .{ .limits = limit, .ref_type = rtype };
+        return .{ .limits = limit, .ref_type = rtype, .is_64 = is_64 };
     }
 
     fn memtype(self: *Self) Error!types.MemoryType {
-        return .{ .limits = try self.limits() };
+        // Peek at the flags byte to detect memory64 (bit 2 = 0x04)
+        const flags_pos = self.reader.position;
+        const flags = try self.reader.readU8();
+        const is_64 = (flags & 0x04) != 0;
+        // Reset position so limits() can read the flags byte
+        self.reader.position = flags_pos;
+        return .{ .limits = try self.limits(), .is_64 = is_64 };
     }
 
-    fn global(self: *Self) Error!types.Global {
+    fn global(self: *Self) (Error || error{OutOfMemory})!types.Global {
         const gtype = try self.globalType();
         const exp = try self.initExpr();
         return .{ .type = gtype, .init = exp };
@@ -365,13 +378,59 @@ pub const ModuleLoader = struct {
         return .{ .mutability = m, .value_type = vtype };
     }
 
-    fn initExpr(self: *Self) Error!types.InitExpression {
+    fn initExpr(self: *Self) (Error || error{OutOfMemory})!types.InitExpression {
+        const start_pos = self.reader.position;
         const op = try self.reader.readU8();
-        const value = try self.initExprValue(op);
-        const end = try self.reader.readU8();
-        if (end != 0x0b)
-            return Error.EndOpcodeExpected;
-        return value;
+        
+        // Check if this is a simple single-instruction constant expression
+        const is_simple = switch (op) {
+            opcode2int(.i32_const),
+            opcode2int(.i64_const),
+            opcode2int(.f32_const),
+            opcode2int(.f64_const),
+            opcode2int(.global_get),
+            0xd0, // ref.null
+            0xd2, // ref.func
+            opcode2int(.simd_prefix),
+            => true,
+            else => false,
+        };
+        
+        if (is_simple) {
+            const value = try self.initExprValue(op);
+            const end = try self.reader.readU8();
+            if (end != 0x0b)
+                return Error.EndOpcodeExpected;
+            return value;
+        }
+        
+        // Complex expression with multiple instructions
+        self.reader.position = start_pos;
+        const code_start = self.reader.position;
+        
+        // Find the end opcode
+        var depth: u32 = 0;
+        while (true) {
+            const byte = try self.reader.readU8();
+            if (byte == 0x0b) { // end
+                if (depth == 0) break;
+                depth -= 1;
+            } else if (byte == 0x02 or byte == 0x03 or byte == 0x04) { // block/loop/if
+                depth += 1;
+            }
+        }
+        
+        const code_end = self.reader.position - 1; // exclude end opcode
+        const code_len = code_end - code_start;
+        
+        self.reader.position = code_start;
+        const code_buf = try self.reader.readBytes(code_len);
+        _ = try self.reader.readU8(); // consume end opcode
+        
+        var decoder = Decoder.new();
+        const instrs = try decoder.parseAll(code_buf, self.allocator);
+        
+        return .{ .instructions = instrs };
     }
 
     fn opcode2int(op: std.wasm.Opcode) u32 {
@@ -485,12 +544,12 @@ pub const ModuleLoader = struct {
 
     fn limits(self: *Self) Error!types.Limits {
         const kind = try self.reader.readU8();
+        const has_max = (kind & 0x01) != 0;
+        // Accept flags 0x00, 0x01 (standard), 0x04, 0x05 (memory64)
+        if (kind & ~@as(u8, 0x05) != 0)
+            return Error.MalformedLimitId;
         const min = try self.reader.readVarU32();
-        const max = switch (kind) {
-            0 => null,
-            1 => try self.reader.readVarU32(),
-            else => return Error.MalformedLimitId,
-        };
+        const max: ?u32 = if (has_max) try self.reader.readVarU32() else null;
         return .{ .min = min, .max = max };
     }
 

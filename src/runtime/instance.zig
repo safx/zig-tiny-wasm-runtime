@@ -3,6 +3,7 @@ const core = @import("wasm-core");
 const local_types = @import("./types.zig");
 const decode = @import("wasm-decode");
 pub const Error = @import("./errors.zig").Error;
+const const_expr = @import("./const_expr.zig");
 
 // Type aliases for convenience
 const Instruction = core.types.Instruction;
@@ -98,7 +99,7 @@ pub const Instance = struct {
 
         self.debugPrint("---------------\n", .{});
         for (func_inst.code.body, 0..) |op, idx|
-            self.debugPrint("[{any}] {any}\n", .{ idx, op });
+            self.debugPrint("[{d}] {any}\n", .{ idx, op });
         self.debugPrint("---------------\n", .{});
     }
 
@@ -181,12 +182,12 @@ pub const Instance = struct {
             const instr = instrs[ip];
 
             self.printStack();
-            self.debugPrint("= [{any}]: {any}\n", .{ ip, instr });
+            self.debugPrint("= [{d}]: {any}\n", .{ ip, instr });
 
             const flow_ctrl = try self.execInstruction(instr);
 
             if (flow_ctrl != .none)
-                self.debugPrint("\t-> {any}\n", .{flow_ctrl});
+                self.debugPrint("\t-> {f}\n", .{flow_ctrl});
 
             switch (flow_ctrl) {
                 .none => self.stack.updateTopFrameIp(ip + 1),
@@ -238,11 +239,36 @@ pub const Instance = struct {
         try self.stack.push(.{ .frame = aux_frame_init });
 
         // 8: Get `val*`
+        // Count imported globals for extended constant expression support
+        var num_import_globals: u32 = 0;
+        for (extern_vals) |ev| {
+            if (ev == .global) num_import_globals += 1;
+        }
+
         const vals = try self.allocator.alloc(Value, module.globals.len);
         defer self.allocator.free(vals);
         for (module.globals, 0..) |global, i| {
-            try self.execOneInstruction(instractionFromInitExpr(global.init));
-            vals[i] = self.stack.pop().value;
+            vals[i] = switch (global.init) {
+                .instructions => |instrs| try const_expr.evaluateConstExpr(instrs, self.store.globals.items),
+                .global_get => |idx| blk: {
+                    if (idx < num_import_globals) {
+                        // Imported global: use aux_module frame (has correct store mapping)
+                        try self.execOneInstruction(instractionFromInitExpr(global.init));
+                        break :blk self.stack.pop().value;
+                    } else {
+                        // Local global: use previously computed values
+                        const local_idx = idx - num_import_globals;
+                        if (local_idx < i) {
+                            break :blk vals[local_idx];
+                        }
+                        return error.InstantiationFailed;
+                    }
+                },
+                else => blk: {
+                    try self.execOneInstruction(instractionFromInitExpr(global.init));
+                    break :blk self.stack.pop().value;
+                },
+            };
         }
 
         // 9: Get `ref*`
@@ -252,8 +278,26 @@ pub const Instance = struct {
             // no need to free because refs[i] are assigned to ModuleInst
             refs[i] = try self.allocator.alloc(RefValue, element.init.len);
             for (element.init, 0..) |e, j| {
-                try self.execOneInstruction(instractionFromInitExpr(e));
-                const value = self.stack.pop().value;
+                const value = switch (e) {
+                    .instructions => |instrs| try const_expr.evaluateConstExpr(instrs, self.store.globals.items),
+                    .global_get => |idx| blk: {
+                        // Imported globals: read from store; local globals: read from vals
+                        if (idx < num_import_globals) {
+                            try self.execOneInstruction(instractionFromInitExpr(e));
+                            break :blk self.stack.pop().value;
+                        } else {
+                            const local_idx = idx - num_import_globals;
+                            if (local_idx < vals.len) {
+                                break :blk vals[local_idx];
+                            }
+                            return error.InstantiationFailed;
+                        }
+                    },
+                    else => blk: {
+                        try self.execOneInstruction(instractionFromInitExpr(e));
+                        break :blk self.stack.pop().value;
+                    },
+                };
                 const val: RefValue = switch (value) {
                     .func_ref => |v| .{ .func_ref = v },
                     .extern_ref => |v| .{ .extern_ref = v },
@@ -285,7 +329,13 @@ pub const Instance = struct {
             switch (elem.mode) {
                 .active => |active_type| {
                     const n = elem.init.len;
-                    try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
+                    switch (active_type.offset) {
+                        .instructions => |instrs| {
+                            const val = try const_expr.evaluateConstExpr(instrs, self.store.globals.items);
+                            try self.stack.push(.{ .value = val });
+                        },
+                        else => try self.execOneInstruction(instractionFromInitExpr(active_type.offset)),
+                    }
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
                     try self.execOneInstruction(.{
@@ -306,13 +356,25 @@ pub const Instance = struct {
         for (module.datas, 0..) |data, i| {
             switch (data.mode) {
                 .active => |active_type| {
-                    assert(active_type.mem_idx == 0);
                     const n = data.init.len;
-                    try self.execOneInstruction(instractionFromInitExpr(active_type.offset));
+                    switch (active_type.offset) {
+                        .instructions => |instrs| {
+                            const val = try const_expr.evaluateConstExpr(instrs, self.store.globals.items);
+                            try self.stack.push(.{ .value = val });
+                        },
+                        else => try self.execOneInstruction(instractionFromInitExpr(active_type.offset)),
+                    }
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
-                    try self.execOneInstruction(.{ .memory_init = @intCast(i) });
-                    try self.execOneInstruction(.{ .data_drop = @intCast(i) });
+                    if (mod_inst.mem_addrs.len > active_type.mem_idx) {
+                        try self.execOneInstruction(.{ .memory_init = .{ .data_idx = @intCast(i), .mem_idx = active_type.mem_idx } });
+                        try self.execOneInstruction(.{ .data_drop = @intCast(i) });
+                    } else {
+                        // Pop the values we pushed if no memory exists
+                        _ = self.stack.pop();
+                        _ = self.stack.pop();
+                        _ = self.stack.pop();
+                    }
                 },
                 else => continue,
             }
@@ -343,15 +405,15 @@ pub const Instance = struct {
         const len = self.stack.array.items.len;
         const slice = if (len > 10) self.stack.array.items[len - 10 ..] else self.stack.array.items;
         if (len > 10) {
-            self.debugPrint("  : ({any} more items)\n  :\n", .{len - 10});
+            self.debugPrint("  : ({d} more items)\n  :\n", .{len - 10});
         }
         for (slice) |i| {
             if (i == .frame and i.frame.instructions.len == 0)
                 continue;
             switch (i) {
-                .value => |v| self.debugPrint("  V {any}\n", .{v}),
-                .label => |v| self.debugPrint("  L {any}\n", .{v}),
-                .frame => |v| self.debugPrint("  F locals: {any}, arity: {any}, ip: {any}\n", .{ v.locals, v.arity, v.ip }),
+                .value => |v| self.debugPrint("  V {f}\n", .{v}),
+                .label => |v| self.debugPrint("  L {f}\n", .{v}),
+                .frame => |v| self.debugPrint("  F locals: {any}, arity: {d}, ip: {d}\n", .{ v.locals, v.arity, v.ip }),
             }
         }
     }
@@ -432,12 +494,12 @@ pub const Instance = struct {
             .i64_store8 => |mem_arg| try self.opStore(i64, 8, mem_arg),
             .i64_store16 => |mem_arg| try self.opStore(i64, 16, mem_arg),
             .i64_store32 => |mem_arg| try self.opStore(i64, 32, mem_arg),
-            .memory_size => try self.opMemorySize(),
-            .memory_grow => try self.opMemoryGrow(),
-            .memory_init => |data_idx| try self.opMemoryInit(data_idx),
+            .memory_size => |mem_idx| try self.opMemorySize(mem_idx),
+            .memory_grow => |mem_idx| try self.opMemoryGrow(mem_idx),
+            .memory_init => |arg| try self.opMemoryInit(arg.data_idx, arg.mem_idx),
             .data_drop => |data_idx| self.opDataDrop(data_idx),
-            .memory_copy => try self.opMemoryCopy(),
-            .memory_fill => try self.opMemoryFill(),
+            .memory_copy => |arg| try self.opMemoryCopy(arg.mem_idx_dst, arg.mem_idx_src),
+            .memory_fill => |mem_idx| try self.opMemoryFill(mem_idx),
 
             // numeric instructions (1)
             .i32_const => |val| try self.stack.pushValueAs(i32, val),
@@ -842,27 +904,27 @@ pub const Instance = struct {
             .f64x2_convert_low_i32x4_u => try self.vCvtOpHalfEx(0, @Vector(2, f64), @Vector(4, u32), opConvert),
 
             // Relaxed SIMD instructions
-            .i8x16_relaxed_swizzle => unreachable,
-            .i32x4_relaxed_trunc_f32x4_s => unreachable,
-            .i32x4_relaxed_trunc_f32x4_u => unreachable,
-            .i32x4_relaxed_trunc_f64x2_s_zero => unreachable,
-            .i32x4_relaxed_trunc_f64x2_u_zero => unreachable,
-            .f32x4_relaxed_madd => unreachable,
-            .f32x4_relaxed_nmadd => unreachable,
-            .f64x2_relaxed_madd => unreachable,
-            .f64x2_relaxed_nmadd => unreachable,
-            .i8x16_relaxed_laneselect => unreachable,
-            .i16x8_relaxed_laneselect => unreachable,
-            .i32x4_relaxed_laneselect => unreachable,
-            .i64x2_relaxed_laneselect => unreachable,
-            .f32x4_relaxed_min => unreachable,
-            .f32x4_relaxed_max => unreachable,
-            .f64x2_relaxed_min => unreachable,
-            .f64x2_relaxed_max => unreachable,
-            .i16x8_relaxed_q15mulr_s => unreachable,
-            .i16x8_relaxed_dot_i8x16_i7x16_s => unreachable,
-            .i32x4_relaxed_dot_i8x16_i7x16_add_s => unreachable,
-            .f32x4_relaxed_dot_bf16x8_add_f32x4 => unreachable,
+            .i8x16_relaxed_swizzle => try self.swizzle(),
+            .i32x4_relaxed_trunc_f32x4_s => try self.vCvtOpEx(@Vector(4, i32), @Vector(4, f32), opTruncSat),
+            .i32x4_relaxed_trunc_f32x4_u => try self.vCvtOpEx(@Vector(4, u32), @Vector(4, f32), opTruncSat),
+            .i32x4_relaxed_trunc_f64x2_s_zero => try self.vCvtOpZeroEx(@Vector(4, i32), @Vector(2, f64), opTruncSat),
+            .i32x4_relaxed_trunc_f64x2_u_zero => try self.vCvtOpZeroEx(@Vector(4, u32), @Vector(2, f64), opTruncSat),
+            .f32x4_relaxed_madd => try self.vRelaxedMadd(@Vector(4, f32)),
+            .f32x4_relaxed_nmadd => try self.vRelaxedNmadd(@Vector(4, f32)),
+            .f64x2_relaxed_madd => try self.vRelaxedMadd(@Vector(2, f64)),
+            .f64x2_relaxed_nmadd => try self.vRelaxedNmadd(@Vector(2, f64)),
+            .i8x16_relaxed_laneselect => try self.vRelaxedLaneselect(@Vector(16, u8)),
+            .i16x8_relaxed_laneselect => try self.vRelaxedLaneselect(@Vector(8, u16)),
+            .i32x4_relaxed_laneselect => try self.vRelaxedLaneselect(@Vector(4, u32)),
+            .i64x2_relaxed_laneselect => try self.vRelaxedLaneselect(@Vector(2, u64)),
+            .f32x4_relaxed_min => try self.vBinTryOpEx(@Vector(4, f32), opFloatMin),
+            .f32x4_relaxed_max => try self.vBinTryOpEx(@Vector(4, f32), opFloatMax),
+            .f64x2_relaxed_min => try self.vBinTryOpEx(@Vector(2, f64), opFloatMin),
+            .f64x2_relaxed_max => try self.vBinTryOpEx(@Vector(2, f64), opFloatMax),
+            .i16x8_relaxed_q15mulr_s => try self.vRelaxedQ15mulr(),
+            .i16x8_relaxed_dot_i8x16_i7x16_s => try self.vRelaxedDotI8x16(),
+            .i32x4_relaxed_dot_i8x16_i7x16_add_s => try self.vRelaxedDotI8x16Add(),
+            .f32x4_relaxed_dot_bf16x8_add_f32x4 => try self.vRelaxedDotBf16(),
         }
         return .none;
     }
@@ -951,7 +1013,11 @@ pub const Instance = struct {
 
         const ft_expect = module.types[arg.type_idx];
 
-        const i: u32 = self.stack.pop().value.asU32();
+        const is_64 = tab.type.is_64;
+        const i: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
         if (i >= tab.elem.len)
             return Error.UndefinedElement;
 
@@ -1056,7 +1122,11 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
-        const i: u32 = self.stack.pop().value.asU32();
+        const is_64 = tab.type.is_64;
+        const i: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
 
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
@@ -1071,7 +1141,11 @@ pub const Instance = struct {
         const a = module.table_addrs[table_idx];
         const tab = self.store.tables.items[a];
         const val = self.stack.pop().value;
-        const i: u32 = self.stack.pop().value.asU32();
+        const is_64 = tab.type.is_64;
+        const i: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
 
         if (i >= tab.elem.len)
             return Error.OutOfBoundsTableAccess;
@@ -1084,7 +1158,11 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
-        try self.stack.pushValueAs(u32, @as(u32, @intCast(tab.elem.len)));
+        if (tab.type.is_64) {
+            try self.stack.pushValueAs(u64, @as(u64, @intCast(tab.elem.len)));
+        } else {
+            try self.stack.pushValueAs(u32, @as(u32, @intCast(tab.elem.len)));
+        }
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-table-mathsf-table-grow-x
@@ -1092,12 +1170,20 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
+        const is_64 = tab.type.is_64;
 
-        const n: u32 = self.stack.pop().value.asU32();
+        const n: u32 = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            self.stack.pop().value.asU32();
         const val = self.stack.pop().value;
 
         if (tab.type.limits.max != null and @as(usize, @intCast(n)) + tab.elem.len > tab.type.limits.max.?) {
-            try self.stack.pushValueAs(i32, -1);
+            if (is_64) {
+                try self.stack.pushValueAs(i64, -1);
+            } else {
+                try self.stack.pushValueAs(i32, -1);
+            }
             return;
         }
 
@@ -1105,14 +1191,22 @@ pub const Instance = struct {
 
         const new_elem = growtable(tab, n, RefValue.fromValue(val), self.allocator) catch |err| {
             assert(err == std.mem.Allocator.Error.OutOfMemory);
-            try self.stack.pushValueAs(i32, -1);
+            if (is_64) {
+                try self.stack.pushValueAs(i64, -1);
+            } else {
+                try self.stack.pushValueAs(i32, -1);
+            }
             return;
         };
 
         self.store.tables.items[ta].elem = new_elem;
         self.store.tables.items[ta].type.limits.min = @intCast(new_elem.len);
 
-        try self.stack.pushValueAs(u32, sz);
+        if (is_64) {
+            try self.stack.pushValueAs(u64, @as(u64, sz));
+        } else {
+            try self.stack.pushValueAs(u32, sz);
+        }
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-tables
@@ -1136,10 +1230,17 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const ta = module.table_addrs[table_idx];
         const tab = self.store.tables.items[ta];
+        const is_64 = tab.type.is_64;
 
-        var n: u32 = self.stack.pop().value.asU32();
+        var n: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
         const val = self.stack.pop().value;
-        var i: u32 = self.stack.pop().value.asU32();
+        var i: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
 
         const i_plus_n, const overflow = @addWithOverflow(i, n);
         if (overflow == 1 or i_plus_n > tab.elem.len)
@@ -1159,10 +1260,21 @@ pub const Instance = struct {
         const tab_d = self.store.tables.items[ta_d];
         const ta_s = module.table_addrs[arg.table_idx_src];
         const tab_s = self.store.tables.items[ta_s];
+        const dst_is_64 = tab_d.type.is_64;
+        const src_is_64 = tab_s.type.is_64;
 
-        var n: u32 = self.stack.pop().value.asU32();
-        var s: u32 = self.stack.pop().value.asU32();
-        var d: u32 = self.stack.pop().value.asU32();
+        var n: usize = if (dst_is_64 or src_is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
+        var s: usize = if (src_is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
+        var d: usize = if (dst_is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
 
         const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
         if (overflow_sn == 1 or s_plus_n > tab_s.elem.len)
@@ -1174,15 +1286,31 @@ pub const Instance = struct {
 
         while (n > 0) : (n -= 1) {
             if (d <= s) {
-                try self.stack.pushValueAs(u32, d);
-                try self.stack.pushValueAs(u32, s);
+                if (dst_is_64) {
+                    try self.stack.pushValueAs(u64, @as(u64, @intCast(d)));
+                } else {
+                    try self.stack.pushValueAs(u32, @as(u32, @intCast(d)));
+                }
+                if (src_is_64) {
+                    try self.stack.pushValueAs(u64, @as(u64, @intCast(s)));
+                } else {
+                    try self.stack.pushValueAs(u32, @as(u32, @intCast(s)));
+                }
                 try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
                 try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
                 d += 1;
                 s += 1;
             } else {
-                try self.stack.pushValueAs(u32, d + n - 1);
-                try self.stack.pushValueAs(u32, s + n - 1);
+                if (dst_is_64) {
+                    try self.stack.pushValueAs(u64, @as(u64, @intCast(d + n - 1)));
+                } else {
+                    try self.stack.pushValueAs(u32, @as(u32, @intCast(d + n - 1)));
+                }
+                if (src_is_64) {
+                    try self.stack.pushValueAs(u64, @as(u64, @intCast(s + n - 1)));
+                } else {
+                    try self.stack.pushValueAs(u32, @as(u32, @intCast(s + n - 1)));
+                }
                 try self.execOneInstruction(.{ .table_get = arg.table_idx_src });
                 try self.execOneInstruction(.{ .table_set = arg.table_idx_dst });
             }
@@ -1196,22 +1324,30 @@ pub const Instance = struct {
         const tab = self.store.tables.items[ta];
         const ea = module.elem_addrs[arg.elem_idx];
         const elem = self.store.elems.items[ea];
+        const is_64 = tab.type.is_64;
 
         var n: u32 = self.stack.pop().value.asU32();
         var s: u32 = self.stack.pop().value.asU32();
-        var d: u32 = self.stack.pop().value.asU32();
+        var d: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
 
         const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
         if (overflow_sn == 1 or s_plus_n > elem.elem.len)
             return Error.OutOfBoundsTableAccess;
 
-        const d_plus_n, const overflow_dn = @addWithOverflow(d, n);
+        const d_plus_n, const overflow_dn = @addWithOverflow(d, @as(usize, n));
         if (overflow_dn == 1 or d_plus_n > tab.elem.len)
             return Error.OutOfBoundsTableAccess;
 
         while (n > 0) : (n -= 1) {
             const ref_val = elem.elem[s];
-            try self.stack.pushValueAs(u32, d);
+            if (is_64) {
+                try self.stack.pushValueAs(u64, @as(u64, @intCast(d)));
+            } else {
+                try self.stack.pushValueAs(u32, @as(u32, @intCast(d)));
+            }
             try self.stack.push(.{ .value = Value.fromRefValue(ref_val) });
             try self.execOneInstruction(.{ .table_set = arg.table_idx });
             d += 1;
@@ -1231,7 +1367,7 @@ pub const Instance = struct {
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-xref-syntax-instructions-syntax-memarg-mathit-memarg-and-t-mathsf-xref-syntax-instructions-syntax-instr-memory-mathsf-load-n-mathsf-xref-syntax-instructions-syntax-sx-mathit-sx-xref-syntax-instructions-syntax-memarg-mathit-memarg
     inline fn opLoad(self: *Self, comptime T: type, comptime N: type, mem_arg: Instruction.MemArg) Error!void {
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, @sizeOf(N));
         const val = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
         try self.stack.pushValueAs(T, val);
     }
@@ -1251,7 +1387,7 @@ pub const Instance = struct {
         const child_size = @sizeOf(HalfOfC);
         const size = child_size * len;
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, size);
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, size);
         var result: T = undefined;
         inline for (0..len) |i| {
             const start = m.start + i * child_size;
@@ -1268,7 +1404,7 @@ pub const Instance = struct {
         const len = 128 / @bitSizeOf(N);
         const V = @Vector(len, N);
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, @sizeOf(N));
         const val = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
         const result: V = @splat(val);
         try self.stack.pushValueAs(V, result);
@@ -1279,7 +1415,7 @@ pub const Instance = struct {
         const len = 128 / @bitSizeOf(N);
         const V = @Vector(len, N);
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, @sizeOf(N));
         var result: V = @splat(0);
         result[0] = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
 
@@ -1293,7 +1429,7 @@ pub const Instance = struct {
 
         var v = self.stack.pop().value.asVec(V);
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, @sizeOf(N));
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, @sizeOf(N));
         v[mem_arg.lane_idx] = decode.safeNumCast(N, m.mem.data[m.start..m.end]);
         try self.stack.pushValueAs(V, v);
     }
@@ -1307,7 +1443,7 @@ pub const Instance = struct {
         const c: DestType = @truncate(ci);
         const byte_size = bit_size / 8;
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, byte_size);
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, byte_size);
         std.mem.writeInt(DestType, @as(*[byte_size]u8, @ptrCast(&m.mem.data[m.start])), c, .little);
     }
 
@@ -1317,69 +1453,99 @@ pub const Instance = struct {
         const v = self.stack.pop().value.asVec(@Vector(len, N));
         const byte_size = @sizeOf(N);
 
-        const m = try self.getMemoryAndEffectiveAddress(mem_arg.offset, byte_size);
+        const m = try self.getMemoryAndEffectiveAddress(mem_arg.mem_idx, mem_arg.offset, byte_size);
         std.mem.writeInt(N, @as(*[byte_size]u8, @ptrCast(&m.mem.data[m.start])), v[mem_arg.lane_idx], .little);
     }
 
-    /// returns memery and effective address for load and store operations
-    inline fn getMemoryAndEffectiveAddress(self: *Self, offset: u32, size: u32) error{OutOfBoundsMemoryAccess}!MemoryAndEffectiveAddress {
+    /// returns memory and effective address for load and store operations
+    inline fn getMemoryAndEffectiveAddress(self: *Self, mem_idx: u32, offset: u64, size: u32) error{OutOfBoundsMemoryAccess}!MemoryAndEffectiveAddress {
         const module = self.stack.topFrame().module;
-        const a = module.mem_addrs[0];
+        const a = module.mem_addrs[mem_idx];
         const mem = &self.store.mems.items[a];
 
-        const ea: u32 = self.stack.pop().value.asU32();
-        const ea_start, const overflow_start = @addWithOverflow(ea, offset);
-        if (overflow_start == 1 or ea_start > mem.data.len)
+        const base: u64 = if (mem.type.is_64)
+            self.stack.pop().value.asU64()
+        else
+            @as(u64, self.stack.pop().value.asU32());
+
+        const ea_start = base +% offset;
+        if (ea_start < base or ea_start < offset or ea_start > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        const ea_end, const overflow_end = @addWithOverflow(ea_start, size);
-        if (overflow_end == 1 or ea_end > mem.data.len)
+        const ea_end = ea_start +% @as(u64, size);
+        if (ea_end < ea_start or ea_end > mem.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        return .{ .mem = mem, .start = ea_start, .end = ea_end };
+        return .{ .mem = mem, .start = @intCast(ea_start), .end = @intCast(ea_end) };
     }
 
     const MemoryAndEffectiveAddress = struct {
         mem: *MemInst,
-        start: u32,
-        end: u32,
+        start: usize,
+        end: usize,
     };
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-size
-    inline fn opMemorySize(self: *Self) error{CallStackExhausted}!void {
+    inline fn opMemorySize(self: *Self, mem_idx: u32) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
-        const mem_addr = module.mem_addrs[0];
+        const mem_addr = module.mem_addrs[mem_idx];
         const mem_inst = self.store.mems.items[mem_addr];
 
-        const sz: u32 = @intCast(mem_inst.data.len / page_size);
-        try self.stack.pushValueAs(u32, sz);
+        const sz: u64 = @intCast(mem_inst.data.len / page_size);
+        if (mem_inst.type.is_64) {
+            try self.stack.pushValueAs(u64, sz);
+        } else {
+            try self.stack.pushValueAs(u32, @intCast(sz));
+        }
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-grow
-    inline fn opMemoryGrow(self: *Self) error{CallStackExhausted}!void {
+    inline fn opMemoryGrow(self: *Self, mem_idx: u32) error{CallStackExhausted}!void {
         const module = self.stack.topFrame().module;
-        const mem_addr = module.mem_addrs[0];
+        const mem_addr = module.mem_addrs[mem_idx];
         const mem_inst = self.store.mems.items[mem_addr];
+        const is_64 = mem_inst.type.is_64;
 
-        const sz: u32 = @intCast(mem_inst.data.len / page_size);
-        const n = self.stack.pop().value.asU32();
+        const sz: u64 = @intCast(mem_inst.data.len / page_size);
+        const n: u64 = if (is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
 
         if (mem_inst.type.limits.max) |max| {
             if (n + sz > max) {
-                try self.stack.pushValueAs(i32, -1);
+                if (is_64) {
+                    try self.stack.pushValueAs(i64, -1);
+                } else {
+                    try self.stack.pushValueAs(i32, -1);
+                }
                 return;
             }
         }
 
-        const new_data = growmem(mem_inst, n, self.allocator) catch |err| {
+        const n32: u32 = std.math.cast(u32, n) orelse {
+            if (is_64) {
+                try self.stack.pushValueAs(i64, -1);
+            } else {
+                try self.stack.pushValueAs(i32, -1);
+            }
+            return;
+        };
+
+        const new_data = growmem(mem_inst, n32, self.allocator) catch |err| {
             assert(err == std.mem.Allocator.Error.OutOfMemory);
-            try self.stack.pushValueAs(i32, -1);
+            if (is_64) {
+                try self.stack.pushValueAs(i64, -1);
+            } else {
+                try self.stack.pushValueAs(i32, -1);
+            }
             return;
         };
 
         self.store.mems.items[mem_addr].data = new_data;
         self.store.mems.items[mem_addr].type.limits.min = @intCast(new_data.len);
-        try self.stack.pushValueAs(u32, sz);
+        if (is_64) {
+            try self.stack.pushValueAs(u64, sz);
+        } else {
+            try self.stack.pushValueAs(u32, @intCast(sz));
+        }
     }
 
     /// https://webassembly.github.io/spec/core/exec/modules.html#growing-memories
@@ -1399,90 +1565,99 @@ pub const Instance = struct {
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-fill
-    inline fn opMemoryFill(self: *Self) (Error || error{OutOfMemory})!void {
+    inline fn opMemoryFill(self: *Self, mem_idx: u32) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
-        const mem_addr = module.mem_addrs[0];
-        const mem_inst = self.store.mems.items[mem_addr];
+        const mem_addr = module.mem_addrs[mem_idx];
+        const mem_inst = &self.store.mems.items[mem_addr];
+        const is_64 = mem_inst.type.is_64;
 
-        var n: u32 = self.stack.pop().value.asU32();
-        const val = self.stack.pop();
-        var d: u32 = self.stack.pop().value.asU32();
+        const n: u64 = if (is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
+        const val: u8 = @truncate(self.stack.pop().value.asU32());
+        const d: u64 = if (is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
 
-        const d_plus_n, const overflow = @addWithOverflow(d, n);
-        if (overflow == 1 or d_plus_n > mem_inst.data.len)
+        const d_plus_n = d +% n;
+        if (d_plus_n < d or d_plus_n > mem_inst.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        while (n > 0) : (n -= 1) {
-            try self.stack.pushValueAs(u32, d);
-            try self.stack.push(val);
-            try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
-            d += 1;
-        }
+        const d_usize: usize = @intCast(d);
+        const d_plus_n_usize: usize = @intCast(d_plus_n);
+        @memset(mem_inst.data[d_usize..d_plus_n_usize], val);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-copy
-    inline fn opMemoryCopy(self: *Self) (Error || error{OutOfMemory})!void {
+    inline fn opMemoryCopy(self: *Self, mem_idx_dst: u32, mem_idx_src: u32) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
-        const mem_addr = module.mem_addrs[0];
-        const mem_inst = self.store.mems.items[mem_addr];
+        const mem_addr_dst = module.mem_addrs[mem_idx_dst];
+        const mem_addr_src = module.mem_addrs[mem_idx_src];
+        const mem_inst_dst = &self.store.mems.items[mem_addr_dst];
+        const mem_inst_src = self.store.mems.items[mem_addr_src];
+        // Use dst memory's is_64 flag for the address type of n and d
+        const dst_is_64 = mem_inst_dst.type.is_64;
+        const src_is_64 = mem_inst_src.type.is_64;
 
-        var n: u32 = self.stack.pop().value.asU32();
-        var s: u32 = self.stack.pop().value.asU32();
-        var d: u32 = self.stack.pop().value.asU32();
+        const n: u64 = if (dst_is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
+        const s: u64 = if (src_is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
+        const d: u64 = if (dst_is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
 
-        const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
-        if (overflow_sn == 1 or s_plus_n > mem_inst.data.len)
+        const s_plus_n = s +% n;
+        if (s_plus_n < s or s_plus_n > mem_inst_src.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        const d_plus_n, const overflow_dn = @addWithOverflow(d, n);
-        if (overflow_dn == 1 or d_plus_n > mem_inst.data.len)
+        const d_plus_n = d +% n;
+        if (d_plus_n < d or d_plus_n > mem_inst_dst.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        while (n > 0) : (n -= 1) {
+        const d_usize: usize = @intCast(d);
+        const s_usize: usize = @intCast(s);
+        const n_usize: usize = @intCast(n);
+
+        if (mem_idx_dst == mem_idx_src) {
+            // Same memory: use loop-based copy that handles overlap correctly
             if (d <= s) {
-                try self.stack.pushValueAs(u32, d);
-                try self.stack.pushValueAs(u32, s);
-                try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0 } });
-                try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
-                d += 1;
-                s += 1;
+                var i: usize = 0;
+                while (i < n_usize) : (i += 1) {
+                    mem_inst_dst.data[d_usize + i] = mem_inst_dst.data[s_usize + i];
+                }
             } else {
-                try self.stack.pushValueAs(u32, d + n - 1);
-                try self.stack.pushValueAs(u32, s + n - 1);
-                try self.execOneInstruction(.{ .i32_load8_u = .{ .@"align" = 0, .offset = 0 } });
-                try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
+                var i: usize = n_usize;
+                while (i > 0) {
+                    i -= 1;
+                    mem_inst_dst.data[d_usize + i] = mem_inst_dst.data[s_usize + i];
+                }
             }
+        } else {
+            // Different memories: no overlap possible, use fast memcpy
+            const d_end: usize = @intCast(d_plus_n);
+            const s_end: usize = @intCast(s_plus_n);
+            @memcpy(mem_inst_dst.data[d_usize..d_end], mem_inst_src.data[s_usize..s_end]);
         }
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-memory-init-x
-    inline fn opMemoryInit(self: *Self, data_idx: DataIdx) (Error || error{OutOfMemory})!void {
+    inline fn opMemoryInit(self: *Self, data_idx: u32, mem_idx: u32) (Error || error{OutOfMemory})!void {
         const module = self.stack.topFrame().module;
-        const mem_addr = module.mem_addrs[0];
-        const mem = self.store.mems.items[mem_addr];
+        const mem_addr = module.mem_addrs[mem_idx];
+        const mem_inst = &self.store.mems.items[mem_addr];
         const data_addr = module.data_addrs[data_idx];
         const data = self.store.datas.items[data_addr];
+        const is_64 = mem_inst.type.is_64;
 
-        var n: u32 = self.stack.pop().value.asU32();
-        var s: u32 = self.stack.pop().value.asU32();
-        var d: u32 = self.stack.pop().value.asU32();
+        const n: u64 = if (is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
+        const s: u64 = @as(u64, self.stack.pop().value.asU32()); // source offset in data segment is always i32
+        const d: u64 = if (is_64) self.stack.pop().value.asU64() else @as(u64, self.stack.pop().value.asU32());
 
-        const s_plus_n, const overflow_sn = @addWithOverflow(s, n);
-        if (overflow_sn == 1 or s_plus_n > data.data.len)
+        const s_plus_n = s +% n;
+        if (s_plus_n < s or s_plus_n > data.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        const d_plus_n, const overflow_dn = @addWithOverflow(d, n);
-        if (overflow_dn == 1 or d_plus_n > mem.data.len)
+        const d_plus_n = d +% n;
+        if (d_plus_n < d or d_plus_n > mem_inst.data.len)
             return Error.OutOfBoundsMemoryAccess;
 
-        while (n > 0) : (n -= 1) {
-            const b = data.data[s];
-            try self.stack.pushValueAs(u32, d);
-            try self.stack.pushValueAs(u32, b);
-            try self.execOneInstruction(.{ .i32_store8 = .{ .@"align" = 0, .offset = 0 } });
-            s += 1;
-            d += 1;
-        }
+        const d_usize: usize = @intCast(d);
+        const s_usize: usize = @intCast(s);
+        const n_usize: usize = @intCast(n);
+        @memcpy(mem_inst.data[d_usize..d_usize + n_usize], data.data[s_usize..s_usize + n_usize]);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-memory-mathsf-data-drop-x
@@ -1586,6 +1761,104 @@ pub const Instance = struct {
         const v1 = self.stack.pop().value.as(u128);
         const result = (v1 & v3) | (v2 & ~v3);
         try self.stack.pushValueAs(u128, result);
+    }
+
+    /// Relaxed SIMD: madd (a * b + c)
+    inline fn vRelaxedMadd(self: *Self, comptime T: type) Error!void {
+        const c = self.stack.pop().value.asVec(T);
+        const b = self.stack.pop().value.asVec(T);
+        const a = self.stack.pop().value.asVec(T);
+        const result = a * b + c;
+        try self.stack.pushValueAs(T, result);
+    }
+
+    /// Relaxed SIMD: nmadd (-(a * b) + c)
+    inline fn vRelaxedNmadd(self: *Self, comptime T: type) Error!void {
+        const c = self.stack.pop().value.asVec(T);
+        const b = self.stack.pop().value.asVec(T);
+        const a = self.stack.pop().value.asVec(T);
+        const result = -(a * b) + c;
+        try self.stack.pushValueAs(T, result);
+    }
+
+    /// Relaxed SIMD: laneselect (bitwise select per lane)
+    inline fn vRelaxedLaneselect(self: *Self, comptime T: type) Error!void {
+        const C = std.meta.Child(T);
+        const IntT = @Vector(@typeInfo(T).vector.len, std.meta.Int(.unsigned, @bitSizeOf(C)));
+        const c = self.stack.pop().value.asVec(T);
+        const b = self.stack.pop().value.asVec(T);
+        const a = self.stack.pop().value.asVec(T);
+        const mask: IntT = @bitCast(c);
+        const a_bits: IntT = @bitCast(a);
+        const b_bits: IntT = @bitCast(b);
+        const result_bits = (a_bits & mask) | (b_bits & ~mask);
+        const result: T = @bitCast(result_bits);
+        try self.stack.pushValueAs(T, result);
+    }
+
+    /// Relaxed SIMD: i16x8.relaxed_q15mulr_s
+    inline fn vRelaxedQ15mulr(self: *Self) Error!void {
+        const b = self.stack.pop().value.asVec(@Vector(8, i16));
+        const a = self.stack.pop().value.asVec(@Vector(8, i16));
+        var result: @Vector(8, i16) = undefined;
+        inline for (0..8) |i| {
+            const prod: i32 = @as(i32, a[i]) * @as(i32, b[i]);
+            result[i] = intSat(i16, i32, (prod + 0x4000) >> 15);
+        }
+        try self.stack.pushValueAs(@Vector(8, i16), result);
+    }
+
+    /// Relaxed SIMD: i16x8.relaxed_dot_i8x16_i7x16_s
+    inline fn vRelaxedDotI8x16(self: *Self) Error!void {
+        const b = self.stack.pop().value.asVec(@Vector(16, i8));
+        const a = self.stack.pop().value.asVec(@Vector(16, i8));
+        var result: @Vector(8, i16) = undefined;
+        inline for (0..8) |i| {
+            const idx = i * 2;
+            const prod1: i16 = @as(i16, a[idx]) * @as(i16, b[idx]);
+            const prod2: i16 = @as(i16, a[idx + 1]) * @as(i16, b[idx + 1]);
+            result[i] = prod1 + prod2;
+        }
+        try self.stack.pushValueAs(@Vector(8, i16), result);
+    }
+
+    /// Relaxed SIMD: i32x4.relaxed_dot_i8x16_i7x16_add_s
+    inline fn vRelaxedDotI8x16Add(self: *Self) Error!void {
+        const c = self.stack.pop().value.asVec(@Vector(4, i32));
+        const b = self.stack.pop().value.asVec(@Vector(16, i8));
+        const a = self.stack.pop().value.asVec(@Vector(16, i8));
+        var result: @Vector(4, i32) = undefined;
+        inline for (0..4) |i| {
+            const idx = i * 4;
+            var sum: i32 = 0;
+            inline for (0..4) |j| {
+                sum += @as(i32, a[idx + j]) * @as(i32, b[idx + j]);
+            }
+            result[i] = sum + c[i];
+        }
+        try self.stack.pushValueAs(@Vector(4, i32), result);
+    }
+
+    /// Relaxed SIMD: f32x4.relaxed_dot_bf16x8_add_f32x4
+    inline fn vRelaxedDotBf16(self: *Self) Error!void {
+        const c = self.stack.pop().value.asVec(@Vector(4, f32));
+        const b = self.stack.pop().value.asVec(@Vector(8, u16));
+        const a = self.stack.pop().value.asVec(@Vector(8, u16));
+        var result: @Vector(4, f32) = undefined;
+        inline for (0..4) |i| {
+            const idx = i * 2;
+            const a1 = bf16ToF32(a[idx]);
+            const b1 = bf16ToF32(b[idx]);
+            const a2 = bf16ToF32(a[idx + 1]);
+            const b2 = bf16ToF32(b[idx + 1]);
+            result[i] = a1 * b1 + a2 * b2 + c[i];
+        }
+        try self.stack.pushValueAs(@Vector(4, f32), result);
+    }
+
+    inline fn bf16ToF32(bf16: u16) f32 {
+        const bits: u32 = @as(u32, bf16) << 16;
+        return @bitCast(bits);
     }
 
     /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-types-syntax-valtype-mathsf-v128-mathsf-xref-syntax-instructions-syntax-instr-vec-mathsf-any-true
@@ -1805,7 +2078,7 @@ pub const Instance = struct {
         const k = @as(E, c1) * @as(E, c2);
         var result: R = undefined;
         inline for (0..r_len) |i| {
-            result[i] = k[i] +% k[r_len + i];
+            result[i] = k[2 * i] +% k[2 * i + 1];
         }
 
         try self.stack.pushValueAs(R, result);
@@ -1876,6 +2149,7 @@ pub fn instractionFromInitExpr(init_expr: InitExpression) Instruction {
         .ref_null => |ref_type| .{ .ref_null = ref_type },
         .ref_func => |func_idx| .{ .ref_func = func_idx },
         .global_get => |global_idx| .{ .global_get = global_idx },
+        .instructions => unreachable, // handled separately
     };
 }
 
@@ -1917,7 +2191,7 @@ const FlowControl = union(enum) {
         }
     }
 
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         switch (self) {
             inline else => |val| if (@TypeOf(val) == void) {
                 try writer.print("{s}", .{@tagName(self)});
@@ -2037,9 +2311,9 @@ fn opTruncSat(comptime R: type, comptime T: type, value: T) R {
     const tval = @trunc(value);
     const fmax: T = @floatFromInt(max);
     const fmin: T = @floatFromInt(min);
-    if (tval > fmax)
+    if (tval >= fmax)
         return max;
-    if (tval < fmin)
+    if (tval <= fmin)
         return min;
 
     return @as(R, @intFromFloat(tval));
@@ -2449,4 +2723,134 @@ test opFloatNearest {
     try expectEqual(@as(f32, 4.0), opFloatNearest(f32, 4.5));
     try expectEqual(@as(f32, 8388609.0), opFloatNearest(f32, 8388609.0));
     try expectEqual(@as(f64, 123456789.0), opFloatNearest(f64, 123456789.01234567));
+}
+
+test "Relaxed SIMD: i8x16.relaxed_swizzle" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+
+    // Push test vectors
+    const v1: @Vector(16, u8) = .{ 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 };
+    const v2: @Vector(16, u8) = .{ 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30 };
+    try instance.stack.pushValueAs(@Vector(16, u8), v1);
+    try instance.stack.pushValueAs(@Vector(16, u8), v2);
+
+    try instance.swizzle();
+
+    const result = instance.stack.pop().value.asVec(@Vector(16, u8));
+    try std.testing.expectEqual(@as(u8, 10), result[0]); // v1[0]
+    try std.testing.expectEqual(@as(u8, 12), result[1]); // v1[2]
+    try std.testing.expectEqual(@as(u8, 14), result[2]); // v1[4]
+    try std.testing.expectEqual(@as(u8, 0), result[8]); // out of bounds -> 0
+}
+
+test "Relaxed SIMD: f32x4.relaxed_madd" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+
+    const a: @Vector(4, f32) = .{ 2.0, 3.0, 4.0, 5.0 };
+    const b: @Vector(4, f32) = .{ 10.0, 20.0, 30.0, 40.0 };
+    const c: @Vector(4, f32) = .{ 1.0, 2.0, 3.0, 4.0 };
+    try instance.stack.pushValueAs(@Vector(4, f32), a);
+    try instance.stack.pushValueAs(@Vector(4, f32), b);
+    try instance.stack.pushValueAs(@Vector(4, f32), c);
+
+    try instance.vRelaxedMadd(@Vector(4, f32));
+
+    const result = instance.stack.pop().value.asVec(@Vector(4, f32));
+    try std.testing.expectEqual(@as(f32, 21.0), result[0]); // 2*10+1
+    try std.testing.expectEqual(@as(f32, 62.0), result[1]); // 3*20+2
+    try std.testing.expectEqual(@as(f32, 123.0), result[2]); // 4*30+3
+    try std.testing.expectEqual(@as(f32, 204.0), result[3]); // 5*40+4
+}
+
+test "Relaxed SIMD: f32x4.relaxed_nmadd" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+
+    const a: @Vector(4, f32) = .{ 2.0, 3.0, 4.0, 5.0 };
+    const b: @Vector(4, f32) = .{ 10.0, 20.0, 30.0, 40.0 };
+    const c: @Vector(4, f32) = .{ 1.0, 2.0, 3.0, 4.0 };
+    try instance.stack.pushValueAs(@Vector(4, f32), a);
+    try instance.stack.pushValueAs(@Vector(4, f32), b);
+    try instance.stack.pushValueAs(@Vector(4, f32), c);
+
+    try instance.vRelaxedNmadd(@Vector(4, f32));
+
+    const result = instance.stack.pop().value.asVec(@Vector(4, f32));
+    try std.testing.expectEqual(@as(f32, -19.0), result[0]); // -(2*10)+1
+    try std.testing.expectEqual(@as(f32, -58.0), result[1]); // -(3*20)+2
+    try std.testing.expectEqual(@as(f32, -117.0), result[2]); // -(4*30)+3
+    try std.testing.expectEqual(@as(f32, -196.0), result[3]); // -(5*40)+4
+}
+
+test "Relaxed SIMD: i32x4.relaxed_laneselect" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+
+    const a: @Vector(4, u32) = .{ 0xAAAAAAAA, 0xBBBBBBBB, 0xCCCCCCCC, 0xDDDDDDDD };
+    const b: @Vector(4, u32) = .{ 0x11111111, 0x22222222, 0x33333333, 0x44444444 };
+    const mask: @Vector(4, u32) = .{ 0xFFFFFFFF, 0x00000000, 0xFF00FF00, 0x0F0F0F0F };
+    try instance.stack.pushValueAs(@Vector(4, u32), a);
+    try instance.stack.pushValueAs(@Vector(4, u32), b);
+    try instance.stack.pushValueAs(@Vector(4, u32), mask);
+
+    try instance.vRelaxedLaneselect(@Vector(4, u32));
+
+    const result = instance.stack.pop().value.asVec(@Vector(4, u32));
+    try std.testing.expectEqual(@as(u32, 0xAAAAAAAA), result[0]); // all from a
+    try std.testing.expectEqual(@as(u32, 0x22222222), result[1]); // all from b
+    try std.testing.expectEqual(@as(u32, 0xCC33CC33), result[2]); // mixed
+    try std.testing.expectEqual(@as(u32, 0x4D4D4D4D), result[3]); // mixed
+}
+
+test "Relaxed SIMD: i16x8.relaxed_q15mulr_s" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+
+    const a: @Vector(8, i16) = .{ 16384, 8192, 4096, 2048, 1024, 512, 256, 128 };
+    const b: @Vector(8, i16) = .{ 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384 };
+    try instance.stack.pushValueAs(@Vector(8, i16), a);
+    try instance.stack.pushValueAs(@Vector(8, i16), b);
+
+    try instance.vRelaxedQ15mulr();
+
+    const result = instance.stack.pop().value.asVec(@Vector(8, i16));
+    try std.testing.expectEqual(@as(i16, 8192), result[0]); // (16384*16384+0x4000)>>15
+    try std.testing.expectEqual(@as(i16, 4096), result[1]);
+    try std.testing.expectEqual(@as(i16, 2048), result[2]);
+}
+
+test "Relaxed SIMD: i16x8.relaxed_dot_i8x16_i7x16_s" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+
+    const a: @Vector(16, i8) = .{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+    const b: @Vector(16, i8) = .{ 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2 };
+    try instance.stack.pushValueAs(@Vector(16, i8), a);
+    try instance.stack.pushValueAs(@Vector(16, i8), b);
+
+    try instance.vRelaxedDotI8x16();
+
+    const result = instance.stack.pop().value.asVec(@Vector(8, i16));
+    try std.testing.expectEqual(@as(i16, 6), result[0]); // 1*2 + 2*2
+    try std.testing.expectEqual(@as(i16, 14), result[1]); // 3*2 + 4*2
+    try std.testing.expectEqual(@as(i16, 22), result[2]); // 5*2 + 6*2
+    try std.testing.expectEqual(@as(i16, 30), result[3]); // 7*2 + 8*2
+}
+
+test "Relaxed SIMD: i32x4.relaxed_trunc_f32x4_s" {
+    const allocator = std.testing.allocator;
+    var instance = Instance.new(allocator, false);
+
+    const v: @Vector(4, f32) = .{ 1.5, -2.7, 100.9, -200.1 };
+    try instance.stack.pushValueAs(@Vector(4, f32), v);
+
+    try instance.vCvtOpEx(@Vector(4, i32), @Vector(4, f32), opTruncSat);
+
+    const result = instance.stack.pop().value.asVec(@Vector(4, i32));
+    try std.testing.expectEqual(@as(i32, 1), result[0]);
+    try std.testing.expectEqual(@as(i32, -2), result[1]);
+    try std.testing.expectEqual(@as(i32, 100), result[2]);
+    try std.testing.expectEqual(@as(i32, -200), result[3]);
 }

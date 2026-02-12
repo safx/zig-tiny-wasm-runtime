@@ -62,11 +62,11 @@ fn isMatchFuncType(a: FuncType, b: FuncType) bool {
 }
 
 fn isMatchTableType(a: TableType, b: TableType) bool {
-    return a.ref_type == b.ref_type and isValidLimits(a.limits, b.limits);
+    return a.ref_type == b.ref_type and a.is_64 == b.is_64 and isValidLimits(a.limits, b.limits);
 }
 
 fn isMatchMemType(a: MemoryType, b: MemoryType) bool {
-    return isValidLimits(a.limits, b.limits);
+    return a.is_64 == b.is_64 and isValidLimits(a.limits, b.limits);
 }
 
 fn isMatchGlobalType(a: GlobalType, b: GlobalType) bool {

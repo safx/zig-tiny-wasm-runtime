@@ -129,16 +129,16 @@ pub const Decoder = struct {
             n(.i64_store8) => .{ .i64_store8 = try memArg(reader) },
             n(.i64_store16) => .{ .i64_store16 = try memArg(reader) },
             n(.i64_store32) => .{ .i64_store32 = try memArg(reader) },
-            n(.memory_size) => if (try reader.readU8() == 0) .memory_size else return Error.ZeroByteExpected,
-            n(.memory_grow) => if (try reader.readU8() == 0) .memory_grow else return Error.ZeroByteExpected,
+            n(.memory_size) => .{ .memory_size = try reader.readVarU32() },
+            n(.memory_grow) => .{ .memory_grow = try reader.readVarU32() },
 
-            // numeric instructions (1)
+            // Numeric const instructions
             n(.i32_const) => .{ .i32_const = try reader.readVarI32() },
             n(.i64_const) => .{ .i64_const = try reader.readVarI64() },
             n(.f32_const) => .{ .f32_const = try reader.readF32() },
             n(.f64_const) => .{ .f64_const = try reader.readF64() },
 
-            // numeric instructions (2) i32
+            // i32 comparison
             n(.i32_eqz) => .i32_eqz,
             n(.i32_eq) => .i32_eq,
             n(.i32_ne) => .i32_ne,
@@ -151,7 +151,7 @@ pub const Decoder = struct {
             n(.i32_ge_s) => .i32_ge_s,
             n(.i32_ge_u) => .i32_ge_u,
 
-            // numeric instructions (2) i64
+            // i64 comparison
             n(.i64_eqz) => .i64_eqz,
             n(.i64_eq) => .i64_eq,
             n(.i64_ne) => .i64_ne,
@@ -164,7 +164,7 @@ pub const Decoder = struct {
             n(.i64_ge_s) => .i64_ge_s,
             n(.i64_ge_u) => .i64_ge_u,
 
-            // numeric instructions (2) f32
+            // f32 comparison
             n(.f32_eq) => .f32_eq,
             n(.f32_ne) => .f32_ne,
             n(.f32_lt) => .f32_lt,
@@ -172,7 +172,7 @@ pub const Decoder = struct {
             n(.f32_le) => .f32_le,
             n(.f32_ge) => .f32_ge,
 
-            // numeric instructions (2) f64
+            // f64 comparison
             n(.f64_eq) => .f64_eq,
             n(.f64_ne) => .f64_ne,
             n(.f64_lt) => .f64_lt,
@@ -180,7 +180,7 @@ pub const Decoder = struct {
             n(.f64_le) => .f64_le,
             n(.f64_ge) => .f64_ge,
 
-            // numeric instructions (3) i32
+            // i32 arithmetic
             n(.i32_clz) => .i32_clz,
             n(.i32_ctz) => .i32_ctz,
             n(.i32_popcnt) => .i32_popcnt,
@@ -200,7 +200,7 @@ pub const Decoder = struct {
             n(.i32_rotl) => .i32_rotl,
             n(.i32_rotr) => .i32_rotr,
 
-            // numeric instructions (3) i64
+            // i64 arithmetic
             n(.i64_clz) => .i64_clz,
             n(.i64_ctz) => .i64_ctz,
             n(.i64_popcnt) => .i64_popcnt,
@@ -220,7 +220,7 @@ pub const Decoder = struct {
             n(.i64_rotl) => .i64_rotl,
             n(.i64_rotr) => .i64_rotr,
 
-            // numeric instructions (3) f32
+            // f32 arithmetic
             n(.f32_abs) => .f32_abs,
             n(.f32_neg) => .f32_neg,
             n(.f32_ceil) => .f32_ceil,
@@ -236,7 +236,7 @@ pub const Decoder = struct {
             n(.f32_max) => .f32_max,
             0x98 => .f32_copy_sign,
 
-            // numeric instructions (3) f64
+            // f64 arithmetic
             n(.f64_abs) => .f64_abs,
             n(.f64_neg) => .f64_neg,
             n(.f64_ceil) => .f64_ceil,
@@ -252,7 +252,7 @@ pub const Decoder = struct {
             n(.f64_max) => .f64_max,
             0xA6 => .f64_copy_sign,
 
-            // numeric instructions (4)
+            // numeric conversion
             n(.i32_wrap_i64) => .i32_wrap_i64,
             n(.i32_trunc_f32_s) => .i32_trunc_f32_s,
             n(.i32_trunc_f32_u) => .i32_trunc_f32_u,
@@ -279,7 +279,7 @@ pub const Decoder = struct {
             n(.f32_reinterpret_i32) => .f32_reinterpret_i32,
             n(.f64_reinterpret_i64) => .f64_reinterpret_i64,
 
-            // numeric instructions (5)
+            // numeric extension
             n(.i32_extend8_s) => .i32_extend8_s,
             n(.i32_extend16_s) => .i32_extend16_s,
             n(.i64_extend8_s) => .i64_extend8_s,
@@ -290,8 +290,8 @@ pub const Decoder = struct {
             n(.simd_prefix) => try simdOpcode(reader, allocator),
 
             else => {
-                std.debug.print("?? Unknown opcode: 0x{x}\n", .{op_code});
-                unreachable;
+                std.debug.print("Warning: Unknown opcode: 0x{x}\n", .{op_code});
+                return Error.UnknownOpcode;
             },
         };
 
@@ -317,8 +317,8 @@ pub const Decoder = struct {
             // memory instructions
             n(.memory_init) => try memoryInit(reader),
             n(.data_drop) => .{ .data_drop = try reader.readVarU32() },
-            n(.memory_copy) => if (try reader.readU8() == 0 and try reader.readU8() == 0) .memory_copy else unreachable,
-            n(.memory_fill) => if (try reader.readU8() == 0) .memory_fill else unreachable,
+            n(.memory_copy) => .{ .memory_copy = .{ .mem_idx_dst = try reader.readVarU32(), .mem_idx_src = try reader.readVarU32() } },
+            n(.memory_fill) => .{ .memory_fill = try reader.readVarU32() },
 
             // saturating truncation instructions
             n(.i32_trunc_sat_f32_s) => .i32_trunc_sat_f32_s,
@@ -627,22 +627,23 @@ fn laneIdx(reader: *BinaryReader) (Error || error{OutOfMemory})!Instruction.Lane
 
 fn memoryInit(reader: *BinaryReader) Error!Instruction {
     const data_idx = try reader.readVarU32();
-    const zero = try reader.readVarU32();
-    std.debug.assert(zero == 0);
-    return .{ .memory_init = data_idx };
+    const mem_idx = try reader.readVarU32();
+    return .{ .memory_init = .{ .data_idx = data_idx, .mem_idx = mem_idx } };
 }
 
 fn memArg(reader: *BinaryReader) Error!Instruction.MemArg {
     const a = try reader.readVarU32();
+    if (a >= 128) return Error.MalformedMemopFlags;
     const o = try reader.readVarU32();
-    return .{ .@"align" = a, .offset = o };
+    return .{ .@"align" = a, .offset = @as(u64, o) };
 }
 
 fn memArgWithLaneIdx(reader: *BinaryReader) Error!Instruction.MemArgWithLaneIdx {
     const a = try reader.readVarU32();
+    if (a >= 128) return Error.MalformedMemopFlags;
     const o = try reader.readVarU32();
     const l = try reader.readU8();
-    return .{ .@"align" = a, .offset = o, .lane_idx = l };
+    return .{ .@"align" = a, .offset = @as(u64, o), .lane_idx = l };
 }
 
 fn tableInitArg(reader: *BinaryReader) Error!Instruction.TableInitArg {

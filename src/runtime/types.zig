@@ -316,18 +316,30 @@ pub const Value = union(core.types.ValueType) {
     }
 
     pub inline fn asU32(self: Self) u32 {
-        return @bitCast(self.i32);
+        return switch (self) {
+            .i32 => @bitCast(self.i32),
+            .i64 => @intCast(self.i64),
+            else => @panic("asU32 called on non-integer type"),
+        };
     }
 
-    pub fn format(self: Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    pub inline fn asU64(self: Self) u64 {
+        return switch (self) {
+            .i64 => @bitCast(self.i64),
+            .i32 => @as(u64, @as(u32, @bitCast(self.i32))),
+            else => @panic("asU64 called on non-integer type"),
+        };
+    }
+
+    pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         switch (self) {
-            .i32 => |val| try writer.print("{any}_i32", .{val}),
-            .i64 => |val| try writer.print("{any}_i64", .{val}),
+            .i32 => |val| try writer.print("{d}_i32", .{val}),
+            .i64 => |val| try writer.print("{d}_i64", .{val}),
             .f32 => try writer.print("{d:.2}_f32", .{self.as(f32)}),
             .f64 => try writer.print("{d:.2}_f64", .{self.as(f64)}),
-            .v128 => |val| try writer.print("{any}_i128", .{val}),
-            .func_ref => |val| if (val) |v| try writer.print("{any}_ref", .{v}) else try writer.print("null_ref", .{}),
-            .extern_ref => |val| if (val) |v| try writer.print("{any}_extref", .{v}) else try writer.print("null_extref", .{}),
+            .v128 => |val| try writer.print("{d}_i128", .{val}),
+            .func_ref => |val| if (val) |v| try writer.print("{d}_ref", .{v}) else try writer.print("null_ref", .{}),
+            .extern_ref => |val| if (val) |v| try writer.print("{d}_extref", .{v}) else try writer.print("null_extref", .{}),
         }
     }
 };
@@ -367,10 +379,10 @@ pub const RefValue = union(enum) {
         };
     }
 
-    pub fn format(self: Self, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         switch (self) {
-            .func_ref => |val| if (val) |v| try writer.print("{any}_ref", .{v}) else try writer.print("null_ref", .{}),
-            .extern_ref => |val| if (val) |v| try writer.print("{any}_extref", .{v}) else try writer.print("null_extref", .{}),
+            .func_ref => |val| if (val) |v| try writer.print("{d}_ref", .{v}) else try writer.print("null_ref", .{}),
+            .extern_ref => |val| if (val) |v| try writer.print("{d}_extref", .{v}) else try writer.print("null_extref", .{}),
         }
     }
 };
@@ -386,8 +398,8 @@ pub const Label = struct {
     arity: u32,
     type: LabelType,
 
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("{any} (arity = {any})", .{ self.type, self.arity });
+    pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
+        try writer.print("{f} (arity = {d})", .{ self.type, self.arity });
     }
 };
 
@@ -398,12 +410,12 @@ pub const LabelType = union(enum) {
     @"if": core.types.InstractionAddr,
     loop: core.types.InstractionAddr,
 
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+    pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         switch (self) {
             inline else => |addr| if (@TypeOf(addr) == void) {
                 try writer.print("{s}", .{@tagName(self)});
             } else {
-                try writer.print("{s} ({any})", .{ @tagName(self), addr });
+                try writer.print("{s} ({d})", .{ @tagName(self), addr });
             },
         }
     }

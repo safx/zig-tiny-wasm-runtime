@@ -46,7 +46,7 @@ make build-spec-test
 
 This project uses test files from the [spectec](https://github.com/Wasm-DSL/spectec) repository (WebAssembly 3.0 branch).
 
-**Important Note**: The current test runner validates that .wast files can be successfully parsed and loaded, but does not execute full test assertions. Therefore, passing all tests indicates syntax compatibility rather than complete feature implementation.
+**Important Note**: The current test runner parses and validates .wast files. Module loading and full test execution are partially implemented. Test results indicate parsing success and basic execution capability.
 
 ### Setup Test Suite
 
@@ -78,13 +78,47 @@ python3 ./run_spectec_tests.py --failfast wasm_tests/
 
 ## Architecture
 
-The codebase is organized into four main modules:
+The codebase is organized into seven main modules:
+
+### Core Modules
 
 1. **wasm-core** (`src/core/`): WebAssembly types, instructions, and basic structures
 2. **wasm-decode** (`src/decode/`): Binary format parsing and module loading
 3. **wasm-text-decode** (`src/text_decode/`): Text format (.wast/.wat) parsing
 4. **wasm-validate** (`src/validate/`): WebAssembly validation rules
 5. **wasm-runtime** (`src/runtime/`): Execution engine and interpreter
+
+### Spec Test Modules
+
+6. **spec-types** (`src/spec-types/`): Pure type definitions for spec test commands and values
+   - No runtime dependencies, only depends on wasm-core
+   - Defines Command, Action, Value, Result types for test specifications
+   - Includes FloatType for NaN handling (canonical/arithmetic)
+
+7. **spec-test-errors** (`src/spec-test-errors/`): Error string mapping for spec tests
+   - Maps error strings from test files to typed error enums
+   - Safe fallback to OtherError for unknown strings (no panics)
+
+8. **wasm-spec-test** (`src/spec_test/`): Test execution framework
+   - Unified test runner for both .wast and .json formats
+   - Executor module with value conversion and comparison logic
+   - JSON and WAST readers for different test formats
+
+### Dependency Graph
+
+```
+core
+  ↓
+spec-types (pure)
+  ↓
+text-decode → spec-test
+  ↓
+(decode, validate, runtime)
+  ↓
+spec-test-errors
+  ↓
+spec-test (executor + runners)
+```
 
 ## Commands Reference
 
@@ -125,13 +159,13 @@ This interpreter implements **WebAssembly 1.0 core specification** with **select
    - All standard SIMD operations (i8x16, i16x8, i32x4, i64x2, f32x4, f64x2)
    - Vector load/store operations with lane access
    - SIMD arithmetic, comparison, and bitwise operations
-   - Approximately 236 SIMD instructions fully implemented
+   - 236 standard SIMD instructions fully implemented
 
 2. **Relaxed SIMD Instructions**
    - Non-deterministic SIMD operations for performance
    - Relaxed min/max, madd/nmadd operations
    - Relaxed lane selection and truncation
-   - 18 relaxed SIMD instructions implemented
+   - 21 relaxed SIMD instructions implemented
 
 3. **Bulk Memory Operations**
    - `memory.copy` - Fast memory-to-memory copying
@@ -157,18 +191,37 @@ This interpreter implements **WebAssembly 1.0 core specification** with **select
    - Functions and blocks can return multiple values
    - Multi-value block types
 
+8. **Memory64** (64-bit memory addressing)
+   - Full u64 address handling for all memory operations
+   - Dynamic address type selection (i32/i64) based on memory type
+   - 100% pass rate on all memory64 spec tests
+
+9. **Multi-Memory** (multiple memory instances per module)
+   - Multiple memory addresses per module instance
+   - `memory.copy` supports copying between different memories
+   - All memory instructions accept memory index parameter
+
+10. **Table64** (64-bit table addressing)
+    - Dynamic address type (i32/i64) for all table operations
+    - 100% pass rate on all table64 spec tests
+
+11. **Extended Constant Expressions**
+    - Arithmetic in constant expressions: `i32.add`, `i32.sub`, `i32.mul`
+    - 64-bit arithmetic: `i64.add`, `i64.sub`, `i64.mul`
+    - `global.get` of imported globals in initializer expressions
+
 ### 🔧 **Additional Capabilities**
-- Text format (.wast/.wat) parsing (syntax only, not full execution)
+- Text format (.wast/.wat) parsing and execution via spec test runner
 - Binary format (.wasm) decoding and execution
-- Module validation
-- Import/export system
-- Memory bounds checking
+- Module validation (types, control flow, stack usage)
+- Import/export system with inter-module linking
+- Memory bounds checking (traps on out-of-bounds access)
 
 ## Test Suite Status
 
 - **237/237 test files** from [spectec](https://github.com/Wasm-DSL/spectec) successfully parse and load
+- **61,604/61,857 (99.6%)** assertions pass across the test suite
 - Test files cover WebAssembly 1.0, 2.0, and some 3.0 features
-- **Note**: Current test runner validates parsing/loading only, not complete feature execution
 
 ## Known Limitations
 
@@ -177,12 +230,11 @@ The following WebAssembly 3.0 features are **not implemented**:
 - ❌ **Tail Calls** (`return_call`, `return_call_indirect`, `return_call_ref`)
 - ❌ **Exception Handling** (`throw`, `throw_ref`, `try_table`, exception tags)
 - ❌ **Garbage Collection** (struct, array, i31ref, and related GC instructions)
-- ❌ **Multi-Memory** (multiple memory instances per module)
-- ❌ **Memory64** (64-bit memory addressing)
 - ❌ **Extended Reference Types** (`br_on_null`, `br_on_non_null`, `call_ref`, `ref.as_non_null`)
-- ❌ **Extended Constant Expressions** (arithmetic in constant expressions)
 
 These features can be parsed from .wast files but their instructions are not executed.
+
+Additionally, the **reference type system** supports only `funcref` and `externref`. Non-nullable references (`ref func`), typed references (`ref null $t`, `ref $t`), and reference subtyping are not distinguished at the type level. This affects import matching for globals and tables that use these finer-grained reference types (21 `assert_unlinkable` failures in `linking.wast`).
 
 ## Contributing
 
