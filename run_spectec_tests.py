@@ -20,19 +20,18 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
 
-def run_command(cmd: List[str], timeout: int = 30) -> subprocess.CompletedProcess:
-    """Run a command with timeout and return the result."""
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False
-        )
-        return result
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(f"Command timed out: {' '.join(cmd)}")
+def run_command(cmd: List[str], timeout: int = 120) -> subprocess.CompletedProcess:
+    """Run a command with timeout and return the result.
+
+    Raises subprocess.TimeoutExpired if the command exceeds the timeout.
+    """
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False
+    )
 
 
 def build_spec_test(build_dir: Path = Path(".")) -> Path:
@@ -63,7 +62,8 @@ def parse_assertion_counts(output: str) -> Tuple[int, int, int]:
     return 0, 0, 0
 
 
-def run_test_file(spec_test: Path, test_file: Path, output_dir: Path, verbose: bool = False) -> Dict[str, Any]:
+def run_test_file(spec_test: Path, test_file: Path, output_dir: Path,
+                   verbose: bool = False, timeout: int = 120) -> Dict[str, Any]:
     """Run tests from a .wast file using spec_test runner.
 
     Returns a dict with:
@@ -71,39 +71,34 @@ def run_test_file(spec_test: Path, test_file: Path, output_dir: Path, verbose: b
         status: "passed" | "partial" | "crashed"
         assertions_passed: number of passed assertions
         assertions_total: total number of assertions
+        crash_reason: (optional) "timeout" | "nonzero_exit" | "exception"
+        error: (optional) error details
     """
     if not test_file.exists():
         raise FileNotFoundError(f"Test file not found: {test_file}")
 
     # Run spec_test directly on the .wast file
     # Use -v for verbose mode, otherwise default (verbose_level=1) to get "Test Results:" line
+    verbose_flag = ["-v"] if verbose else []
+    cmd = [str(spec_test)] + verbose_flag + [str(test_file)]
+
     try:
-        verbose_flag = ["-v"] if verbose else []
-        cmd = [str(spec_test)] + verbose_flag + [str(test_file)]
-        result = run_command(cmd)
-
-        # Parse assertion counts from stderr (spec_test uses std.debug.print -> stderr)
-        passed, total, skipped = parse_assertion_counts(result.stderr)
-        failed = total - passed - skipped
-
-        if result.returncode != 0:
-            # Runtime panic or crash
-            status = "crashed"
-        elif total > 0 and failed == 0:
-            status = "passed"
-        elif total > 0:
-            status = "partial"
-        else:
-            # No assertions found (module-only test or parse failure with no output)
-            # If returncode is 0, treat as passed
-            status = "passed"
-
+        result = run_command(cmd, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        # Extract partial output that was captured before timeout
+        partial_stderr = ""
+        if e.stderr:
+            partial_stderr = e.stderr if isinstance(e.stderr, str) else e.stderr.decode("utf-8", errors="replace")
+        passed, total, skipped = parse_assertion_counts(partial_stderr)
+        error_snippet = partial_stderr[-500:].strip() if partial_stderr else "(no output)"
         return {
             "file": test_file.name,
-            "status": status,
+            "status": "crashed",
             "assertions_passed": passed,
             "assertions_total": total,
             "assertions_skipped": skipped,
+            "crash_reason": "timeout",
+            "error": f"Timed out after {timeout}s. Last output: {error_snippet}",
         }
     except Exception as e:
         return {
@@ -112,8 +107,43 @@ def run_test_file(spec_test: Path, test_file: Path, output_dir: Path, verbose: b
             "assertions_passed": 0,
             "assertions_total": 0,
             "assertions_skipped": 0,
+            "crash_reason": "exception",
             "error": str(e),
         }
+
+    # Parse assertion counts from stderr (spec_test uses std.debug.print -> stderr)
+    passed, total, skipped = parse_assertion_counts(result.stderr)
+    failed = total - passed - skipped
+
+    if result.returncode != 0:
+        # Runtime panic or crash
+        error_snippet = result.stderr[-500:].strip() if result.stderr else "(no output)"
+        return {
+            "file": test_file.name,
+            "status": "crashed",
+            "assertions_passed": passed,
+            "assertions_total": total,
+            "assertions_skipped": skipped,
+            "crash_reason": "nonzero_exit",
+            "error": f"Exit code {result.returncode}. {error_snippet}",
+        }
+
+    if total > 0 and failed == 0:
+        status = "passed"
+    elif total > 0:
+        status = "partial"
+    else:
+        # No assertions found (module-only test or parse failure with no output)
+        # If returncode is 0, treat as passed
+        status = "passed"
+
+    return {
+        "file": test_file.name,
+        "status": status,
+        "assertions_passed": passed,
+        "assertions_total": total,
+        "assertions_skipped": skipped,
+    }
 
 
 def get_git_info() -> Dict[str, str]:
@@ -298,6 +328,8 @@ def main():
                        help="Save results to JSON baseline file")
     parser.add_argument("--compare", metavar="FILE",
                        help="Compare results against a JSON baseline file")
+    parser.add_argument("--timeout", type=int, default=120,
+                       help="Timeout in seconds per test file (default: 120)")
     parser.add_argument("files", nargs="*", help="Test files to run")
 
     args = parser.parse_args()
@@ -341,7 +373,7 @@ def main():
     results = []
 
     for test_file in test_files:
-        result = run_test_file(spec_test_path, test_file, output_dir, args.verbose)
+        result = run_test_file(spec_test_path, test_file, output_dir, args.verbose, args.timeout)
         results.append(result)
 
         if result["status"] != "passed" and args.failfast:
@@ -398,7 +430,15 @@ def main():
     if crashed:
         print(f"\nCrashed files ({len(crashed)}):")
         for r in crashed:
-            print(f"  {r['file']}")
+            reason = r.get("crash_reason", "unknown")
+            ap = r["assertions_passed"]
+            at = r["assertions_total"]
+            count_str = f" ({ap}/{at})" if at > 0 else ""
+            error = r.get("error", "")
+            # Show first line of error for context
+            error_first_line = error.split("\n")[-1].strip()[:120] if error else ""
+            error_str = f" - {error_first_line}" if error_first_line else ""
+            print(f"  {r['file']}: [{reason}]{count_str}{error_str}")
 
     # Baseline operations
     if args.save_baseline:

@@ -1,4 +1,4 @@
-test:
+test: build-spec-test
 	python3 ./run_spectec_tests.py wasm_tests/
 
 build:
