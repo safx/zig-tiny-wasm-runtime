@@ -231,8 +231,11 @@ The following WebAssembly 3.0 features are **not implemented**:
 - ❌ **Exception Handling** (`throw`, `throw_ref`, `try_table`, exception tags)
 - ❌ **Garbage Collection** (struct, array, i31ref, and related GC instructions)
 - ❌ **Extended Reference Types** (`br_on_null`, `br_on_non_null`, `call_ref`, `ref.as_non_null`)
+- ❌ **Multi-Memory** (modules with multiple memory instances)
 
 These features can be parsed from .wast files but their instructions are not executed.
+
+Additionally, the **reference type system** supports only `funcref` and `externref`. Non-nullable references (`ref func`), typed references (`ref null $t`, `ref $t`), and reference subtyping are not distinguished at the type level. This affects import matching for globals and tables that use these finer-grained reference types (21 `assert_unlinkable` failures in `linking.wast`).
 
 ## Contributing
 

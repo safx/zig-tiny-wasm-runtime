@@ -3372,8 +3372,17 @@ pub const Parser = struct {
             .memory_size => return .{ .memory_size = try self.parseOptionalMemIdx() },
             .memory_grow => return .{ .memory_grow = try self.parseOptionalMemIdx() },
             .memory_init => {
-                const data_idx = try self.parseU32OrIdentifier();
-                return .{ .memory_init = .{ .data_idx = data_idx, .mem_idx = try self.parseOptionalMemIdx() } };
+                // WAT text format: memory.init <memidx> <dataidx> (multi-memory)
+                //                  memory.init <dataidx>           (abbreviation, memidx=0)
+                const first_idx = try self.parseU32OrIdentifier();
+                if (self.current_token == .number or self.current_token == .identifier) {
+                    // Two indices: first = memidx, second = dataidx
+                    const second_idx = try self.parseU32OrIdentifier();
+                    return .{ .memory_init = .{ .mem_idx = first_idx, .data_idx = second_idx } };
+                } else {
+                    // Single index = dataidx, memidx defaults to 0
+                    return .{ .memory_init = .{ .mem_idx = 0, .data_idx = first_idx } };
+                }
             },
             .memory_copy => {
                 const mem_idx_dst = try self.parseOptionalMemIdx();

@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "timestamp": "2026-02-12T01:17:21",
-    "git_commit": "cf7bace",
+    "timestamp": "2026-02-12T07:31:44",
+    "git_commit": "4f30d63",
     "git_branch": "refactor/spec-types-v1"
   },
   "summary": {
-    "files_passed": 213,
+    "files_passed": 215,
     "files_total": 237,
-    "assertions_passed": 61587,
+    "assertions_passed": 61594,
     "assertions_total": 61857
   },
   "files": {
@@ -457,9 +457,9 @@
       "status": "passed"
     },
     "memory-multi.wast": {
-      "passed": 2,
+      "passed": 4,
       "total": 4,
-      "status": "partial"
+      "status": "passed"
     },
     "memory.wast": {
       "passed": 78,
@@ -527,9 +527,9 @@
       "status": "passed"
     },
     "memory_init0.wast": {
-      "passed": 3,
+      "passed": 8,
       "total": 8,
-      "status": "partial"
+      "status": "passed"
     },
     "memory_init64.wast": {
       "passed": 207,
