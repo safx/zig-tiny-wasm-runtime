@@ -196,6 +196,9 @@ pub const Instance = struct {
                     self.stack.updateTopFrameIp(ip + 1);
                     try self.invokeFunction(func_addr);
                 },
+                .tail_call => |func_addr| {
+                    try self.tailCallFunction(func_addr);
+                },
                 .exit => {
                     try self.returnFunction();
                     if (!self.stack.hasFrame())
@@ -442,6 +445,8 @@ pub const Instance = struct {
             .@"return" => return FlowControl.exit,
             .call => |func_idx| return try self.opCall(func_idx),
             .call_indirect => |arg| return try self.opCallIndirect(arg),
+            .return_call => |func_idx| return try self.opReturnCall(func_idx),
+            .return_call_indirect => |arg| return try self.opReturnCallIndirect(arg),
 
             // reference instructions
             .ref_null => |ref_type| try self.opRefNull(ref_type),
@@ -1038,6 +1043,70 @@ pub const Instance = struct {
             if (ex != ac) return Error.IndirectCallTypeMismatch;
 
         return .{ .call = a };
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-return-call-x
+    inline fn opReturnCall(self: *Self, func_idx: FuncIdx) Error!FlowControl {
+        const module = self.stack.topFrame().module;
+        return .{ .tail_call = module.func_addrs[func_idx] };
+    }
+
+    /// https://webassembly.github.io/spec/core/exec/instructions.html#xref-syntax-instructions-syntax-instr-control-mathsf-return-call-indirect-x-y
+    inline fn opReturnCallIndirect(self: *Self, arg: Instruction.CallIndirectArg) Error!FlowControl {
+        const module = self.stack.topFrame().module;
+        const ta = module.table_addrs[arg.table_idx];
+        const tab = self.store.tables.items[ta];
+
+        const ft_expect = module.types[arg.type_idx];
+
+        const is_64 = tab.type.is_64;
+        const i: usize = if (is_64)
+            @intCast(self.stack.pop().value.asU64())
+        else
+            @intCast(self.stack.pop().value.asU32());
+        if (i >= tab.elem.len)
+            return Error.UndefinedElement;
+
+        const r = tab.elem[i];
+        if (r.isNull())
+            return Error.UninitializedElement;
+        const a = r.func_ref.?;
+
+        const f = self.store.funcs.items[a];
+        const ft_actual = f.type;
+        if (ft_expect.parameter_types.len != ft_actual.parameter_types.len or ft_expect.result_types.len != ft_actual.result_types.len)
+            return Error.IndirectCallTypeMismatch;
+
+        for (ft_expect.parameter_types, ft_actual.parameter_types) |ex, ac|
+            if (ex != ac) return Error.IndirectCallTypeMismatch;
+
+        for (ft_expect.result_types, ft_actual.result_types) |ex, ac|
+            if (ex != ac) return Error.IndirectCallTypeMismatch;
+
+        return .{ .tail_call = a };
+    }
+
+    /// Tail call: discard current frame and invoke a new function
+    fn tailCallFunction(self: *Self, func_addr: FuncAddr) (Error || error{OutOfMemory})!void {
+        assert(func_addr < self.store.funcs.items.len);
+        const func_inst = self.store.funcs.items[func_addr];
+        const num_args = func_inst.type.parameter_types.len;
+
+        // 1. Save arguments for the callee
+        var args = try self.allocator.alloc(StackItem, num_args);
+        defer self.allocator.free(args);
+        try self.stack.popValues(&args);
+
+        // 2. Discard current frame (labels, values, frame + locals)
+        const top_frame = self.stack.topFrame();
+        self.stack.popValuesAndLabelsUntilFrame();
+        self.allocator.free(top_frame.locals);
+
+        // 3. Push arguments back
+        try self.stack.appendSlice(args);
+
+        // 4. Invoke the new function (pops args, creates new frame)
+        try self.invokeFunction(func_addr);
     }
 
     // reference instructions
@@ -2158,6 +2227,7 @@ const FlowControl = union(enum) {
     jump: InstractionAddr,
     exit,
     call: FuncAddr,
+    tail_call: FuncAddr,
 
     pub fn newAtOpEnd(label: Label) FlowControl {
         return switch (label.type) {

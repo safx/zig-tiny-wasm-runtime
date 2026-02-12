@@ -105,6 +105,8 @@ pub const Instruction = union(enum) {
     @"return",
     call: FuncIdx,
     call_indirect: CallIndirectArg,
+    return_call: FuncIdx,
+    return_call_indirect: CallIndirectArg,
 
     // reference instructions
     ref_null: RefType,

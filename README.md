@@ -46,7 +46,7 @@ make build-spec-test
 
 This project uses test files from the [spectec](https://github.com/Wasm-DSL/spectec) repository (WebAssembly 3.0 branch).
 
-**Important Note**: The test runner executes spec test assertions (`assert_return`, `assert_trap`, `assert_invalid`, etc.) against parsed and loaded modules. The 99.6% assertion pass rate reflects actual execution correctness for implemented features.
+**Important Note**: The test runner executes spec test assertions (`assert_return`, `assert_trap`, `assert_invalid`, etc.) against parsed and loaded modules. The 99.7% assertion pass rate reflects actual execution correctness for implemented features.
 
 ### Setup Test Suite
 
@@ -142,7 +142,7 @@ zig fmt src/           # Format source code
 
 ## Supported Features
 
-This interpreter implements **WebAssembly 1.0 core specification**, **all WebAssembly 2.0 extensions**, and **selected WebAssembly 3.0 features**. The test suite runs **61,604/61,857 (99.6%)** spec assertions successfully across **237 test files**. Remaining failures are due to unimplemented 3.0 features (tail calls, exception handling, GC, typed references).
+This interpreter implements **WebAssembly 1.0 core specification**, **all WebAssembly 2.0 extensions**, and **selected WebAssembly 3.0 features**. The test suite runs **61,679/61,857 (99.7%)** spec assertions successfully across **237 test files**. Remaining failures are due to unimplemented 3.0 features (exception handling, GC, typed references).
 
 ### ✅ **Fully Implemented Features**
 
@@ -207,7 +207,13 @@ This interpreter implements **WebAssembly 1.0 core specification**, **all WebAss
     - Dynamic address type (i32/i64) for all table operations
     - 100% pass rate on all table64 spec tests
 
-11. **Extended Constant Expressions**
+11. **Tail Calls** (tail call optimization)
+    - `return_call` - Tail call to a function by index
+    - `return_call_indirect` - Tail call through a table
+    - Discards current frame before invoking callee (zero stack growth)
+    - 100% pass rate on return_call and return_call_indirect spec tests
+
+12. **Extended Constant Expressions**
     - Arithmetic in constant expressions: `i32.add`, `i32.sub`, `i32.mul`
     - 64-bit arithmetic: `i64.add`, `i64.sub`, `i64.mul`
     - `global.get` of imported globals in initializer expressions
@@ -222,17 +228,16 @@ This interpreter implements **WebAssembly 1.0 core specification**, **all WebAss
 ## Test Suite Status
 
 - **237/237 test files** from [spectec](https://github.com/Wasm-DSL/spectec) successfully parse and load
-- **61,604/61,857 (99.6%)** assertions pass across the test suite
+- **61,679/61,857 (99.7%)** assertions pass across the test suite
 - Test files cover WebAssembly 1.0, 2.0, and some 3.0 features
 
 ## Known Limitations
 
 The following WebAssembly 3.0 features are **not implemented**:
 
-- ❌ **Tail Calls** (`return_call`, `return_call_indirect`, `return_call_ref`)
 - ❌ **Exception Handling** (`throw`, `throw_ref`, `try_table`, exception tags)
 - ❌ **Garbage Collection** (struct, array, i31ref, and related GC instructions)
-- ❌ **Extended Reference Types** (`br_on_null`, `br_on_non_null`, `call_ref`, `ref.as_non_null`)
+- ❌ **Extended Reference Types** (`br_on_null`, `br_on_non_null`, `call_ref`, `ref.as_non_null`, `return_call_ref`)
 
 These features can be parsed from .wast files but their instructions are not executed.
 

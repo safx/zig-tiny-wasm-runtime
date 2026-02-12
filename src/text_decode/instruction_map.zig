@@ -20,6 +20,8 @@ pub fn opcodeFromName(name: []const u8) ?InstructionTag {
         .{ "br_table", .br_table },
         .{ "call", .call },
         .{ "call_indirect", .call_indirect },
+        .{ "return_call", .return_call },
+        .{ "return_call_indirect", .return_call_indirect },
         
         // Reference instructions
         .{ "ref.null", .ref_null },

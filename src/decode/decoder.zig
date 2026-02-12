@@ -83,6 +83,8 @@ pub const Decoder = struct {
             n(.@"return") => .@"return",
             n(.call) => .{ .call = try reader.readVarU32() },
             n(.call_indirect) => .{ .call_indirect = try callIndirect(reader) },
+            0x12 => .{ .return_call = try reader.readVarU32() },
+            0x13 => .{ .return_call_indirect = try callIndirect(reader) },
 
             // reference instructions
             0xD0 => .{ .ref_null = try refType(reader) },

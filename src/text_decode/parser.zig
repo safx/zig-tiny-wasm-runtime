@@ -3190,7 +3190,8 @@ pub const Parser = struct {
 
             // Call instructions
             .call => return .{ .call = try self.parseU32OrIdentifier() },
-            .call_indirect => {
+            .return_call => return .{ .return_call = try self.parseU32OrIdentifier() },
+            .call_indirect, .return_call_indirect => {
                 // Parse optional table name, (type idx) or inline (param)/(result)
                 var type_idx: u32 = 0;
                 var has_explicit_type = false;
@@ -3313,10 +3314,14 @@ pub const Parser = struct {
                     type_idx = try self.builder.findOrAddFuncType(self.allocator, &.{}, &.{});
                 }
 
-                return .{ .call_indirect = .{
+                const ci_arg: wasm_core.types.Instruction.CallIndirectArg = .{
                     .type_idx = type_idx,
                     .table_idx = table_idx,
-                } };
+                };
+                return if (opcode == .call_indirect)
+                    .{ .call_indirect = ci_arg }
+                else
+                    .{ .return_call_indirect = ci_arg };
             },
 
             // reference instructions

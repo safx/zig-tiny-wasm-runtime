@@ -241,6 +241,38 @@ pub const ModuleValidator = struct {
                 try type_stack.popValuesWithCheckingValueType(ft.parameter_types);
                 try type_stack.appendValueType(ft.result_types);
             },
+            .return_call => |func_idx| {
+                const ft = try c.getFunc(func_idx);
+                try type_stack.popValuesWithCheckingValueType(ft.parameter_types);
+                if (c.@"return") |ret| {
+                    if (ft.result_types.len != ret.len)
+                        return Error.TypeMismatch;
+                    for (ft.result_types, ret) |a, b|
+                        if (a != b) return Error.TypeMismatch;
+                } else {
+                    return Error.TypeMismatch;
+                }
+                try type_stack.setPolymophic();
+            },
+            .return_call_indirect => |arg| {
+                const table = try c.getTable(arg.table_idx);
+                if (table.ref_type != .funcref)
+                    return Error.TypeMismatch;
+
+                const addr_type = try c.tableAddrType(arg.table_idx);
+                try type_stack.popWithCheckingValueType(addr_type);
+                const ft = try c.getType(arg.type_idx);
+                try type_stack.popValuesWithCheckingValueType(ft.parameter_types);
+                if (c.@"return") |ret| {
+                    if (ft.result_types.len != ret.len)
+                        return Error.TypeMismatch;
+                    for (ft.result_types, ret) |a, b|
+                        if (a != b) return Error.TypeMismatch;
+                } else {
+                    return Error.TypeMismatch;
+                }
+                try type_stack.setPolymophic();
+            },
 
             // reference instructions
             .ref_null => |ref_type| try type_stack.pushValueType(valueTypeFromRefType(ref_type)),
