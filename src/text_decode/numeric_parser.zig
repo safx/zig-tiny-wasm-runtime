@@ -30,9 +30,10 @@ pub fn parseFloat(comptime T: type, input: []const u8) !T {
     }
 
     // Check for special identifiers (inf, -inf, nan, -nan with optional payload)
-    if (std.mem.startsWith(u8, input, "nan") or std.mem.startsWith(u8, input, "-nan")) {
+    if (std.mem.startsWith(u8, input, "nan") or std.mem.startsWith(u8, input, "-nan") or std.mem.startsWith(u8, input, "+nan")) {
         const is_negative = std.mem.startsWith(u8, input, "-");
-        const nan_start: usize = if (is_negative) 4 else 3; // Skip "-nan" or "nan"
+        const is_explicit_positive = std.mem.startsWith(u8, input, "+");
+        const nan_start: usize = if (is_negative or is_explicit_positive) 4 else 3; // Skip "-nan", "+nan", or "nan"
 
         // Check for payload: nan:0x<hex>, nan:canonical, nan:arithmetic
         if (input.len > nan_start and input[nan_start] == ':') {

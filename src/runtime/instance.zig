@@ -2078,7 +2078,7 @@ pub const Instance = struct {
         const k = @as(E, c1) * @as(E, c2);
         var result: R = undefined;
         inline for (0..r_len) |i| {
-            result[i] = k[i] +% k[r_len + i];
+            result[i] = k[2 * i] +% k[2 * i + 1];
         }
 
         try self.stack.pushValueAs(R, result);

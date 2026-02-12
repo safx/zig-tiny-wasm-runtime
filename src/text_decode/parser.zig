@@ -691,7 +691,7 @@ pub const Parser = struct {
         // Skip optional name
         _ = try self.parseOptionalName();
 
-        const ref_type: wasm_core.types.RefType = .funcref;
+        var ref_type: wasm_core.types.RefType = .funcref;
         var table_idx: u32 = 0;
         var offset: wasm_core.types.InitExpression = .{ .i32_const = 0 };
         var mode: wasm_core.types.ElementMode = .passive;
@@ -763,9 +763,10 @@ pub const Parser = struct {
         // Skip ref type keyword if present (func, funcref, externref, etc.)
         if (self.current_token == .identifier) {
             const kw = self.current_token.identifier;
-            if (std.mem.eql(u8, kw, "func") or std.mem.eql(u8, kw, "funcref") or
-                std.mem.eql(u8, kw, "externref") or std.mem.eql(u8, kw, "extern"))
-            {
+            if (std.mem.eql(u8, kw, "externref") or std.mem.eql(u8, kw, "extern")) {
+                ref_type = .externref;
+                try self.advance();
+            } else if (std.mem.eql(u8, kw, "func") or std.mem.eql(u8, kw, "funcref")) {
                 try self.advance();
             }
         }
@@ -789,6 +790,8 @@ pub const Parser = struct {
                         try self.advance();
                         const func_idx: u32 = if (self.current_token == .number)
                             try std.fmt.parseInt(u32, self.current_token.number, 0)
+                        else if (self.current_token == .identifier)
+                            builder.func_names.get(self.current_token.identifier) orelse 0
                         else
                             0;
                         try init_list.append(self.allocator, .{ .ref_func = func_idx });
@@ -802,6 +805,8 @@ pub const Parser = struct {
                                 try self.advance();
                                 const func_idx: u32 = if (self.current_token == .number)
                                     try std.fmt.parseInt(u32, self.current_token.number, 0)
+                                else if (self.current_token == .identifier)
+                                    builder.func_names.get(self.current_token.identifier) orelse 0
                                 else
                                     0;
                                 try init_list.append(self.allocator, .{ .ref_func = func_idx });
@@ -810,7 +815,7 @@ pub const Parser = struct {
                                 try self.expectRightParen();
                             } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref.null")) {
                                 try self.advance();
-                                try init_list.append(self.allocator, .{ .ref_null = .funcref });
+                                try init_list.append(self.allocator, .{ .ref_null = ref_type });
                                 try self.advance();
                                 try self.expectRightParen();
                                 try self.expectRightParen();
@@ -819,6 +824,8 @@ pub const Parser = struct {
                             try self.advance();
                             const func_idx: u32 = if (self.current_token == .number)
                                 try std.fmt.parseInt(u32, self.current_token.number, 0)
+                            else if (self.current_token == .identifier)
+                                builder.func_names.get(self.current_token.identifier) orelse 0
                             else
                                 0;
                             try init_list.append(self.allocator, .{ .ref_func = func_idx });
@@ -827,7 +834,7 @@ pub const Parser = struct {
                         }
                     } else if (std.mem.eql(u8, self.current_token.identifier, "ref.null")) {
                         try self.advance();
-                        try init_list.append(self.allocator, .{ .ref_null = .funcref });
+                        try init_list.append(self.allocator, .{ .ref_null = ref_type });
                         // Consume the type argument if present
                         if (self.current_token != .right_paren) try self.advance();
                         try self.expectRightParen();
