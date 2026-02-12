@@ -18,23 +18,28 @@ pub fn evaluateConstExpr(instrs: []const Instruction, globals: []const GlobalIns
     for (instrs) |instr| {
         switch (instr) {
             .i32_const => |v| {
+                if (sp >= stack.len) return Error.InvalidConstExpr;
                 stack[sp] = .{ .i32 = v };
                 sp += 1;
             },
             .i64_const => |v| {
+                if (sp >= stack.len) return Error.InvalidConstExpr;
                 stack[sp] = .{ .i64 = v };
                 sp += 1;
             },
             .f32_const => |v| {
+                if (sp >= stack.len) return Error.InvalidConstExpr;
                 stack[sp] = .{ .f32 = @bitCast(v) };
                 sp += 1;
             },
             .f64_const => |v| {
+                if (sp >= stack.len) return Error.InvalidConstExpr;
                 stack[sp] = .{ .f64 = @bitCast(v) };
                 sp += 1;
             },
             .global_get => |idx| {
                 if (idx >= globals.len) return Error.InvalidConstExpr;
+                if (sp >= stack.len) return Error.InvalidConstExpr;
                 stack[sp] = globals[idx].value;
                 sp += 1;
             },
@@ -69,10 +74,12 @@ pub fn evaluateConstExpr(instrs: []const Instruction, globals: []const GlobalIns
                 stack[sp - 1].i64 *%= stack[sp].i64;
             },
             .v128_const => |v| {
+                if (sp >= stack.len) return Error.InvalidConstExpr;
                 stack[sp] = .{ .v128 = v };
                 sp += 1;
             },
             .ref_null => |ref_type| {
+                if (sp >= stack.len) return Error.InvalidConstExpr;
                 stack[sp] = switch (ref_type) {
                     .funcref => .{ .func_ref = null },
                     .externref => .{ .extern_ref = null },
@@ -80,6 +87,7 @@ pub fn evaluateConstExpr(instrs: []const Instruction, globals: []const GlobalIns
                 sp += 1;
             },
             .ref_func => |idx| {
+                if (sp >= stack.len) return Error.InvalidConstExpr;
                 stack[sp] = .{ .func_ref = idx };
                 sp += 1;
             },

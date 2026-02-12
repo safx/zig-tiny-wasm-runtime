@@ -1176,22 +1176,27 @@ fn validateConstExprInstructions(c: Context, instrs: []const Instruction) Error!
     for (instrs) |instr| {
         switch (instr) {
             .i32_const => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
                 type_stack[sp] = .i32;
                 sp += 1;
             },
             .i64_const => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
                 type_stack[sp] = .i64;
                 sp += 1;
             },
             .f32_const => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
                 type_stack[sp] = .f32;
                 sp += 1;
             },
             .f64_const => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
                 type_stack[sp] = .f64;
                 sp += 1;
             },
             .global_get => |idx| {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
                 const g = try c.getGlobal(idx);
                 type_stack[sp] = g.value_type;
                 sp += 1;
@@ -1207,10 +1212,12 @@ fn validateConstExprInstructions(c: Context, instrs: []const Instruction) Error!
                 sp -= 1;
             },
             .v128_const => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
                 type_stack[sp] = .v128;
                 sp += 1;
             },
             .ref_null => |ref_type| {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
                 type_stack[sp] = switch (ref_type) {
                     .funcref => .func_ref,
                     .externref => .extern_ref,
@@ -1218,6 +1225,7 @@ fn validateConstExprInstructions(c: Context, instrs: []const Instruction) Error!
                 sp += 1;
             },
             .ref_func => {
+                if (sp >= type_stack.len) return Error.TypeMismatch;
                 type_stack[sp] = .func_ref;
                 sp += 1;
             },
