@@ -68,6 +68,15 @@ pub const Lexer = struct {
                     self.advance();
                     break;
                 }
+                if (char == '\r') {
+                    self.line += 1;
+                    self.advance();
+                    // Skip \n in \r\n sequence
+                    if (self.current_char == '\n') {
+                        self.advance();
+                    }
+                    break;
+                }
                 self.advance();
             }
         } else if (self.current_char == '(' and self.pos + 1 < self.input.len and self.input[self.pos + 1] == ';') {

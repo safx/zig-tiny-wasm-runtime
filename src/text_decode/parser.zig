@@ -4654,15 +4654,40 @@ pub const Parser = struct {
                     };
                 }
 
-                // quote or instance format
+                if (std.mem.eql(u8, format_type, "quote")) {
+                    // Collect and decode quoted strings into WAT text
+                    var text_parts = std.ArrayList(u8){};
+                    defer text_parts.deinit(self.allocator);
+
+                    // Wrap in (module ...) since parseModule expects it
+                    try text_parts.appendSlice(self.allocator, "(module ");
+
+                    while (self.current_token == .string) {
+                        const decoded = try parseBinaryString(self.allocator, self.current_token.string);
+                        defer self.allocator.free(decoded);
+                        try text_parts.appendSlice(self.allocator, decoded);
+                        try self.advance();
+                    }
+
+                    try text_parts.append(self.allocator, ')');
+                    try self.expectToken(.right_paren);
+
+                    return spec_types.command.Command{
+                        .module = .{
+                            .line = line,
+                            .file_name = try self.allocator.dupe(u8, ""),
+                            .name = name,
+                            .module_data = try text_parts.toOwnedSlice(self.allocator),
+                            .module_binary = null,
+                        },
+                    };
+                }
+
+                // instance format
                 while (self.current_token == .string or self.current_token == .identifier) {
                     try self.advance();
                 }
                 try self.expectToken(.right_paren);
-
-                if (std.mem.eql(u8, format_type, "quote")) {
-                    return spec_types.command.Command{ .module_quote = {} };
-                }
 
                 return spec_types.command.Command{
                     .module = .{

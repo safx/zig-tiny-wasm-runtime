@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "timestamp": "2026-02-12T07:31:44",
-    "git_commit": "4f30d63",
+    "timestamp": "2026-02-12T12:02:37",
+    "git_commit": "d6359f7",
     "git_branch": "refactor/spec-types-v1"
   },
   "summary": {
-    "files_passed": 215,
+    "files_passed": 216,
     "files_total": 237,
-    "assertions_passed": 61594,
+    "assertions_passed": 61597,
     "assertions_total": 61857
   },
   "files": {
@@ -127,9 +127,9 @@
       "status": "partial"
     },
     "comments.wast": {
-      "passed": 0,
+      "passed": 3,
       "total": 3,
-      "status": "partial"
+      "status": "passed"
     },
     "const.wast": {
       "passed": 376,
