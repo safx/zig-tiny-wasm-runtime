@@ -285,6 +285,41 @@ pub const ModuleValidator = struct {
                 try c.checkRef(func_idx);
                 try type_stack.pushValueType(.func_ref);
             },
+            .call_ref => |type_idx| {
+                const ft = try c.getType(type_idx);
+                _ = try type_stack.polymophicPop(); // pop func ref
+                try type_stack.popValuesWithCheckingValueType(ft.parameter_types);
+                try type_stack.appendValueType(ft.result_types);
+            },
+            .return_call_ref => |type_idx| {
+                const ft = try c.getType(type_idx);
+                _ = try type_stack.polymophicPop(); // pop func ref
+                try type_stack.popValuesWithCheckingValueType(ft.parameter_types);
+                if (c.@"return") |ret| {
+                    if (ft.result_types.len != ret.len)
+                        return Error.TypeMismatch;
+                    for (ft.result_types, ret) |a, b|
+                        if (a != b) return Error.TypeMismatch;
+                } else {
+                    return Error.TypeMismatch;
+                }
+                try type_stack.setPolymophic();
+            },
+            .ref_as_non_null => {
+                _ = try type_stack.polymophicPop();
+                try type_stack.pushValueType(.func_ref);
+            },
+            .br_on_null => |label_idx| {
+                _ = try type_stack.polymophicPop(); // pop ref
+                const label = try c.getLabel(label_idx);
+                try type_stack.popValuesWithCheckingValueType(label);
+                try type_stack.appendValueType(label);
+                try type_stack.pushValueType(.func_ref); // non-null ref on fall-through
+            },
+            .br_on_non_null => |label_idx| {
+                _ = try type_stack.polymophicPop(); // pop ref (consumed on fall-through)
+                _ = try c.getLabel(label_idx);
+            },
 
             // parametric instructions
             .drop => _ = try type_stack.polymophicPop(),

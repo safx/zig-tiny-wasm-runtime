@@ -113,6 +113,13 @@ pub const Instruction = union(enum) {
     ref_is_null,
     ref_func: FuncIdx,
 
+    // typed reference instructions
+    call_ref: TypeIdx,
+    return_call_ref: TypeIdx,
+    ref_as_non_null,
+    br_on_null: LabelIdx,
+    br_on_non_null: LabelIdx,
+
     // parametric instructions
     drop,
     select,

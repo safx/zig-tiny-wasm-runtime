@@ -118,6 +118,8 @@ pub fn runtimeErrorFromString(str: []const u8) RuntimeError {
     if (strcmp(str, "undefined element")) return E.UndefinedElement;
     if (strcmp(str, "uninitialized element") or strcmp(str, "uninitialized element 2")) return E.UninitializedElement;
     if (strcmp(str, "unreachable")) return E.Unreachable;
+    if (strcmp(str, "null function reference")) return E.NullFunctionReference;
+    if (strcmp(str, "null reference")) return E.NullReference;
 
     std.debug.print("? Unknown runtime error \"{s}\"\n", .{str});
     return E.OtherError;

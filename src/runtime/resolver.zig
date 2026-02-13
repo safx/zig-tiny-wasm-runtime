@@ -62,7 +62,15 @@ fn isMatchFuncType(a: FuncType, b: FuncType) bool {
 }
 
 fn isMatchTableType(a: TableType, b: TableType) bool {
-    return a.ref_type == b.ref_type and a.is_64 == b.is_64 and isValidLimits(a.limits, b.limits);
+    if (a.is_64 != b.is_64) return false;
+    if (!isValidLimits(a.limits, b.limits)) return false;
+    // Table element types must match exactly (invariant, because tables are mutable)
+    return exactRefMatch(
+        valueTypeFromRefType(a.ref_type),
+        a.ref_type_ext,
+        valueTypeFromRefType(b.ref_type),
+        b.ref_type_ext,
+    );
 }
 
 fn isMatchMemType(a: MemoryType, b: MemoryType) bool {
@@ -70,8 +78,37 @@ fn isMatchMemType(a: MemoryType, b: MemoryType) bool {
 }
 
 fn isMatchGlobalType(a: GlobalType, b: GlobalType) bool {
-    return a.mutability == b.mutability and
-        a.value_type == b.value_type;
+    if (a.mutability != b.mutability) return false;
+    if (a.mutability == .mutable) {
+        // mutable: exact match required
+        return exactRefMatch(a.value_type, a.ref_type_ext, b.value_type, b.ref_type_ext);
+    }
+    // immutable: export type <: import type
+    return isValSubtype(a.value_type, a.ref_type_ext, b.value_type, b.ref_type_ext);
+}
+
+fn isValSubtype(exp_vt: ValueType, exp_ext: ?core.types.RefTypeExt, imp_vt: ValueType, imp_ext: ?core.types.RefTypeExt) bool {
+    // non-ref types: exact match
+    if (exp_vt != .func_ref and exp_vt != .extern_ref) return exp_vt == imp_vt;
+    if (imp_vt != .func_ref and imp_vt != .extern_ref) return false;
+    // ext info not available: fallback to ValueType match
+    const e = exp_ext orelse return exp_vt == imp_vt;
+    const i = imp_ext orelse return exp_vt == imp_vt;
+    return e.isSubtypeOf(i);
+}
+
+fn exactRefMatch(a_vt: ValueType, a_ext: ?core.types.RefTypeExt, b_vt: ValueType, b_ext: ?core.types.RefTypeExt) bool {
+    if (a_vt != b_vt) return false;
+    const a = a_ext orelse return b_ext == null;
+    const b = b_ext orelse return false;
+    return a.eql(b);
+}
+
+fn valueTypeFromRefType(rt: core.types.RefType) ValueType {
+    return switch (rt) {
+        .funcref => .func_ref,
+        .externref => .extern_ref,
+    };
 }
 
 fn isValidLimits(a: Limits, b: Limits) bool {

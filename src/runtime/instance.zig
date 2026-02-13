@@ -452,6 +452,11 @@ pub const Instance = struct {
             .ref_null => |ref_type| try self.opRefNull(ref_type),
             .ref_is_null => try self.opIsNull(),
             .ref_func => |func_idx| try self.opRefFunc(func_idx),
+            .call_ref => return try self.opCallRef(),
+            .return_call_ref => return try self.opReturnCallRef(),
+            .ref_as_non_null => try self.opRefAsNonNull(),
+            .br_on_null => |label_idx| return try self.opBrOnNull(label_idx),
+            .br_on_non_null => |label_idx| return try self.opBrOnNonNull(label_idx),
 
             // parametric instructions
             .drop => _ = self.stack.pop(),
@@ -1132,6 +1137,53 @@ pub const Instance = struct {
         const module = self.stack.topFrame().module;
         const a = module.func_addrs[func_idx];
         try self.stack.push(.{ .value = .{ .func_ref = a } });
+    }
+
+    // typed reference instructions
+
+    /// call_ref: pop funcref, if null trap, otherwise call
+    inline fn opCallRef(self: *Self) Error!FlowControl {
+        const val = self.stack.pop().value;
+        if (val.func_ref) |func_addr| {
+            return .{ .call = func_addr };
+        }
+        return Error.NullFunctionReference;
+    }
+
+    /// return_call_ref: pop funcref, if null trap, otherwise tail call
+    inline fn opReturnCallRef(self: *Self) Error!FlowControl {
+        const val = self.stack.pop().value;
+        if (val.func_ref) |func_addr| {
+            return .{ .tail_call = func_addr };
+        }
+        return Error.NullFunctionReference;
+    }
+
+    /// ref.as_non_null: pop ref, trap if null, push back
+    inline fn opRefAsNonNull(self: *Self) (Error || error{OutOfMemory})!void {
+        const val = self.stack.pop().value;
+        if (val.isNull()) return Error.NullReference;
+        try self.stack.push(.{ .value = val });
+    }
+
+    /// br_on_null: pop ref, if null branch, otherwise push back
+    inline fn opBrOnNull(self: *Self, label_idx: LabelIdx) !FlowControl {
+        const val = self.stack.pop().value;
+        if (val.isNull()) {
+            return self.opBr(label_idx);
+        }
+        try self.stack.push(.{ .value = val });
+        return FlowControl.none;
+    }
+
+    /// br_on_non_null: pop ref, if non-null push back and branch
+    inline fn opBrOnNonNull(self: *Self, label_idx: LabelIdx) !FlowControl {
+        const val = self.stack.pop().value;
+        if (!val.isNull()) {
+            try self.stack.push(.{ .value = val });
+            return self.opBr(label_idx);
+        }
+        return FlowControl.none;
     }
 
     // parametric instructions

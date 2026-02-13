@@ -27,6 +27,11 @@ pub fn opcodeFromName(name: []const u8) ?InstructionTag {
         .{ "ref.null", .ref_null },
         .{ "ref.is_null", .ref_is_null },
         .{ "ref.func", .ref_func },
+        .{ "call_ref", .call_ref },
+        .{ "return_call_ref", .return_call_ref },
+        .{ "ref.as_non_null", .ref_as_non_null },
+        .{ "br_on_null", .br_on_null },
+        .{ "br_on_non_null", .br_on_non_null },
         
         // Parametric instructions
         .{ "drop", .drop },

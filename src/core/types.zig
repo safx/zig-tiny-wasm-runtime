@@ -33,6 +33,35 @@ pub const ValueType = enum(u8) {
     }
 };
 
+pub const HeapType = union(enum) {
+    func_ht,
+    extern_ht,
+    type_idx: u32,
+
+    pub fn isSubtypeOf(self: HeapType, other: HeapType) bool {
+        if (std.meta.eql(self, other)) return true;
+        // concrete func type is subtype of abstract func
+        if (self == .type_idx and other == .func_ht) return true;
+        return false;
+    }
+};
+
+pub const RefTypeExt = struct {
+    heap_type: HeapType,
+    nullable: bool,
+
+    /// self <: other ?
+    pub fn isSubtypeOf(self: RefTypeExt, other: RefTypeExt) bool {
+        // nullable cannot be subtype of non-nullable
+        if (!other.nullable and self.nullable) return false;
+        return self.heap_type.isSubtypeOf(other.heap_type);
+    }
+
+    pub fn eql(self: RefTypeExt, other: RefTypeExt) bool {
+        return self.nullable == other.nullable and std.meta.eql(self.heap_type, other.heap_type);
+    }
+};
+
 pub const FuncType = struct {
     parameter_types: []const ValueType,
     result_types: []const ValueType,
@@ -120,6 +149,7 @@ pub const TableType = struct {
     limits: Limits,
     ref_type: RefType,
     is_64: bool = false,
+    ref_type_ext: ?RefTypeExt = null,
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         _ = try writer.print("{f}:{f}", .{ self.limits, self.ref_type });
@@ -129,6 +159,7 @@ pub const TableType = struct {
 pub const GlobalType = struct {
     value_type: ValueType,
     mutability: Mutability,
+    ref_type_ext: ?RefTypeExt = null,
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         _ = try writer.print("{f}:{f}", .{ self.mutability, self.value_type });

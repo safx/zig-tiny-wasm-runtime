@@ -186,14 +186,24 @@ pub const ModuleLoader = struct {
     }
 
     fn table(self: *Self) Error!types.TableType {
-        const rtype = try self.refType();
+        // Peek byte to check for ref type encoding (0x63/0x64)
+        const peek_pos = self.reader.position;
+        const peek_byte = try self.reader.readU8();
+        self.reader.position = peek_pos;
+
+        var table_ref_ext: ?types.RefTypeExt = null;
+        const rtype = if (peek_byte == 0x63 or peek_byte == 0x64) blk: {
+            const result = try self.readRefTypeExt();
+            table_ref_ext = result.ext;
+            break :blk result.ref_type;
+        } else try self.refType();
         // Peek at the flags byte to detect table64 (bit 2 = 0x04)
         const flags_pos = self.reader.position;
         const flags = try self.reader.readU8();
         const is_64 = (flags & 0x04) != 0;
         self.reader.position = flags_pos;
         const limit = try self.limits();
-        return .{ .limits = limit, .ref_type = rtype, .is_64 = is_64 };
+        return .{ .limits = limit, .ref_type = rtype, .is_64 = is_64, .ref_type_ext = table_ref_ext };
     }
 
     fn memtype(self: *Self) Error!types.MemoryType {
@@ -373,9 +383,19 @@ pub const ModuleLoader = struct {
     }
 
     fn globalType(self: *Self) Error!types.GlobalType {
-        const vtype = try self.valueType();
+        // Peek byte to check for ref type encoding (0x63/0x64)
+        const peek_pos = self.reader.position;
+        const peek_byte = try self.reader.readU8();
+        self.reader.position = peek_pos;
+
+        var ref_ext: ?types.RefTypeExt = null;
+        const vtype = if (peek_byte == 0x63 or peek_byte == 0x64) blk: {
+            const result = try self.readRefTypeExt();
+            ref_ext = result.ext;
+            break :blk result.value_type;
+        } else try self.valueType();
         const m = try self.mut();
-        return .{ .mutability = m, .value_type = vtype };
+        return .{ .mutability = m, .value_type = vtype, .ref_type_ext = ref_ext };
     }
 
     fn initExpr(self: *Self) (Error || error{OutOfMemory})!types.InitExpression {
@@ -540,6 +560,42 @@ pub const ModuleLoader = struct {
     fn refType(self: *Self) Error!types.RefType {
         const byte = try self.reader.readU8();
         return utils.refTypeFromNum(byte) orelse return Error.MalformedRefType;
+    }
+
+    const ReadRefTypeExtResult = struct {
+        ref_type: types.RefType,
+        value_type: types.ValueType,
+        ext: types.RefTypeExt,
+    };
+
+    fn readRefTypeExt(self: *Self) Error!ReadRefTypeExtResult {
+        const byte = try self.reader.readU8();
+        switch (byte) {
+            0x63, 0x64 => {
+                const nullable = byte == 0x64;
+                // Read heap type as signed LEB128 (i33 spec, use i64)
+                const ht_byte = try self.reader.readVarI64();
+                const heap_type: types.HeapType = if (ht_byte < 0) switch (ht_byte) {
+                    -0x10 => .func_ht,
+                    -0x11 => .extern_ht,
+                    else => .func_ht,
+                } else .{ .type_idx = @intCast(ht_byte) };
+                const base_ref: types.RefType = switch (heap_type) {
+                    .extern_ht => .externref,
+                    else => .funcref,
+                };
+                const base_vt: types.ValueType = switch (heap_type) {
+                    .extern_ht => .extern_ref,
+                    else => .func_ref,
+                };
+                return .{
+                    .ref_type = base_ref,
+                    .value_type = base_vt,
+                    .ext = .{ .heap_type = heap_type, .nullable = nullable },
+                };
+            },
+            else => return Error.MalformedRefType,
+        }
     }
 
     fn limits(self: *Self) Error!types.Limits {

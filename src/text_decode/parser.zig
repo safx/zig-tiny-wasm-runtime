@@ -170,6 +170,8 @@ pub const Parser = struct {
     types_pass_done: bool = false,
     // Position of last consumed left_paren (for module text extraction)
     last_left_paren_pos: usize = 0,
+    // Last parsed reference type extension info (set by parseValueType for ref types)
+    last_ref_type_ext: ?wasm_core.types.RefTypeExt = null,
 
     pub fn init(allocator: std.mem.Allocator, input: []const u8, builder: *ModuleBuilder) !Parser {
         var lexer = Lexer.init(input);
@@ -726,14 +728,14 @@ pub const Parser = struct {
                     try self.advance();
                     if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "offset")) {
                         try self.advance();
-                        offset = try self.parseInitExpression();
+                        offset = try self.parseSingleInitExpression();
                         try self.expectRightParen(); // close offset
                     } else {
                         // Restore and parse as init expression
                         self.lexer.pos = saved_pos2;
                         self.lexer.current_char = saved_char2;
                         self.current_token = saved_token2;
-                        offset = try self.parseInitExpression();
+                        offset = try self.parseSingleInitExpression();
                     }
                 }
 
@@ -741,7 +743,7 @@ pub const Parser = struct {
             } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "offset")) {
                 // (offset (i32.const 0))
                 try self.advance();
-                offset = try self.parseInitExpression();
+                offset = try self.parseSingleInitExpression();
                 try self.expectRightParen(); // close offset
                 mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
             } else {
@@ -749,7 +751,7 @@ pub const Parser = struct {
                 self.lexer.pos = saved_pos;
                 self.lexer.current_char = saved_char;
                 self.current_token = saved_token;
-                offset = try self.parseInitExpression();
+                offset = try self.parseSingleInitExpression();
                 mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
             }
         }
@@ -1001,10 +1003,11 @@ pub const Parser = struct {
                 }
 
                 // Add to imports
+                const ref_ext = self.last_ref_type_ext;
                 try builder.imports.append(self.allocator, .{
                     .module_name = module_name,
                     .name = field_name,
-                    .desc = .{ .global = .{ .value_type = value_type, .mutability = mutability } },
+                    .desc = .{ .global = .{ .value_type = value_type, .mutability = mutability, .ref_type_ext = ref_ext } },
                 });
 
                 if (global_name) |name| {
@@ -1084,9 +1087,10 @@ pub const Parser = struct {
             init_expr = try self.parseInitExpression();
         }
 
+        const ref_ext = self.last_ref_type_ext;
         const global_idx: u32 = builder.countImportGlobals() + @as(u32, @intCast(builder.globals.items.len));
         try builder.globals.append(self.allocator, .{
-            .type = .{ .value_type = value_type, .mutability = mutability },
+            .type = .{ .value_type = value_type, .mutability = mutability, .ref_type_ext = ref_ext },
             .init = init_expr,
         });
 
@@ -1295,7 +1299,8 @@ pub const Parser = struct {
                 value_type = try self.parseValueType() orelse .i32;
             }
 
-            break :blk wasm_core.types.ImportDesc{ .global = .{ .value_type = value_type, .mutability = mutability } };
+            const ref_ext_import = self.last_ref_type_ext;
+            break :blk wasm_core.types.ImportDesc{ .global = .{ .value_type = value_type, .mutability = mutability, .ref_type_ext = ref_ext_import } };
         } else if (std.mem.eql(u8, desc_type, "table")) blk: {
             // Skip optional $name
             if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
@@ -1326,26 +1331,22 @@ pub const Parser = struct {
                 try self.advance();
             }
 
+            var table_ref_ext: ?wasm_core.types.RefTypeExt = null;
             if (self.current_token == .identifier) {
                 ref_type = try self.parseRefType();
+                // funcref/externref keywords are nullable
+                table_ref_ext = .{
+                    .heap_type = if (ref_type == .funcref) .func_ht else .extern_ht,
+                    .nullable = true,
+                };
             } else if (self.current_token == .left_paren) {
-                // Handle (ref null func) style ref type
+                // Handle (ref null func) style ref type - use parseValueType which sets last_ref_type_ext
                 const saved_pos4 = self.lexer.pos;
                 const saved_char4 = self.lexer.current_char;
                 const saved_token4 = self.current_token;
-                try self.advance();
-                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref")) {
-                    try self.advance();
-                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "null")) {
-                        try self.advance();
-                    }
-                    if (self.current_token == .identifier) {
-                        ref_type = try self.parseRefType();
-                    } else if (self.current_token == .number) {
-                        // Numeric type index
-                        try self.advance();
-                    }
-                    try self.expectRightParen();
+                if (try self.parseValueType()) |vt| {
+                    ref_type = if (vt == .extern_ref) .externref else .funcref;
+                    table_ref_ext = self.last_ref_type_ext;
                 } else {
                     self.lexer.pos = saved_pos4;
                     self.lexer.current_char = saved_char4;
@@ -1353,7 +1354,7 @@ pub const Parser = struct {
                 }
             }
 
-            break :blk wasm_core.types.ImportDesc{ .table = .{ .limits = .{ .min = min, .max = max }, .ref_type = ref_type, .is_64 = table_is_64 } };
+            break :blk wasm_core.types.ImportDesc{ .table = .{ .limits = .{ .min = min, .max = max }, .ref_type = ref_type, .is_64 = table_is_64, .ref_type_ext = table_ref_ext } };
         } else if (std.mem.eql(u8, desc_type, "memory")) blk: {
             // Skip optional $name
             if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
@@ -1469,23 +1470,18 @@ pub const Parser = struct {
                     try self.advance();
                 }
 
+                var import_ref_ext: ?wasm_core.types.RefTypeExt = null;
                 if (self.current_token == .identifier) {
                     ref_type = try self.parseRefType();
+                    import_ref_ext = .{
+                        .heap_type = if (ref_type == .funcref) .func_ht else .extern_ht,
+                        .nullable = true,
+                    };
                 } else if (self.current_token == .left_paren) {
-                    // Handle (ref null func) etc.
                     const sp = .{ self.lexer.pos, self.lexer.current_char, self.current_token };
-                    try self.advance();
-                    if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref")) {
-                        try self.advance();
-                        if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "null")) {
-                            try self.advance();
-                        }
-                        if (self.current_token == .identifier) {
-                            ref_type = try self.parseRefType();
-                        } else if (self.current_token == .number) {
-                            try self.advance();
-                        }
-                        try self.expectRightParen();
+                    if (try self.parseValueType()) |vt| {
+                        ref_type = if (vt == .extern_ref) .externref else .funcref;
+                        import_ref_ext = self.last_ref_type_ext;
                     } else {
                         self.lexer.pos = sp[0];
                         self.lexer.current_char = sp[1];
@@ -1497,6 +1493,7 @@ pub const Parser = struct {
                     .limits = .{ .min = min, .max = max },
                     .ref_type = ref_type,
                     .is_64 = import_is_64,
+                    .ref_type_ext = import_ref_ext,
                 };
 
                 const import_desc = wasm_core.types.ImportDesc{
@@ -1594,14 +1591,30 @@ pub const Parser = struct {
                     max2 = std.math.cast(u32, val) orelse std.math.maxInt(u32);
                     try self.advance();
                 }
+                var exp_imp_ref_ext: ?wasm_core.types.RefTypeExt = null;
                 if (self.current_token == .identifier) {
                     ref_type2 = try self.parseRefType();
+                    exp_imp_ref_ext = .{
+                        .heap_type = if (ref_type2 == .funcref) .func_ht else .extern_ht,
+                        .nullable = true,
+                    };
+                } else if (self.current_token == .left_paren) {
+                    const sp2 = .{ self.lexer.pos, self.lexer.current_char, self.current_token };
+                    if (try self.parseValueType()) |vt| {
+                        ref_type2 = if (vt == .extern_ref) .externref else .funcref;
+                        exp_imp_ref_ext = self.last_ref_type_ext;
+                    } else {
+                        self.lexer.pos = sp2[0];
+                        self.lexer.current_char = sp2[1];
+                        self.current_token = sp2[2];
+                    }
                 }
 
                 const table_type = wasm_core.types.TableType{
                     .limits = .{ .min = min2, .max = max2 },
                     .ref_type = ref_type2,
                     .is_64 = export_import_is_64,
+                    .ref_type_ext = exp_imp_ref_ext,
                 };
 
                 try builder.imports.append(self.allocator, .{
@@ -1660,55 +1673,21 @@ pub const Parser = struct {
         }
 
         // Parse ref type (funcref, externref, or (ref null ...))
+        var local_ref_ext: ?wasm_core.types.RefTypeExt = null;
         if (self.current_token == .identifier) {
             ref_type = try self.parseRefType();
+            local_ref_ext = .{
+                .heap_type = if (ref_type == .funcref) .func_ht else .extern_ht,
+                .nullable = true,
+            };
         } else if (self.current_token == .left_paren) {
             const saved_pos = self.lexer.pos;
             const saved_char = self.lexer.current_char;
             const saved_token = self.current_token;
-
-            try self.advance();
-            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref")) {
-                try self.advance();
-                if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "null")) {
-                    try self.advance();
-                    // Parse ref type or type index
-                    if (self.current_token == .identifier) {
-                        // Try to parse as ref type (func/funcref/extern/externref)
-                        const is_ref_type = std.mem.eql(u8, self.current_token.identifier, "func") or
-                            std.mem.eql(u8, self.current_token.identifier, "funcref") or
-                            std.mem.eql(u8, self.current_token.identifier, "extern") or
-                            std.mem.eql(u8, self.current_token.identifier, "externref");
-                        if (is_ref_type) {
-                            ref_type = try self.parseRefType();
-                        } else {
-                            // Type index ($t) - treat as funcref
-                            ref_type = .funcref;
-                            try self.advance();
-                        }
-                    } else if (self.current_token == .number) {
-                        // Type index (number) - treat as funcref
-                        ref_type = .funcref;
-                        try self.advance();
-                    }
-                    try self.expectRightParen();
-                } else if (self.current_token == .identifier) {
-                    // (ref func) / (ref extern) / (ref $type) without null
-                    ref_type = try self.parseRefType();
-                    try self.expectRightParen();
-                } else if (self.current_token == .number) {
-                    // (ref 0) - numeric type index
-                    ref_type = .funcref;
-                    try self.advance();
-                    try self.expectRightParen();
-                } else {
-                    // Not a recognized (ref ...), restore
-                    self.lexer.pos = saved_pos;
-                    self.lexer.current_char = saved_char;
-                    self.current_token = saved_token;
-                }
+            if (try self.parseValueType()) |vt| {
+                ref_type = if (vt == .extern_ref) .externref else .funcref;
+                local_ref_ext = self.last_ref_type_ext;
             } else {
-                // Not (ref ...), restore
                 self.lexer.pos = saved_pos;
                 self.lexer.current_char = saved_char;
                 self.current_token = saved_token;
@@ -1778,6 +1757,7 @@ pub const Parser = struct {
                     .ref_type = ref_type,
                     .limits = .{ .min = min, .max = max },
                     .is_64 = local_is_64,
+                    .ref_type_ext = local_ref_ext,
                 });
 
                 if (table_name) |name| {
@@ -1825,6 +1805,7 @@ pub const Parser = struct {
                     .ref_type = ref_type,
                     .limits = .{ .min = min, .max = max },
                     .is_64 = local_is_64,
+                    .ref_type_ext = local_ref_ext,
                 });
 
                 if (table_name) |name| {
@@ -1880,6 +1861,7 @@ pub const Parser = struct {
             .ref_type = ref_type,
             .limits = .{ .min = min, .max = max },
             .is_64 = local_is_64,
+            .ref_type_ext = local_ref_ext,
         });
 
         if (table_name) |name| {
@@ -2588,13 +2570,16 @@ pub const Parser = struct {
 
     /// Parse a value type (i32, i64, f32, f64, v128, funcref, externref, ref)
     fn parseValueType(self: *Parser) !?wasm_core.types.ValueType {
+        self.last_ref_type_ext = null;
         // Handle (ref ...) syntax
         if (self.current_token == .left_paren) {
             try self.advance(); // consume '('
             if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "ref")) {
                 try self.advance(); // consume 'ref'
-                // Skip optional 'null' in (ref null <heaptype>)
+                // Check for optional 'null' in (ref null <heaptype>)
+                var nullable = false;
                 if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "null")) {
+                    nullable = true;
                     try self.advance();
                 }
                 if (self.current_token == .identifier) {
@@ -2603,20 +2588,27 @@ pub const Parser = struct {
                     try self.expectRightParen();
                     // Map ref types to basic reference types
                     if (std.mem.eql(u8, ref_type, "extern")) {
+                        self.last_ref_type_ext = .{ .heap_type = .extern_ht, .nullable = nullable };
                         return .extern_ref;
                     } else if (std.mem.eql(u8, ref_type, "func")) {
+                        self.last_ref_type_ext = .{ .heap_type = .func_ht, .nullable = nullable };
                         return .func_ref;
                     }
                     // For named types ($t) treat as funcref (most common for typed function refs)
                     if (ref_type.len > 0 and ref_type[0] == '$') {
+                        const type_idx = self.builder.type_names.get(ref_type) orelse 0;
+                        self.last_ref_type_ext = .{ .heap_type = .{ .type_idx = type_idx }, .nullable = nullable };
                         return .func_ref;
                     }
                     // For other ref types (GC heap types), return externref as fallback
+                    self.last_ref_type_ext = .{ .heap_type = .extern_ht, .nullable = nullable };
                     return .extern_ref;
                 } else if (self.current_token == .number) {
                     // Numeric type index (ref null 0) - treat as funcref
+                    const type_idx = std.fmt.parseInt(u32, self.current_token.number, 0) catch 0;
                     try self.advance();
                     try self.expectRightParen();
+                    self.last_ref_type_ext = .{ .heap_type = .{ .type_idx = type_idx }, .nullable = nullable };
                     return .func_ref;
                 }
             }
@@ -2636,23 +2628,31 @@ pub const Parser = struct {
             .f64
         else if (std.mem.eql(u8, type_name, "v128"))
             .v128
-        else if (std.mem.eql(u8, type_name, "funcref"))
-            .func_ref
-        else if (std.mem.eql(u8, type_name, "externref"))
-            .extern_ref
-        else if (std.mem.eql(u8, type_name, "anyref"))
-            .extern_ref
-        else if (std.mem.eql(u8, type_name, "exnref"))
-            .extern_ref
-        else if (std.mem.eql(u8, type_name, "nullexnref"))
-            .extern_ref
-        else if (std.mem.eql(u8, type_name, "nullfuncref"))
-            .func_ref
-        else if (std.mem.eql(u8, type_name, "nullexternref"))
-            .extern_ref
-        else if (std.mem.eql(u8, type_name, "nullref"))
-            .extern_ref
-        else
+        else if (std.mem.eql(u8, type_name, "funcref")) blk: {
+            self.last_ref_type_ext = .{ .heap_type = .func_ht, .nullable = true };
+            break :blk .func_ref;
+        } else if (std.mem.eql(u8, type_name, "externref")) blk: {
+            self.last_ref_type_ext = .{ .heap_type = .extern_ht, .nullable = true };
+            break :blk .extern_ref;
+        } else if (std.mem.eql(u8, type_name, "anyref")) blk: {
+            self.last_ref_type_ext = .{ .heap_type = .extern_ht, .nullable = true };
+            break :blk .extern_ref;
+        } else if (std.mem.eql(u8, type_name, "exnref")) blk: {
+            self.last_ref_type_ext = .{ .heap_type = .extern_ht, .nullable = true };
+            break :blk .extern_ref;
+        } else if (std.mem.eql(u8, type_name, "nullexnref")) blk: {
+            self.last_ref_type_ext = .{ .heap_type = .extern_ht, .nullable = true };
+            break :blk .extern_ref;
+        } else if (std.mem.eql(u8, type_name, "nullfuncref")) blk: {
+            self.last_ref_type_ext = .{ .heap_type = .func_ht, .nullable = true };
+            break :blk .func_ref;
+        } else if (std.mem.eql(u8, type_name, "nullexternref")) blk: {
+            self.last_ref_type_ext = .{ .heap_type = .extern_ht, .nullable = true };
+            break :blk .extern_ref;
+        } else if (std.mem.eql(u8, type_name, "nullref")) blk: {
+            self.last_ref_type_ext = .{ .heap_type = .extern_ht, .nullable = true };
+            break :blk .extern_ref;
+        } else
             return null;
 
         try self.advance();
@@ -2804,6 +2804,106 @@ pub const Parser = struct {
             return TextDecodeError.UnexpectedToken;
         }
         try self.advance();
+    }
+
+    /// Parse exactly one parenthesized init expression (non-greedy).
+    /// Used by parseElem for offset parsing to avoid consuming subsequent elem init expressions.
+    fn parseSingleInitExpression(self: *Parser) !wasm_core.types.InitExpression {
+        if (self.current_token != .left_paren) return .{ .i32_const = 0 };
+        try self.advance(); // consume '('
+
+        if (self.current_token != .identifier) {
+            try self.expectRightParen();
+            return .{ .i32_const = 0 };
+        }
+
+        const instr_name = self.current_token.identifier;
+        try self.advance();
+
+        if (std.mem.eql(u8, instr_name, "i32.const")) {
+            if (self.current_token == .number) {
+                const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .i32_const = val };
+            }
+            try self.expectRightParen();
+            return .{ .i32_const = 0 };
+        } else if (std.mem.eql(u8, instr_name, "i64.const")) {
+            if (self.current_token == .number) {
+                const val = try std.fmt.parseInt(i64, self.current_token.number, 0);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .i64_const = val };
+            }
+            try self.expectRightParen();
+            return .{ .i64_const = 0 };
+        } else if (std.mem.eql(u8, instr_name, "f32.const")) {
+            if (self.current_token == .number) {
+                const val = try numeric_parser.parseFloat(f32, self.current_token.number);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .f32_const = val };
+            }
+            try self.expectRightParen();
+            return .{ .f32_const = 0.0 };
+        } else if (std.mem.eql(u8, instr_name, "f64.const")) {
+            if (self.current_token == .number) {
+                const val = try numeric_parser.parseFloat(f64, self.current_token.number);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .f64_const = val };
+            }
+            try self.expectRightParen();
+            return .{ .f64_const = 0.0 };
+        } else if (std.mem.eql(u8, instr_name, "ref.func")) {
+            if (self.current_token == .number) {
+                const val = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .ref_func = val };
+            } else if (self.current_token == .identifier) {
+                const name = self.current_token.identifier;
+                const func_idx = self.builder.func_names.get(name) orelse 0;
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .ref_func = func_idx };
+            }
+            try self.expectRightParen();
+            return .{ .ref_func = 0 };
+        } else if (std.mem.eql(u8, instr_name, "ref.null")) {
+            const rt = try self.parseRefType();
+            try self.expectRightParen();
+            return .{ .ref_null = rt };
+        } else if (std.mem.eql(u8, instr_name, "global.get")) {
+            if (self.current_token == .number) {
+                const val = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .global_get = val };
+            } else if (self.current_token == .identifier) {
+                const name = self.current_token.identifier;
+                const global_idx = self.builder.global_names.get(name) orelse 0;
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .global_get = global_idx };
+            }
+            try self.expectRightParen();
+            return .{ .global_get = 0 };
+        } else {
+            // Unknown init expression - skip to closing paren
+            var depth: u32 = 1;
+            while (depth > 0 and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    depth += 1;
+                } else if (self.current_token == .right_paren) {
+                    depth -= 1;
+                }
+                if (depth > 0) try self.advance();
+            }
+            if (self.current_token == .right_paren) try self.advance();
+            return .{ .i32_const = 0 };
+        }
     }
 
     /// Parse init expression for globals, data, and element offsets
@@ -3328,13 +3428,18 @@ pub const Parser = struct {
             .ref_null => return .{ .ref_null = try self.parseRefType() },
             .ref_is_null => return .ref_is_null,
             .ref_func => return .{ .ref_func = try self.parseU32OrIdentifier() },
+            .call_ref => return .{ .call_ref = try self.parseTypeIndex() },
+            .return_call_ref => return .{ .return_call_ref = try self.parseTypeIndex() },
+            .ref_as_non_null => return .ref_as_non_null,
+            .br_on_null => return .{ .br_on_null = try self.parseLabelIndex() },
+            .br_on_non_null => return .{ .br_on_non_null = try self.parseLabelIndex() },
 
             // Variable instructions
             .local_get => return .{ .local_get = try self.parseU32OrIdentifier() },
             .local_set => return .{ .local_set = try self.parseU32OrIdentifier() },
             .local_tee => return .{ .local_tee = try self.parseU32OrIdentifier() },
-            .global_get => return .{ .global_get = try self.parseU32OrIdentifier() },
-            .global_set => return .{ .global_set = try self.parseU32OrIdentifier() },
+            .global_get => return .{ .global_get = try self.parseGlobalIndex() },
+            .global_set => return .{ .global_set = try self.parseGlobalIndex() },
             // table instructions
             .table_get => return .{ .table_get = try self.parseOptionalTableIdx() },
             .table_set => return .{ .table_set = try self.parseOptionalTableIdx() },
@@ -4145,6 +4250,28 @@ pub const Parser = struct {
             const id = self.current_token.identifier;
             try self.advance();
             if (self.builder.type_names.get(id)) |idx| {
+                return idx;
+            }
+            return 0;
+        }
+        return TextDecodeError.UnexpectedToken;
+    }
+
+    /// Parse a global index — number or $name resolved via global_names first
+    fn parseGlobalIndex(self: *Parser) !u32 {
+        if (self.current_token == .number) {
+            const num = try std.fmt.parseInt(u32, self.current_token.number, 0);
+            try self.advance();
+            return num;
+        } else if (self.current_token == .identifier) {
+            const id = self.current_token.identifier;
+            try self.advance();
+            // Check global_names first for global.get/global.set
+            if (self.builder.global_names.get(id)) |idx| {
+                return idx;
+            }
+            // Fallback to generic lookup
+            if (self.builder.func_names.get(id)) |idx| {
                 return idx;
             }
             return 0;

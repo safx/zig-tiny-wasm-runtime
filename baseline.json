@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "timestamp": "2026-02-12T23:30:54",
-    "git_commit": "04b1a02",
+    "timestamp": "2026-02-13T21:35:22",
+    "git_commit": "d76216b",
     "git_branch": "main"
   },
   "summary": {
-    "files_passed": 222,
+    "files_passed": 228,
     "files_total": 237,
-    "assertions_passed": 61679,
+    "assertions_passed": 61776,
     "assertions_total": 61857
   },
   "files": {
@@ -82,14 +82,14 @@
       "status": "passed"
     },
     "br_on_non_null.wast": {
-      "passed": 2,
+      "passed": 9,
       "total": 9,
-      "status": "partial"
+      "status": "passed"
     },
     "br_on_null.wast": {
-      "passed": 2,
+      "passed": 7,
       "total": 7,
-      "status": "partial"
+      "status": "passed"
     },
     "br_table.wast": {
       "passed": 185,
@@ -122,9 +122,9 @@
       "status": "passed"
     },
     "call_ref.wast": {
-      "passed": 8,
+      "passed": 31,
       "total": 31,
-      "status": "partial"
+      "status": "passed"
     },
     "comments.wast": {
       "passed": 3,
@@ -167,9 +167,9 @@
       "status": "passed"
     },
     "elem.wast": {
-      "passed": 72,
+      "passed": 64,
       "total": 72,
-      "status": "passed"
+      "status": "partial"
     },
     "endianness.wast": {
       "passed": 68,
@@ -382,9 +382,9 @@
       "status": "passed"
     },
     "linking.wast": {
-      "passed": 112,
+      "passed": 133,
       "total": 133,
-      "status": "partial"
+      "status": "passed"
     },
     "linking0.wast": {
       "passed": 4,
@@ -617,9 +617,9 @@
       "status": "passed"
     },
     "ref_as_non_null.wast": {
-      "passed": 3,
+      "passed": 5,
       "total": 5,
-      "status": "partial"
+      "status": "passed"
     },
     "ref_func.wast": {
       "passed": 11,
@@ -627,9 +627,9 @@
       "status": "passed"
     },
     "ref_is_null.wast": {
-      "passed": 2,
+      "passed": 18,
       "total": 18,
-      "status": "partial"
+      "status": "passed"
     },
     "ref_null.wast": {
       "passed": 32,
@@ -672,9 +672,9 @@
       "status": "passed"
     },
     "return_call_ref.wast": {
-      "passed": 15,
+      "passed": 46,
       "total": 46,
-      "status": "partial"
+      "status": "passed"
     },
     "select.wast": {
       "passed": 154,
