@@ -116,7 +116,7 @@ pub const Instance = struct {
         try self.stack.popValues(&popped_values);
 
         // 6: pop the frame
-        self.stack.popValuesAndLabelsUntilFrame();
+        self.popValuesAndLabelsUntilFrameCleanup();
         self.allocator.free(top_frame.locals);
 
         // 7: push vals
@@ -428,10 +428,17 @@ pub const Instance = struct {
     }
 
     fn clearStack(self: *Self) void {
+        if (self.pending_exception) |exc| {
+            self.allocator.free(exc.values);
+            self.pending_exception = null;
+        }
         while (self.stack.array.items.len > 0) {
             const item = self.stack.pop();
-            if (item == .frame)
-                self.allocator.free(item.frame.locals);
+            switch (item) {
+                .frame => self.allocator.free(item.frame.locals),
+                .label => |label| self.freeLabelResources(label),
+                .value => {},
+            }
         }
     }
 
@@ -979,6 +986,7 @@ pub const Instance = struct {
 
     inline fn opEnd(self: *Self) FlowControl {
         const label = self.stack.popUppermostLabel().?;
+        self.freeLabelResources(label);
         return FlowControl.newAtOpEnd(label);
     }
 
@@ -1024,8 +1032,19 @@ pub const Instance = struct {
         defer self.allocator.free(array);
         try self.stack.popValues(&array);
 
-        for (0..label_idx + 1) |_|
-            self.stack.popValuesAndUppermostLabel();
+        for (0..label_idx + 1) |_| {
+            while (true) {
+                const item = self.stack.pop();
+                switch (item) {
+                    .value => continue,
+                    .label => |lbl| {
+                        self.freeLabelResources(lbl);
+                        break;
+                    },
+                    .frame => unreachable,
+                }
+            }
+        }
 
         try self.stack.appendSlice(array);
 
@@ -1140,7 +1159,7 @@ pub const Instance = struct {
 
         // 2. Discard current frame (labels, values, frame + locals)
         const top_frame = self.stack.topFrame();
-        self.stack.popValuesAndLabelsUntilFrame();
+        self.popValuesAndLabelsUntilFrameCleanup();
         self.allocator.free(top_frame.locals);
 
         // 3. Push arguments back
@@ -1312,7 +1331,9 @@ pub const Instance = struct {
                                 // Pop everything above the try_table label
                                 // i-1 is the index of the try_table label in the stack array
                                 while (self.stack.array.items.len > i) {
-                                    _ = self.stack.pop();
+                                    const popped = self.stack.pop();
+                                    if (popped == .label)
+                                        self.freeLabelResources(popped.label);
                                 }
                                 // Now try_table label is at the top of the stack
 
@@ -1355,10 +1376,29 @@ pub const Instance = struct {
         return .not_found;
     }
 
+    /// Free heap-allocated resources owned by a label (e.g. try_table catch clauses)
+    fn freeLabelResources(self: *Self, label: Label) void {
+        if (label.type == .try_table) {
+            self.allocator.free(label.type.try_table.catches);
+        }
+    }
+
+    /// Pop all values and labels until the frame boundary, freeing label resources
+    fn popValuesAndLabelsUntilFrameCleanup(self: *Self) void {
+        while (true) {
+            const item = self.stack.pop();
+            switch (item) {
+                .frame => return,
+                .label => |label| self.freeLabelResources(label),
+                .value => {},
+            }
+        }
+    }
+
     /// Unwind the current frame without preserving return values (for exception propagation)
     fn unwindFrame(self: *Self) void {
         const top_frame = self.stack.topFrame();
-        self.stack.popValuesAndLabelsUntilFrame();
+        self.popValuesAndLabelsUntilFrameCleanup();
         self.allocator.free(top_frame.locals);
     }
 

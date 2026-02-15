@@ -385,7 +385,7 @@ pub const ModuleLoader = struct {
             3 => .{ .global = try self.globalType() },
             4 => blk: {
                 const attr = try self.reader.readU8();
-                _ = attr; // attribute byte (must be 0)
+                if (attr != 0) return Error.MalformedSectionId;
                 break :blk .{ .tag = try self.reader.readVarU32() };
             },
             else => return Error.MalformedImportKind,
