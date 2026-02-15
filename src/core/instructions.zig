@@ -43,13 +43,13 @@ pub const Instruction = union(enum) {
 
     pub const BlockInfo = struct {
         type: BlockType,
-        end: InstractionAddr = 0,
+        end: InstructionAddr = 0,
     };
 
     pub const IfBlockInfo = struct {
         type: BlockType,
-        @"else": ?InstractionAddr = null,
-        end: InstractionAddr = 0,
+        @"else": ?InstructionAddr = null,
+        end: InstructionAddr = 0,
     };
 
     pub const BlockType = union(enum) {
@@ -82,7 +82,7 @@ pub const Instruction = union(enum) {
     pub const TryTableInfo = struct {
         type: BlockType,
         catches: []const CatchClause,
-        end: InstractionAddr = 0,
+        end: InstructionAddr = 0,
     };
 
     const TagIdx = types.TagIdx;
@@ -102,7 +102,7 @@ pub const Instruction = union(enum) {
     const MemIdx = types.MemIdx;
     const GlobalIdx = types.GlobalIdx;
 
-    const InstractionAddr = types.InstractionAddr;
+    const InstructionAddr = types.InstructionAddr;
 
     end,
     @"else",

@@ -13,7 +13,7 @@ pub const LocalIdx = u32;
 pub const LabelIdx = u32;
 pub const TagIdx = u32;
 
-pub const InstractionAddr = u32;
+pub const InstructionAddr = u32;
 
 pub const RefType = wasm.RefType;
 

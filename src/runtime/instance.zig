@@ -24,7 +24,7 @@ const RefValue = local_types.RefValue;
 const ExternalValue = local_types.ExternalValue;
 const LabelType = local_types.LabelType;
 const Label = local_types.Label;
-const InstractionAddr = core.types.InstractionAddr;
+const InstructionAddr = core.types.InstructionAddr;
 const MemInst = local_types.MemInst;
 const TableInst = local_types.TableInst;
 const LabelIdx = core.types.LabelIdx;
@@ -287,7 +287,7 @@ pub const Instance = struct {
                 .global_get => |idx| blk: {
                     if (idx < num_import_globals) {
                         // Imported global: use aux_module frame (has correct store mapping)
-                        try self.execOneInstruction(instractionFromInitExpr(global.init));
+                        try self.execOneInstruction(instructionFromInitExpr(global.init));
                         break :blk self.stack.pop().value;
                     } else {
                         // Local global: use previously computed values
@@ -299,7 +299,7 @@ pub const Instance = struct {
                     }
                 },
                 else => blk: {
-                    try self.execOneInstruction(instractionFromInitExpr(global.init));
+                    try self.execOneInstruction(instructionFromInitExpr(global.init));
                     break :blk self.stack.pop().value;
                 },
             };
@@ -317,7 +317,7 @@ pub const Instance = struct {
                     .global_get => |idx| blk: {
                         // Imported globals: read from store; local globals: read from vals
                         if (idx < num_import_globals) {
-                            try self.execOneInstruction(instractionFromInitExpr(e));
+                            try self.execOneInstruction(instructionFromInitExpr(e));
                             break :blk self.stack.pop().value;
                         } else {
                             const local_idx = idx - num_import_globals;
@@ -328,7 +328,7 @@ pub const Instance = struct {
                         }
                     },
                     else => blk: {
-                        try self.execOneInstruction(instractionFromInitExpr(e));
+                        try self.execOneInstruction(instructionFromInitExpr(e));
                         break :blk self.stack.pop().value;
                     },
                 };
@@ -368,7 +368,7 @@ pub const Instance = struct {
                             const val = try const_expr.evaluateConstExpr(instrs, self.store.globals.items);
                             try self.stack.push(.{ .value = val });
                         },
-                        else => try self.execOneInstruction(instractionFromInitExpr(active_type.offset)),
+                        else => try self.execOneInstruction(instructionFromInitExpr(active_type.offset)),
                     }
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
@@ -396,7 +396,7 @@ pub const Instance = struct {
                             const val = try const_expr.evaluateConstExpr(instrs, self.store.globals.items);
                             try self.stack.push(.{ .value = val });
                         },
-                        else => try self.execOneInstruction(instractionFromInitExpr(active_type.offset)),
+                        else => try self.execOneInstruction(instructionFromInitExpr(active_type.offset)),
                     }
                     try self.execOneInstruction(.{ .i32_const = 0 });
                     try self.execOneInstruction(.{ .i32_const = @intCast(n) });
@@ -1304,7 +1304,7 @@ pub const Instance = struct {
     };
 
     const ExcHandleResult = union(enum) {
-        jump: InstractionAddr,
+        jump: InstructionAddr,
         exit,
         not_found,
     };
@@ -2476,7 +2476,7 @@ pub const Instance = struct {
     }
 };
 
-pub fn instractionFromInitExpr(init_expr: InitExpression) Instruction {
+pub fn instructionFromInitExpr(init_expr: InitExpression) Instruction {
     return switch (init_expr) {
         .i32_const => |val| .{ .i32_const = val },
         .i64_const => |val| .{ .i64_const = val },
@@ -2492,7 +2492,7 @@ pub fn instractionFromInitExpr(init_expr: InitExpression) Instruction {
 
 const FlowControl = union(enum) {
     none,
-    jump: InstractionAddr,
+    jump: InstructionAddr,
     exit,
     call: FuncAddr,
     tail_call: FuncAddr,

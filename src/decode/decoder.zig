@@ -20,7 +20,7 @@ pub const Decoder = struct {
     pub fn parseAll(_: Decoder, buffer: []const u8, allocator: std.mem.Allocator) (Error || error{OutOfMemory})![]const core.types.Instruction {
         var reader = BinaryReader.new(buffer);
         var instArray: std.ArrayList(core.types.Instruction) = .empty;
-        var nested_blocks: std.ArrayList(core.types.InstractionAddr) = .empty;
+        var nested_blocks: std.ArrayList(core.types.InstructionAddr) = .empty;
 
         while (!reader.eof()) {
             const inst = try parse(&reader, allocator);

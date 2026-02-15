@@ -113,7 +113,7 @@ pub const Stack = struct {
         return self.array.items[idx].frame;
     }
 
-    /// updates instraction pointer in the current frame
+    /// updates instruction pointer in the current frame
     pub fn updateTopFrameIp(self: *Self, ip: u32) void {
         const idx = self.find(.frame);
         self.array.items[idx].frame.ip = ip;
@@ -418,16 +418,16 @@ pub const CatchClauseRuntime = struct {
 };
 
 pub const TryTableLabel = struct {
-    end_addr: core.types.InstractionAddr,
+    end_addr: core.types.InstructionAddr,
     catches: []const CatchClauseRuntime,
 };
 
 pub const LabelType = union(enum) {
     root,
-    func: core.types.InstractionAddr,
-    block: core.types.InstractionAddr,
-    @"if": core.types.InstractionAddr,
-    loop: core.types.InstractionAddr,
+    func: core.types.InstructionAddr,
+    block: core.types.InstructionAddr,
+    @"if": core.types.InstructionAddr,
+    loop: core.types.InstructionAddr,
     try_table: TryTableLabel,
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
@@ -447,5 +447,5 @@ pub const ActivationFrame = struct {
     arity: u32 = 0,
     module: *ModuleInst = undefined,
     instructions: []const core.types.Instruction = &.{},
-    ip: core.types.InstractionAddr = 0,
+    ip: core.types.InstructionAddr = 0,
 };

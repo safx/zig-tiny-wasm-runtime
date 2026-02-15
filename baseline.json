@@ -1,14 +1,14 @@
 {
   "metadata": {
-    "timestamp": "2026-02-13T21:35:22",
-    "git_commit": "d76216b",
+    "timestamp": "2026-02-15T15:40:22",
+    "git_commit": "768e99c",
     "git_branch": "main"
   },
   "summary": {
-    "files_passed": 228,
+    "files_passed": 231,
     "files_total": 237,
-    "assertions_passed": 61776,
-    "assertions_total": 61857
+    "assertions_passed": 61846,
+    "assertions_total": 61875
   },
   "files": {
     "address.wast": {
@@ -322,9 +322,9 @@
       "status": "passed"
     },
     "imports.wast": {
-      "passed": 139,
+      "passed": 144,
       "total": 144,
-      "status": "partial"
+      "status": "passed"
     },
     "imports0.wast": {
       "passed": 6,
@@ -1102,18 +1102,18 @@
       "status": "passed"
     },
     "tag.wast": {
-      "passed": 2,
+      "passed": 4,
       "total": 4,
-      "status": "partial"
+      "status": "passed"
     },
     "throw.wast": {
-      "passed": 3,
-      "total": 5,
-      "status": "partial"
+      "passed": 12,
+      "total": 12,
+      "status": "passed"
     },
     "throw_ref.wast": {
-      "passed": 2,
-      "total": 7,
+      "passed": 13,
+      "total": 14,
       "status": "partial"
     },
     "token.wast": {
@@ -1132,8 +1132,8 @@
       "status": "passed"
     },
     "try_table.wast": {
-      "passed": 11,
-      "total": 52,
+      "passed": 54,
+      "total": 56,
       "status": "partial"
     },
     "type-canon.wast": {
