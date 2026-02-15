@@ -70,6 +70,9 @@ pub const SpecTestRunner = struct {
         var registered_modules = std.StringHashMap(*runtime.types.ModuleInst).init(self.allocator);
         defer registered_modules.deinit();
 
+        var module_definitions = std.StringHashMap([]const u8).init(self.allocator);
+        defer module_definitions.deinit();
+
         var current_module: ?*runtime.types.ModuleInst = self.loadSpectestHostModule() catch null;
 
         // Register spectest module if loaded successfully
@@ -90,47 +93,86 @@ pub const SpecTestRunner = struct {
 
             switch (cmd) {
                 .module => |arg| {
-                    if (arg.module_data) |data| {
-                        const text_decode = @import("wasm-text-decode");
-                        const module = text_decode.parseWastModule(self.allocator, data) catch |err| {
-                            if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ Failed to parse inline module: {}\n", .{err});
+                    switch (arg.kind) {
+                        .definition => {
+                            // Store WAT source as template, don't instantiate
+                            if (arg.name) |def_name| {
+                                if (arg.module_data) |data| {
+                                    try module_definitions.put(def_name, data);
+                                }
                             }
-                            continue;
-                        };
-                        current_module = self.engine.loadModule(module, arg.name orelse "") catch |err| {
-                            if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ Failed to load inline module: {}\n", .{err});
+                            if (self.verbose_level >= 2) {
+                                self.debugPrint("Stored module definition '{s}'\n", .{arg.name orelse ""});
                             }
-                            continue;
-                        };
-                        self.printModuleSummary(module, arg.name);
-                    } else if (arg.module_binary) |binary| {
-                        const decode = @import("wasm-decode");
-                        var loader = decode.Loader.new(self.allocator);
-                        const module = loader.parseAll(binary) catch |err| {
-                            if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ Failed to parse binary module: {}\n", .{err});
+                        },
+                        .instance => {
+                            // Look up definition and instantiate from template
+                            const def_name = arg.definition_name orelse continue;
+                            const def_data = module_definitions.get(def_name) orelse {
+                                if (self.verbose_level >= 1) {
+                                    self.debugPrint("✗ Module definition '{s}' not found\n", .{def_name});
+                                }
+                                continue;
+                            };
+                            const text_decode = @import("wasm-text-decode");
+                            const module = text_decode.parseWastModule(self.allocator, def_data) catch |err| {
+                                if (self.verbose_level >= 1) {
+                                    self.debugPrint("✗ Failed to parse definition module: {}\n", .{err});
+                                }
+                                continue;
+                            };
+                            current_module = self.engine.loadModule(module, arg.name orelse "") catch |err| {
+                                if (self.verbose_level >= 1) {
+                                    self.debugPrint("✗ Failed to load instance module: {}\n", .{err});
+                                }
+                                continue;
+                            };
+                            self.printModuleSummary(module, arg.name);
+                        },
+                        .normal => {
+                            if (arg.module_data) |data| {
+                                const text_decode = @import("wasm-text-decode");
+                                const module = text_decode.parseWastModule(self.allocator, data) catch |err| {
+                                    if (self.verbose_level >= 1) {
+                                        self.debugPrint("✗ Failed to parse inline module: {}\n", .{err});
+                                    }
+                                    continue;
+                                };
+                                current_module = self.engine.loadModule(module, arg.name orelse "") catch |err| {
+                                    if (self.verbose_level >= 1) {
+                                        self.debugPrint("✗ Failed to load inline module: {}\n", .{err});
+                                    }
+                                    continue;
+                                };
+                                self.printModuleSummary(module, arg.name);
+                            } else if (arg.module_binary) |binary| {
+                                const decode = @import("wasm-decode");
+                                var loader = decode.Loader.new(self.allocator);
+                                const module = loader.parseAll(binary) catch |err| {
+                                    if (self.verbose_level >= 1) {
+                                        self.debugPrint("✗ Failed to parse binary module: {}\n", .{err});
+                                    }
+                                    continue;
+                                };
+                                current_module = self.engine.loadModule(module, arg.name orelse "") catch |err| {
+                                    if (self.verbose_level >= 1) {
+                                        self.debugPrint("✗ Failed to load binary module: {}\n", .{err});
+                                    }
+                                    continue;
+                                };
+                                self.printModuleSummary(module, arg.name);
+                            } else if (arg.file_name.len > 0) {
+                                current_module = self.engine.loadModuleFromPath(arg.file_name, arg.name) catch |err| {
+                                    if (self.verbose_level >= 1) {
+                                        self.debugPrint("✗ Failed to load module from path: {}\n", .{err});
+                                    }
+                                    continue;
+                                };
+                                if (current_module) |mod_inst| {
+                                    self.printModuleInstSummary(mod_inst, arg.name);
+                                }
                             }
-                            continue;
-                        };
-                        current_module = self.engine.loadModule(module, arg.name orelse "") catch |err| {
-                            if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ Failed to load binary module: {}\n", .{err});
-                            }
-                            continue;
-                        };
-                        self.printModuleSummary(module, arg.name);
-                    } else if (arg.file_name.len > 0) {
-                        current_module = self.engine.loadModuleFromPath(arg.file_name, arg.name) catch |err| {
-                            if (self.verbose_level >= 1) {
-                                self.debugPrint("✗ Failed to load module from path: {}\n", .{err});
-                            }
-                            continue;
-                        };
-                        if (current_module) |mod_inst| {
-                            self.printModuleInstSummary(mod_inst, arg.name);
-                        }
+                        },
                     }
                 },
                 .module_quote => {

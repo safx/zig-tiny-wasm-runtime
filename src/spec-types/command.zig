@@ -129,6 +129,10 @@ pub const ModuleCommandArg = struct {
     name: ?[]const u8,
     module_data: ?[]const u8, // WAT source text
     module_binary: ?[]const u8, // Binary data
+    kind: Kind = .normal,
+    definition_name: ?[]const u8 = null, // For instance kind: the definition name to instantiate
+
+    pub const Kind = enum { normal, definition, instance };
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         if (self.name) |n| {

@@ -5172,7 +5172,24 @@ pub const Parser = struct {
                     };
                 }
 
-                // instance format
+                // instance format: (module instance $I1 $M)
+                // After "instance" is consumed, tokens are: $I1 $M )
+                // First identifier is instance name, second is definition name
+                var inst_name: ?[]const u8 = name; // Use name if already captured
+                var def_name: ?[]const u8 = null;
+                if (self.current_token == .identifier) {
+                    if (inst_name == null) {
+                        inst_name = try self.allocator.dupe(u8, self.current_token.identifier);
+                    } else {
+                        def_name = try self.allocator.dupe(u8, self.current_token.identifier);
+                    }
+                    try self.advance();
+                }
+                if (self.current_token == .identifier and def_name == null) {
+                    def_name = try self.allocator.dupe(u8, self.current_token.identifier);
+                    try self.advance();
+                }
+                // Skip any remaining tokens
                 while (self.current_token == .string or self.current_token == .identifier) {
                     try self.advance();
                 }
@@ -5182,9 +5199,11 @@ pub const Parser = struct {
                     .module = .{
                         .line = line,
                         .file_name = try self.allocator.dupe(u8, ""),
-                        .name = name,
+                        .name = inst_name,
                         .module_data = null,
                         .module_binary = null,
+                        .kind = .instance,
+                        .definition_name = def_name,
                     },
                 };
             }
@@ -5211,8 +5230,8 @@ pub const Parser = struct {
 
         _ = try self.builder.build();
 
-        // Definition-only modules are validated but not instantiated
-        const module_data = if (is_definition) null else blk: {
+        // Keep WAT source for both definitions (template) and normal modules
+        const module_data = blk: {
             const module_text = self.input[module_start_pos..module_end_pos];
             break :blk try self.allocator.dupe(u8, module_text);
         };
@@ -5224,6 +5243,7 @@ pub const Parser = struct {
                 .name = name,
                 .module_data = module_data,
                 .module_binary = null,
+                .kind = if (is_definition) .definition else .normal,
             },
         };
     }

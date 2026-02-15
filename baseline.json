@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "timestamp": "2026-02-15T16:27:47",
-    "git_commit": "c607170",
+    "timestamp": "2026-02-15T17:02:07",
+    "git_commit": "8e9b314",
     "git_branch": "main"
   },
   "summary": {
-    "files_passed": 234,
+    "files_passed": 235,
     "files_total": 237,
-    "assertions_passed": 61853,
+    "assertions_passed": 61865,
     "assertions_total": 61875
   },
   "files": {
@@ -357,9 +357,9 @@
       "status": "passed"
     },
     "instance.wast": {
-      "passed": 0,
+      "passed": 12,
       "total": 12,
-      "status": "partial"
+      "status": "passed"
     },
     "int_exprs.wast": {
       "passed": 89,
