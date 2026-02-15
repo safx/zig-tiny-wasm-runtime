@@ -247,6 +247,21 @@ pub const SpecTestRunner = struct {
                         }
                     }
                 },
+                .assert_exception => |*a| {
+                    total += 1;
+                    if (self.doAction(&a.action, current_module, &registered_modules)) |results| {
+                        self.allocator.free(results);
+                        failed += 1;
+                        if (self.verbose_level >= 1) {
+                            self.debugPrint("✗ assert_exception failed (line {}): expected exception\n", .{a.line});
+                        }
+                    } else |_| {
+                        passed += 1;
+                        if (self.verbose_level >= 2) {
+                            self.debugPrint("✓ assert_exception passed\n", .{});
+                        }
+                    }
+                },
                 .assert_invalid => |arg| {
                     if (arg.module_data) |wat| {
                         total += 1;

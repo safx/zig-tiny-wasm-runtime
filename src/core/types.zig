@@ -11,6 +11,7 @@ pub const ElemIdx = u32;
 pub const DataIdx = u32;
 pub const LocalIdx = u32;
 pub const LabelIdx = u32;
+pub const TagIdx = u32;
 
 pub const InstractionAddr = u32;
 
@@ -131,18 +132,20 @@ pub const Export = struct {
     }
 };
 
-pub const ImportDesc = union(wasm.ExternalKind) {
+pub const ImportDesc = union(enum) {
     function: TypeIdx,
     table: TableType,
     memory: MemoryType,
     global: GlobalType,
+    tag: TypeIdx,
 };
 
-pub const ExportDesc = union(wasm.ExternalKind) {
+pub const ExportDesc = union(enum) {
     function: FuncIdx,
     table: TableIdx,
     memory: MemIdx,
     global: GlobalIdx,
+    tag: TagIdx,
 };
 
 pub const TableType = struct {
@@ -218,6 +221,10 @@ pub const DataActiveType = struct {
     offset: InitExpression,
 };
 
+pub const Tag = struct {
+    type_idx: TypeIdx,
+};
+
 pub const Mutability = enum(u8) {
     immutable,
     mutable,
@@ -231,6 +238,7 @@ pub const Module = struct {
     globals: []const Global,
     elements: []const Element,
     datas: []const Data,
+    tags: []const Tag = &.{},
     start: ?FuncIdx,
     imports: []const Import,
     exports: []const Export,

@@ -157,6 +157,22 @@ pub const ModuleValidator = struct {
             .end => {},
             .@"else" => {},
 
+            // exception handling instructions
+            .throw => |tag_idx| {
+                const tag_type = try c.getTag(tag_idx);
+                try type_stack.popValuesWithCheckingValueType(tag_type.parameter_types);
+                try type_stack.setPolymophic();
+            },
+            .throw_ref => try type_stack.setPolymophic(),
+            .try_table => |block_info| {
+                const func_type = try self.validateBlocktype(c, block_info.type);
+                const cp = try Context.cloneWithPrependingLabel(c, func_type.result_types, self.allocator);
+                try self.validateBlock(cp, instrs, ip + 1, block_info.end + 1, func_type);
+                try type_stack.popValuesWithCheckingValueType(func_type.parameter_types);
+                try type_stack.appendValueType(func_type.result_types);
+                return block_info.end + 1;
+            },
+
             // contronl instructions
             .nop => {},
             .@"unreachable" => try type_stack.setPolymophic(),
@@ -1132,6 +1148,7 @@ fn validateImport(c: Context, imp: Import) Error!void {
         .table => |ty| try validateTableType(ty),
         .memory => |ty| try validateMemoryType(ty),
         .global => {},
+        .tag => |idx| _ = try c.getType(idx),
     }
 }
 
@@ -1141,6 +1158,7 @@ fn validateExport(c: Context, exp: Export) Error!void {
         .table => |idx| _ = try c.getTable(idx),
         .memory => |idx| try c.checkMem(idx),
         .global => |idx| _ = try c.getGlobal(idx),
+        .tag => |tag_idx| _ = try c.getTag(tag_idx),
     }
 }
 

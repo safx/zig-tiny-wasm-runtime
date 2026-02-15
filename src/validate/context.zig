@@ -32,6 +32,7 @@ pub const Context = struct {
     globals: []const GlobalType = &.{},
     elems: []const RefType = &.{},
     datas: []const bool = &.{},
+    tags: []const FuncType = &.{},
     locals: []const ValueType = &.{},
     labels: []const ResultType = &.{},
     @"return": ?ResultType = null,
@@ -82,6 +83,26 @@ pub const Context = struct {
             datas[i] = false;
         }
 
+        // Build tags array from tag imports + module tags
+        var num_import_tags: usize = 0;
+        for (module.imports) |imp| {
+            if (imp.desc == .tag) num_import_tags += 1;
+        }
+        const tags = try allocator.alloc(FuncType, num_import_tags + module.tags.len);
+        var tag_i: usize = 0;
+        for (module.imports) |imp| {
+            if (imp.desc == .tag) {
+                if (imp.desc.tag >= module.types.len) return Error.UnknownType;
+                tags[tag_i] = module.types[imp.desc.tag];
+                tag_i += 1;
+            }
+        }
+        for (module.tags) |tag| {
+            if (tag.type_idx >= module.types.len) return Error.UnknownType;
+            tags[tag_i] = module.types[tag.type_idx];
+            tag_i += 1;
+        }
+
         return .{
             .types = module.types,
             .funcs = try createFuncs(module, imports, allocator),
@@ -90,6 +111,7 @@ pub const Context = struct {
             .globals = globals,
             .elems = elems,
             .datas = datas,
+            .tags = tags,
             .refs = try createRefs(module, allocator),
         };
     }
@@ -121,8 +143,8 @@ pub const Context = struct {
             for (element.init) |init|
                 if (init == .ref_func) try refs.append(init.ref_func);
         }
-        for (module.imports) |import| {
-            if (import.desc == .function) try refs.append(import.desc.function);
+        for (module.imports) |imp| {
+            if (imp.desc == .function) try refs.append(imp.desc.function);
         }
         for (module.exports) |exp| {
             if (exp.desc == .function) try refs.append(exp.desc.function);
@@ -150,6 +172,7 @@ pub const Context = struct {
             .globals = c.globals,
             .elems = c.elems,
             .datas = c.datas,
+            .tags = c.tags,
             .refs = c.refs,
             .locals = locals,
             .labels = labels,
@@ -171,6 +194,7 @@ pub const Context = struct {
             .globals = c.globals,
             .elems = c.elems,
             .datas = c.datas,
+            .tags = c.tags,
             .refs = c.refs,
             .locals = c.locals,
             .labels = labels,
@@ -210,6 +234,10 @@ pub const Context = struct {
         return if (table.is_64) .i64 else .i32;
     }
 
+    pub fn getTag(self: Self, idx: u32) Error!FuncType {
+        return if (idx < self.tags.len) self.tags[idx] else Error.UnknownType;
+    }
+
     pub fn getGlobal(self: Self, idx: GlobalIdx) Error!GlobalType {
         return if (idx < self.globals.len) self.globals[idx] else Error.UnknownGlobal;
     }
@@ -241,6 +269,7 @@ pub const Context = struct {
         allocator.free(self.globals);
         allocator.free(self.elems);
         allocator.free(self.datas);
+        allocator.free(self.tags);
     }
 };
 
@@ -264,6 +293,7 @@ const ImportGroup = struct {
                 .table => |ty| try tables.append(ty),
                 .memory => |ty| try memories.append(ty),
                 .global => |ty| try globals.append(ty),
+                .tag => {},
             }
         }
 

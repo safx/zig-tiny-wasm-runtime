@@ -23,6 +23,7 @@ pub const Command = union(enum) {
     assert_invalid: AssertInvalidCommandArg,
     assert_unlinkable: AssertUnlinkableCommandArg,
     assert_uninstantiable: AssertUninstantiableCommandArg,
+    assert_exception: AssertExceptionCommandArg,
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         switch (self) {
@@ -214,6 +215,15 @@ pub const AssertUnlinkableCommandArg = struct {
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         _ = try writer.print("{s} (-> \"{s}\") (line:{d})", .{ self.file_name, self.error_text, self.line });
+    }
+};
+
+pub const AssertExceptionCommandArg = struct {
+    line: u32,
+    action: Action,
+
+    pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
+        _ = try writer.print("{f} (line:{d})", .{ self.action, self.line });
     }
 };
 

@@ -24,6 +24,8 @@ const DataAddr = local_types.DataAddr;
 const ExternalValue = local_types.ExternalValue;
 const ExportInst = local_types.ExportInst;
 const Store = local_types.Store;
+const TagAddr = local_types.TagAddr;
+const TagInst = local_types.TagInst;
 // Note: ModuleInst is defined in this file
 const FuncInst = local_types.FuncInst;
 const TableInst = local_types.TableInst;
@@ -43,6 +45,7 @@ pub const ModuleInst = struct {
     global_addrs: []GlobalAddr = &.{},
     elem_addrs: []ElemAddr = &.{},
     data_addrs: []DataAddr = &.{},
+    tag_addrs: []TagAddr = &.{},
     exports: []ExportInst = &.{},
 
     /// `allocmodule` in wasm spec
@@ -66,6 +69,7 @@ pub const ModuleInst = struct {
         mod_inst.global_addrs = try allocator.alloc(GlobalAddr, num_import_globals + module.globals.len);
         mod_inst.elem_addrs = try allocator.alloc(ElemAddr, module.elements.len);
         mod_inst.data_addrs = try allocator.alloc(DataAddr, module.datas.len);
+        mod_inst.tag_addrs = try allocator.alloc(TagAddr, externals.tags.len + module.tags.len);
         mod_inst.exports = try allocator.alloc(ExportInst, module.exports.len);
 
         // 2, 8, 14: function
@@ -96,6 +100,12 @@ pub const ModuleInst = struct {
         for (module.datas, 0..) |data, i|
             mod_inst.data_addrs[i] = try allocData(store, data, allocator);
 
+        // tag instances
+        const num_import_tags = externals.tags.len;
+        @memcpy(mod_inst.tag_addrs[0..num_import_tags], externals.tags);
+        for (module.tags, num_import_tags..) |tag, i|
+            mod_inst.tag_addrs[i] = try allocTag(store, tag, mod_inst, allocator);
+
         // 18, 19: export
         for (module.exports, 0..) |exp, i| {
             const exp_value: ExternalValue = switch (exp.desc) {
@@ -103,6 +113,7 @@ pub const ModuleInst = struct {
                 .table => |idx| .{ .table = mod_inst.table_addrs[idx] },
                 .memory => |idx| .{ .memory = mod_inst.mem_addrs[idx] },
                 .global => |idx| .{ .global = mod_inst.global_addrs[idx] },
+                .tag => |idx| .{ .tag = mod_inst.tag_addrs[idx] },
             };
             const exp_inst = ExportInst{
                 .name = exp.name,
@@ -143,6 +154,7 @@ pub const ModuleInst = struct {
         allocator.free(self.global_addrs);
         allocator.free(self.elem_addrs);
         allocator.free(self.data_addrs);
+        allocator.free(self.tag_addrs);
         allocator.free(self.exports);
     }
 };
@@ -201,6 +213,15 @@ fn allocElement(store: *Store, elememt: Element, refs: []RefValue, allocator: st
     return try appendElement(ElemInst, &store.elems, inst, allocator);
 }
 
+/// `alloctag` for exception handling
+fn allocTag(store: *Store, tag: core.types.Tag, mod_inst: *ModuleInst, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!TagAddr {
+    if (tag.type_idx >= mod_inst.types.len) return Error.TypeMismatch;
+    const inst = TagInst{
+        .type = mod_inst.types[tag.type_idx],
+    };
+    return try appendElement(TagInst, &store.tags, inst, allocator);
+}
+
 /// `allocdata` in wasm spec
 /// https://webassembly.github.io/spec/core/exec/modules.html#alloc-data
 fn allocData(store: *Store, data: Data, allocator: std.mem.Allocator) error{OutOfMemory}!DataAddr {
@@ -230,12 +251,14 @@ const ExternalValueGroup = struct {
     tables: []TableAddr,
     memories: []MemAddr,
     globals: []GlobalAddr,
+    tags: []TagAddr,
 
     fn new(extern_values: []const ExternalValue, allocator: std.mem.Allocator) error{OutOfMemory}!Self {
         var funcs: std.ArrayList(FuncAddr) = .empty;
         var tables: std.ArrayList(TableAddr) = .empty;
         var mems: std.ArrayList(MemAddr) = .empty;
         var globals: std.ArrayList(GlobalAddr) = .empty;
+        var tags_list: std.ArrayList(TagAddr) = .empty;
 
         for (extern_values) |imp| {
             switch (imp) {
@@ -243,6 +266,7 @@ const ExternalValueGroup = struct {
                 .table => |idx| try tables.append(allocator, idx),
                 .memory => |idx| try mems.append(allocator, idx),
                 .global => |idx| try globals.append(allocator, idx),
+                .tag => |idx| try tags_list.append(allocator, idx),
             }
         }
 
@@ -251,6 +275,7 @@ const ExternalValueGroup = struct {
             .tables = try tables.toOwnedSlice(allocator),
             .memories = try mems.toOwnedSlice(allocator),
             .globals = try globals.toOwnedSlice(allocator),
+            .tags = try tags_list.toOwnedSlice(allocator),
         };
     }
 
@@ -259,5 +284,6 @@ const ExternalValueGroup = struct {
         allocator.free(self.tables);
         allocator.free(self.memories);
         allocator.free(self.globals);
+        allocator.free(self.tags);
     }
 };

@@ -22,7 +22,12 @@ pub fn opcodeFromName(name: []const u8) ?InstructionTag {
         .{ "call_indirect", .call_indirect },
         .{ "return_call", .return_call },
         .{ "return_call_indirect", .return_call_indirect },
-        
+
+        // Exception handling instructions
+        .{ "throw", .throw },
+        .{ "throw_ref", .throw_ref },
+        .{ "try_table", .try_table },
+
         // Reference instructions
         .{ "ref.null", .ref_null },
         .{ "ref.is_null", .ref_is_null },

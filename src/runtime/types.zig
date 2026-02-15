@@ -11,6 +11,7 @@ pub const Store = struct {
     globals: std.ArrayList(GlobalInst),
     elems: std.ArrayList(ElemInst),
     datas: std.ArrayList(DataInst),
+    tags: std.ArrayList(TagInst),
 
     pub fn new(_: std.mem.Allocator) Store {
         return .{
@@ -20,6 +21,7 @@ pub const Store = struct {
             .globals = .empty,
             .elems = .empty,
             .datas = .empty,
+            .tags = .empty,
         };
     }
 };
@@ -173,6 +175,7 @@ pub const GlobalAddr = u32;
 pub const ElemAddr = u32;
 pub const DataAddr = u32;
 pub const ExternAddr = u32;
+pub const TagAddr = u32;
 
 pub const FuncInst = struct {
     type: core.types.FuncType,
@@ -202,6 +205,10 @@ pub const ElemInst = struct {
 
 pub const DataInst = struct {
     data: []const u8,
+};
+
+pub const TagInst = struct {
+    type: core.types.FuncType,
 };
 
 pub const ExportInst = struct {
@@ -387,11 +394,12 @@ pub const RefValue = union(enum) {
     }
 };
 
-pub const ExternalValue = union(std.wasm.ExternalKind) {
+pub const ExternalValue = union(enum) {
     function: FuncAddr,
     table: TableAddr,
     memory: MemAddr,
     global: GlobalAddr,
+    tag: TagAddr,
 };
 
 pub const Label = struct {
@@ -403,15 +411,28 @@ pub const Label = struct {
     }
 };
 
+pub const CatchClauseRuntime = struct {
+    kind: core.Instruction.CatchKind,
+    tag_addr: TagAddr,
+    label_idx: core.types.LabelIdx,
+};
+
+pub const TryTableLabel = struct {
+    end_addr: core.types.InstractionAddr,
+    catches: []const CatchClauseRuntime,
+};
+
 pub const LabelType = union(enum) {
     root,
     func: core.types.InstractionAddr,
     block: core.types.InstractionAddr,
     @"if": core.types.InstractionAddr,
     loop: core.types.InstractionAddr,
+    try_table: TryTableLabel,
 
     pub fn format(self: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
         switch (self) {
+            .try_table => |tt| try writer.print("try_table ({d})", .{tt.end_addr}),
             inline else => |addr| if (@TypeOf(addr) == void) {
                 try writer.print("{s}", .{@tagName(self)});
             } else {

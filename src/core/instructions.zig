@@ -73,6 +73,20 @@ pub const Instruction = union(enum) {
         default_label_idx: LabelIdx,
     };
 
+    pub const CatchKind = enum { @"catch", catch_ref, catch_all, catch_all_ref };
+    pub const CatchClause = struct {
+        kind: CatchKind,
+        tag_idx: u32, // TagIdx (0 for catch_all variants)
+        label_idx: LabelIdx,
+    };
+    pub const TryTableInfo = struct {
+        type: BlockType,
+        catches: []const CatchClause,
+        end: InstractionAddr = 0,
+    };
+
+    const TagIdx = types.TagIdx;
+
     const RefType = types.RefType;
     const ValueType = types.ValueType;
 
@@ -107,6 +121,11 @@ pub const Instruction = union(enum) {
     call_indirect: CallIndirectArg,
     return_call: FuncIdx,
     return_call_indirect: CallIndirectArg,
+
+    // exception handling instructions
+    throw: TagIdx,
+    throw_ref,
+    try_table: TryTableInfo,
 
     // reference instructions
     ref_null: RefType,

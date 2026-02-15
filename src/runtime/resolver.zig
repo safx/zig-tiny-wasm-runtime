@@ -53,6 +53,7 @@ fn isMatchType(store: Store, exp: ExternalValue, module: Module, imp: ImportDesc
         .table => |v| imp == .table and isMatchTableType(store.tables.items[v].type, imp.table),
         .memory => |v| imp == .memory and isMatchMemType(store.mems.items[v].type, imp.memory),
         .global => |v| imp == .global and isMatchGlobalType(store.globals.items[v].type, imp.global),
+        .tag => |v| imp == .tag and isMatchFuncType(store.tags.items[v].type, module.types[imp.tag]),
     };
 }
 

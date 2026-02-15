@@ -43,10 +43,13 @@ pub const ModuleLoader = struct {
         var datas: []const types.Data = &.{};
         var data_count: ?u32 = null;
 
-        var sections: [13]bool = .{false} ** 13;
+        var tags: []const types.Tag = &.{};
+
+        var sections: [14]bool = .{false} ** 14;
         var last_section_id: u8 = 0;
         while (!self.reader.eof()) {
-            const sec = try self.section();
+            const maybe_sec = try self.section(&tags);
+            const sec = maybe_sec orelse continue; // tag section handled inline
             switch (sec) {
                 .type => |d| types_ = d,
                 .import => |d| imports = d,
@@ -106,6 +109,7 @@ pub const ModuleLoader = struct {
             .globals = globals,
             .elements = elements,
             .datas = datas,
+            .tags = tags,
             .start = start,
             .imports = imports,
             .exports = exports,
@@ -122,12 +126,21 @@ pub const ModuleLoader = struct {
         return self.reader.readU32();
     }
 
-    fn section(self: *Self) (Error || error{OutOfMemory})!Section {
+    fn section(self: *Self, tags_out: *[]const types.Tag) (Error || error{OutOfMemory})!?Section {
         const section_id = try self.reader.readU8();
-        const sect = utils.sectionFromNum(section_id) orelse return Error.MalformedSectionId;
         const size = try self.reader.readVarU32();
-
         const start_pos = self.reader.position;
+
+        // Handle tag section (ID 13) specially — not in std.wasm.Section enum
+        if (section_id == utils.TAG_SECTION_ID) {
+            tags_out.* = try self.createArray(types.Tag, tag);
+            const pos = self.reader.position;
+            if (pos - start_pos != size)
+                return Error.SectionSizeMismatch;
+            return null; // handled separately
+        }
+
+        const sect = utils.sectionFromNum(section_id) orelse return Error.MalformedSectionId;
         const sec = try self.sectionInternal(sect, size);
         const pos = self.reader.position;
         if (pos - start_pos != size)
@@ -356,6 +369,13 @@ pub const ModuleLoader = struct {
 
     // types
 
+    fn tag(self: *Self) Error!types.Tag {
+        const attr = try self.reader.readU8();
+        if (attr != 0) return Error.MalformedSectionId; // attribute must be 0 (exception)
+        const type_idx = try self.reader.readVarU32();
+        return .{ .type_idx = type_idx };
+    }
+
     fn importdesc(self: *Self) Error!types.ImportDesc {
         const kind = try self.reader.readU8();
         return switch (kind) {
@@ -363,6 +383,11 @@ pub const ModuleLoader = struct {
             1 => .{ .table = try self.table() },
             2 => .{ .memory = try self.memtype() },
             3 => .{ .global = try self.globalType() },
+            4 => blk: {
+                const attr = try self.reader.readU8();
+                _ = attr; // attribute byte (must be 0)
+                break :blk .{ .tag = try self.reader.readVarU32() };
+            },
             else => return Error.MalformedImportKind,
         };
     }
@@ -374,6 +399,7 @@ pub const ModuleLoader = struct {
             1 => .{ .table = try self.reader.readVarU32() },
             2 => .{ .memory = try self.reader.readVarU32() },
             3 => .{ .global = try self.reader.readVarU32() },
+            4 => .{ .tag = try self.reader.readVarU32() },
             else => return Error.MalformedExportKind,
         };
     }

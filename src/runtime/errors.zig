@@ -20,4 +20,5 @@ pub const Error = error{
     InvalidConstExpr,
     StackUnderflow,
     TypeMismatch,
+    UncaughtException,
 };

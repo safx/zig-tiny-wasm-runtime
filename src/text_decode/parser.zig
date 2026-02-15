@@ -25,6 +25,8 @@ pub const ModuleBuilder = struct {
     type_names: std.StringHashMap(u32),
     global_names: std.StringHashMap(u32),
     table_names: std.StringHashMap(u32),
+    tags: std.ArrayList(wasm_core.types.Tag),
+    tag_names: std.StringHashMap(u32),
 
     pub fn init(allocator: std.mem.Allocator) ModuleBuilder {
         return ModuleBuilder{
@@ -44,6 +46,8 @@ pub const ModuleBuilder = struct {
             .type_names = std.StringHashMap(u32).init(allocator),
             .global_names = std.StringHashMap(u32).init(allocator),
             .table_names = std.StringHashMap(u32).init(allocator),
+            .tags = std.ArrayList(wasm_core.types.Tag){},
+            .tag_names = std.StringHashMap(u32).init(allocator),
         };
     }
 
@@ -59,6 +63,7 @@ pub const ModuleBuilder = struct {
             .globals = try arena_allocator.dupe(wasm_core.types.Global, self.globals.items),
             .elements = try arena_allocator.dupe(wasm_core.types.Element, self.elements.items),
             .datas = try arena_allocator.dupe(wasm_core.types.Data, self.datas.items),
+            .tags = try arena_allocator.dupe(wasm_core.types.Tag, self.tags.items),
             .start = self.start,
             .imports = try arena_allocator.dupe(wasm_core.types.Import, self.imports.items),
             .exports = try arena_allocator.dupe(wasm_core.types.Export, self.exports.items),
@@ -81,6 +86,8 @@ pub const ModuleBuilder = struct {
         self.type_names.deinit();
         self.global_names.deinit();
         self.table_names.deinit();
+        self.tags.deinit(self.allocator);
+        self.tag_names.deinit();
     }
 
     pub fn countImportFuncs(self: *const ModuleBuilder) u32 {
@@ -111,6 +118,14 @@ pub const ModuleBuilder = struct {
         var count: u32 = 0;
         for (self.imports.items) |imp| {
             if (imp.desc == .global) count += 1;
+        }
+        return count;
+    }
+
+    pub fn countImportTags(self: *const ModuleBuilder) u32 {
+        var count: u32 = 0;
+        for (self.imports.items) |imp| {
+            if (imp.desc == .tag) count += 1;
         }
         return count;
     }
@@ -153,6 +168,8 @@ pub const ModuleBuilder = struct {
         self.type_names.clearRetainingCapacity();
         self.global_names.clearRetainingCapacity();
         self.table_names.clearRetainingCapacity();
+        self.tags.clearRetainingCapacity();
+        self.tag_names.clearRetainingCapacity();
         self.start = null;
     }
 };
@@ -232,6 +249,8 @@ pub const Parser = struct {
         defer memory_entries.deinit(self.allocator);
         var global_entries = std.ArrayList(PreScanEntry){};
         defer global_entries.deinit(self.allocator);
+        var tag_entries = std.ArrayList(PreScanEntry){};
+        defer tag_entries.deinit(self.allocator);
 
         // Scan all top-level fields: (field_name ...)
         while (self.current_token == .left_paren) {
@@ -297,12 +316,17 @@ pub const Parser = struct {
                 const is_import = try self.preScanDetectImport();
                 try memory_entries.append(self.allocator, .{ .name = name, .is_import = is_import });
                 try self.preScanSkipField();
+            } else if (std.mem.eql(u8, field_name, "tag")) {
+                const name = self.preScanReadOptionalName();
+                const is_import = try self.preScanDetectImport();
+                try tag_entries.append(self.allocator, .{ .name = name, .is_import = is_import });
+                try self.preScanSkipField();
             } else if (std.mem.eql(u8, field_name, "import")) {
-                // Standalone import: (import "mod" "name" (func/table/memory/global $name ...))
-                try self.preScanHandleStandaloneImport(&func_entries, &table_entries, &memory_entries, &global_entries);
+                // Standalone import: (import "mod" "name" (func/table/memory/global/tag $name ...))
+                try self.preScanHandleStandaloneImport(&func_entries, &table_entries, &memory_entries, &global_entries, &tag_entries);
                 try self.preScanSkipField();
             } else {
-                // export, data, elem, start, tag, rec, @annotation, etc. - skip
+                // export, data, elem, start, rec, @annotation, etc. - skip
                 try self.preScanSkipField();
             }
         }
@@ -313,6 +337,7 @@ pub const Parser = struct {
         try self.assignPreScanIndices(table_entries.items, &self.builder.table_names);
         try self.assignPreScanIndices(memory_entries.items, &self.builder.memory_names);
         try self.assignPreScanIndices(global_entries.items, &self.builder.global_names);
+        try self.assignPreScanIndices(tag_entries.items, &self.builder.tag_names);
 
         // Restore lexer state
         self.lexer.pos = saved_pos;
@@ -389,6 +414,7 @@ pub const Parser = struct {
         table_entries: *std.ArrayList(PreScanEntry),
         memory_entries: *std.ArrayList(PreScanEntry),
         global_entries: *std.ArrayList(PreScanEntry),
+        tag_entries: *std.ArrayList(PreScanEntry),
     ) !void {
         // Skip "module_name" string
         if (self.current_token == .string) try self.advance();
@@ -427,7 +453,7 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, desc_type, "global")) {
             try global_entries.append(self.allocator, .{ .name = name, .is_import = true });
         } else if (std.mem.eql(u8, desc_type, "tag")) {
-            // Tags are not supported — don't add any import entry
+            try tag_entries.append(self.allocator, .{ .name = name, .is_import = true });
         }
 
         // Restore so preScanSkipField() handles the full (desc ...) nesting
@@ -632,6 +658,8 @@ pub const Parser = struct {
             if (builder.start != null) return TextDecodeError.InvalidModule;
             const idx = try self.parseU32OrIdentifier();
             builder.start = idx;
+        } else if (std.mem.eql(u8, field_name, "tag")) {
+            try self.parseTag(builder);
         } else if (field_name.len > 0 and field_name[0] == '@') {
             // WAT annotation (@name ...) - skip raw content until matching closing paren
             // Must work at raw character level because annotation content may contain
@@ -1107,6 +1135,153 @@ pub const Parser = struct {
         }
     }
 
+    fn parseTag(self: *Parser, builder: *ModuleBuilder) !void {
+        // Parse: (tag $name? (export "name")? (import "mod" "name")? (type $idx)? (param ...)*)
+        const tag_name = try self.parseOptionalName();
+
+        // Handle inline (export ...)
+        if (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+            try self.advance(); // consume '('
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "export")) {
+                try self.advance(); // consume 'export'
+                if (self.current_token != .string) return TextDecodeError.UnexpectedToken;
+                const export_name = try self.allocator.dupe(u8, self.current_token.string);
+                try self.advance();
+                try self.expectToken(.right_paren);
+                // Will add export after we know the tag index
+                const tag_idx = builder.countImportTags() + @as(u32, @intCast(builder.tags.items.len));
+                try builder.exports.append(self.allocator, .{
+                    .name = export_name,
+                    .desc = .{ .tag = tag_idx },
+                });
+            } else {
+                // Restore
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+            }
+        }
+
+        // Handle inline (import ...)
+        if (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+            try self.advance(); // consume '('
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "import")) {
+                try self.advance(); // consume 'import'
+                if (self.current_token != .string) return TextDecodeError.UnexpectedToken;
+                const mod_name = try self.allocator.dupe(u8, self.current_token.string);
+                try self.advance();
+                if (self.current_token != .string) return TextDecodeError.UnexpectedToken;
+                const import_name = try self.allocator.dupe(u8, self.current_token.string);
+                try self.advance();
+                try self.expectToken(.right_paren);
+                // Parse tag type
+                const type_idx = try self.parseTagType(builder);
+                try builder.imports.append(self.allocator, .{
+                    .module_name = mod_name,
+                    .name = import_name,
+                    .desc = .{ .tag = type_idx },
+                });
+                if (tag_name) |n| {
+                    const idx = builder.countImportTags() - 1;
+                    try builder.tag_names.put(n, idx);
+                }
+                return;
+            } else {
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+            }
+        }
+
+        // Parse tag type (local tag definition)
+        const type_idx = try self.parseTagType(builder);
+        try builder.tags.append(self.allocator, .{ .type_idx = type_idx });
+        if (tag_name) |n| {
+            const idx = builder.countImportTags() + @as(u32, @intCast(builder.tags.items.len)) - 1;
+            try builder.tag_names.put(n, idx);
+        }
+    }
+
+    fn parseTagType(self: *Parser, builder: *ModuleBuilder) !u32 {
+        // Parse: (type $idx) or (param ...) -> find/add FuncType with empty results
+        if (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+            try self.advance(); // consume '('
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "type")) {
+                try self.advance(); // consume 'type'
+                const idx = try self.parseU32OrIdentifier();
+                try self.expectToken(.right_paren);
+                // Consume any trailing (param ...) (result ...)
+                while (self.current_token == .left_paren) {
+                    const sp = self.lexer.pos;
+                    const sc = self.lexer.current_char;
+                    const st = self.current_token;
+                    try self.advance();
+                    if (self.current_token == .identifier) {
+                        const kw = self.current_token.identifier;
+                        if (std.mem.eql(u8, kw, "param") or std.mem.eql(u8, kw, "result")) {
+                            try self.advance();
+                            try self.skipToClosingParen();
+                            continue;
+                        }
+                    }
+                    self.lexer.pos = sp;
+                    self.lexer.current_char = sc;
+                    self.current_token = st;
+                    break;
+                }
+                return idx;
+            } else {
+                // Restore and fall through to param parsing
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+            }
+        }
+
+        // Parse (param ...) to build func type with empty results
+        var param_types = std.ArrayList(wasm_core.types.ValueType){};
+        defer param_types.deinit(self.allocator);
+        while (self.current_token == .left_paren) {
+            const saved_pos = self.lexer.pos;
+            const saved_char = self.lexer.current_char;
+            const saved_token = self.current_token;
+            try self.advance(); // consume '('
+            if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "param")) {
+                try self.advance(); // consume 'param'
+                // Skip optional $name
+                if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                    try self.advance();
+                }
+                while (self.current_token != .right_paren and self.current_token != .eof) {
+                    if (try self.parseValueType()) |vtype| {
+                        try param_types.append(self.allocator, vtype);
+                    } else {
+                        break;
+                    }
+                }
+                try self.expectToken(.right_paren);
+            } else {
+                // Not param, restore
+                self.lexer.pos = saved_pos;
+                self.lexer.current_char = saved_char;
+                self.current_token = saved_token;
+                break;
+            }
+        }
+
+        // Tags have empty results
+        return builder.findOrAddFuncType(self.allocator, param_types.items, &.{});
+    }
+
     fn parseImport(self: *Parser, builder: *ModuleBuilder) !void {
         // Parse module name string
         if (self.current_token != .string) {
@@ -1385,24 +1560,14 @@ pub const Parser = struct {
             }
 
             break :blk wasm_core.types.ImportDesc{ .memory = .{ .limits = .{ .min = min, .max = max }, .is_64 = memory_is_64 } };
-        } else if (std.mem.eql(u8, desc_type, "tag")) {
-            // Exception handling tags — skip content, don't create import
-            // Our runtime doesn't support tags; skipping avoids resolver failures
-            while (self.current_token != .right_paren and self.current_token != .eof) {
-                if (self.current_token == .left_paren) {
-                    var depth2: u32 = 1;
-                    try self.advance();
-                    while (depth2 > 0 and self.current_token != .eof) {
-                        if (self.current_token == .left_paren) depth2 += 1 else if (self.current_token == .right_paren) depth2 -= 1;
-                        if (depth2 > 0) try self.advance();
-                    }
-                    if (self.current_token == .right_paren) try self.advance();
-                } else {
-                    try self.advance();
-                }
+        } else if (std.mem.eql(u8, desc_type, "tag")) blk: {
+            // Skip optional $name
+            if (self.current_token == .identifier and self.current_token.identifier.len > 0 and self.current_token.identifier[0] == '$') {
+                try self.advance();
             }
-            try self.expectRightParen(); // close descriptor ')'
-            return; // don't create import entry
+            // Parse tag type for import
+            const type_idx = try self.parseTagType(builder);
+            break :blk wasm_core.types.ImportDesc{ .tag = type_idx };
         } else {
             return TextDecodeError.UnexpectedToken;
         };
@@ -2562,8 +2727,10 @@ pub const Parser = struct {
             .{ .memory = idx }
         else if (std.mem.eql(u8, desc_type, "global"))
             .{ .global = idx }
+        else if (std.mem.eql(u8, desc_type, "tag"))
+            .{ .tag = idx }
         else
-            return; // unknown descriptor type (e.g., tag) - skip
+            return; // unknown descriptor type - skip
 
         try builder.exports.append(self.allocator, .{ .name = name, .desc = desc });
     }
@@ -3067,7 +3234,7 @@ pub const Parser = struct {
         for (instructions, 0..) |*inst, i| {
             const pos: u32 = @intCast(i);
 
-            if (inst.* == .block or inst.* == .loop or inst.* == .@"if") {
+            if (inst.* == .block or inst.* == .loop or inst.* == .@"if" or inst.* == .try_table) {
                 try nested_blocks.append(self.allocator, pos);
             } else if (inst.* == .@"else") {
                 if (nested_blocks.items.len > 0) {
@@ -3083,6 +3250,7 @@ pub const Parser = struct {
                         .block => instructions[idx].block.end = pos,
                         .loop => instructions[idx].loop.end = pos,
                         .@"if" => instructions[idx].@"if".end = pos,
+                        .try_table => instructions[idx].try_table.end = pos,
                         else => {},
                     }
                 }
@@ -3108,7 +3276,8 @@ pub const Parser = struct {
                 const instr_name = self.current_token.identifier;
                 const is_block_instr = std.mem.eql(u8, instr_name, "block") or
                     std.mem.eql(u8, instr_name, "loop") or
-                    std.mem.eql(u8, instr_name, "if");
+                    std.mem.eql(u8, instr_name, "if") or
+                    std.mem.eql(u8, instr_name, "try_table");
 
                 var label_name: ?[]const u8 = null;
                 if (is_block_instr) {
@@ -3200,6 +3369,63 @@ pub const Parser = struct {
             .@"else" => return .@"else",
             .end => return .end,
             .@"return" => return .@"return",
+
+            // exception handling instructions
+            .throw => return .{ .throw = try self.parseU32OrIdentifier() },
+            .throw_ref => return .throw_ref,
+            .try_table => {
+                _ = try self.parseOptionalName();
+                const block_type = try self.parseBlockType();
+                // Parse catch clauses
+                var catches = std.ArrayList(wasm_core.Instruction.CatchClause){};
+                while (self.current_token == .left_paren) {
+                    // Save state to check for catch keyword
+                    const saved_pos = self.lexer.pos;
+                    const saved_char = self.lexer.current_char;
+                    const saved_token = self.current_token;
+                    try self.advance(); // consume '('
+                    if (self.current_token == .identifier) {
+                        const name = self.current_token.identifier;
+                        if (std.mem.eql(u8, name, "catch")) {
+                            try self.advance(); // consume 'catch'
+                            const tag_idx = try self.parseU32OrIdentifier();
+                            const label_idx = try self.parseLabelIndex();
+                            try self.expectToken(.right_paren);
+                            try catches.append(self.allocator, .{ .kind = .@"catch", .tag_idx = tag_idx, .label_idx = label_idx });
+                            continue;
+                        } else if (std.mem.eql(u8, name, "catch_ref")) {
+                            try self.advance(); // consume 'catch_ref'
+                            const tag_idx = try self.parseU32OrIdentifier();
+                            const label_idx = try self.parseLabelIndex();
+                            try self.expectToken(.right_paren);
+                            try catches.append(self.allocator, .{ .kind = .catch_ref, .tag_idx = tag_idx, .label_idx = label_idx });
+                            continue;
+                        } else if (std.mem.eql(u8, name, "catch_all")) {
+                            try self.advance(); // consume 'catch_all'
+                            const label_idx = try self.parseLabelIndex();
+                            try self.expectToken(.right_paren);
+                            try catches.append(self.allocator, .{ .kind = .catch_all, .tag_idx = 0, .label_idx = label_idx });
+                            continue;
+                        } else if (std.mem.eql(u8, name, "catch_all_ref")) {
+                            try self.advance(); // consume 'catch_all_ref'
+                            const label_idx = try self.parseLabelIndex();
+                            try self.expectToken(.right_paren);
+                            try catches.append(self.allocator, .{ .kind = .catch_all_ref, .tag_idx = 0, .label_idx = label_idx });
+                            continue;
+                        }
+                    }
+                    // Not a catch clause, restore and break
+                    self.lexer.pos = saved_pos;
+                    self.lexer.current_char = saved_char;
+                    self.current_token = saved_token;
+                    break;
+                }
+                return .{ .try_table = .{
+                    .type = block_type,
+                    .catches = try catches.toOwnedSlice(self.allocator),
+                    .end = 0,
+                } };
+            },
 
             // Branch instructions
             .br => return .{ .br = try self.parseLabelIndex() },
@@ -4004,7 +4230,8 @@ pub const Parser = struct {
             const instr_name = self.current_token.identifier;
             is_block_instr = std.mem.eql(u8, instr_name, "block") or
                 std.mem.eql(u8, instr_name, "loop") or
-                std.mem.eql(u8, instr_name, "if");
+                std.mem.eql(u8, instr_name, "if") or
+                std.mem.eql(u8, instr_name, "try_table");
 
             if (is_block_instr) {
                 // Peek ahead to check for label name
@@ -4061,6 +4288,35 @@ pub const Parser = struct {
                 } else if (self.current_token == .identifier) {
                     if (try self.parseInstruction()) |instr_block| {
                         try instructions.append(self.allocator, instr_block);
+                    }
+                } else {
+                    try self.advance();
+                }
+            }
+
+            // Add 'end' instruction
+            try instructions.append(self.allocator, .end);
+            // Pop label stack
+            if (self.label_stack.items.len > 0) {
+                _ = self.label_stack.pop();
+            }
+            return;
+        }
+
+        // Special handling for 'try_table' instruction with folded form: (try_table (result) (catch ...) ...)
+        if (std.meta.activeTag(instr) == .try_table) {
+            // Add 'try_table' instruction first
+            try instructions.append(self.allocator, instr);
+
+            // Parse instructions in try_table body
+            while (self.current_token != .eof and self.current_token != .right_paren) {
+                if (self.current_token == .left_paren) {
+                    try self.advance(); // consume '('
+                    try self.parseSExpression(instructions);
+                    try self.expectRightParen();
+                } else if (self.current_token == .identifier) {
+                    if (try self.parseInstruction()) |instr_tt| {
+                        try instructions.append(self.allocator, instr_tt);
                     }
                 } else {
                     try self.advance();
@@ -4305,6 +4561,9 @@ pub const Parser = struct {
                 return idx;
             }
             if (self.builder.type_names.get(id)) |idx| {
+                return idx;
+            }
+            if (self.builder.tag_names.get(id)) |idx| {
                 return idx;
             }
             // If not found, return 0 as fallback
@@ -5002,6 +5261,25 @@ pub const Parser = struct {
                 .line = line,
                 .action = action,
                 .error_text = failure,
+            },
+        };
+    }
+
+    /// Parse assert_exception: (assert_exception (invoke ...))
+    fn parseAssertException(self: *Parser) !spec_types.command.Command {
+        // current token is "assert_exception"
+        const line = self.lexer.line;
+        try self.advance();
+
+        // Parse action
+        const action = try self.parseAction();
+
+        try self.expectToken(.right_paren);
+
+        return spec_types.command.Command{
+            .assert_exception = .{
+                .line = line,
+                .action = action,
             },
         };
     }
@@ -5798,6 +6076,9 @@ pub fn parseWastScript(allocator: std.mem.Allocator, input: []const u8) ![]spec_
         } else if (std.mem.eql(u8, cmd_name, "assert_uninstantiable")) {
             const cmd = try parser.parseAssertModuleError(.assert_uninstantiable);
             try commands.append(allocator, cmd);
+        } else if (std.mem.eql(u8, cmd_name, "assert_exception")) {
+            const cmd = try parser.parseAssertException();
+            try commands.append(allocator, cmd);
         } else {
             try parser.skipToClosingParen();
         }
@@ -5855,6 +6136,9 @@ pub fn freeCommand(allocator: std.mem.Allocator, cmd: *spec_types.command.Comman
             allocator.free(au.file_name);
             allocator.free(au.error_text);
             if (au.module_data) |data| allocator.free(data);
+        },
+        .assert_exception => |ae| {
+            freeAction(allocator, @constCast(&ae.action));
         },
         else => {},
     }

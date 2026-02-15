@@ -49,6 +49,7 @@ pub const Instance = struct {
     store: Store,
     stack: Stack,
     trace_mode: bool,
+    pending_exception: ?ExceptionData = null,
 
     pub fn new(allocator: std.mem.Allocator, trace_mode: bool) Self {
         return .{
@@ -184,7 +185,37 @@ pub const Instance = struct {
             self.printStack();
             self.debugPrint("= [{d}]: {any}\n", .{ ip, instr });
 
-            const flow_ctrl = try self.execInstruction(instr);
+            const flow_ctrl = self.execInstruction(instr) catch |err| {
+                if (err == Error.UncaughtException) {
+                    // Search for a matching catch handler, propagating through frames
+                    while (true) {
+                        switch (try self.handleException()) {
+                            .jump => |new_ip| {
+                                self.stack.updateTopFrameIp(new_ip);
+                                break;
+                            },
+                            .exit => {
+                                try self.returnFunction();
+                                if (!self.stack.hasFrame())
+                                    return;
+                                if (self.stack.topFrame().instructions.len == 0)
+                                    return;
+                                break;
+                            },
+                            .not_found => {
+                                // No handler in current frame, unwind and try caller
+                                self.unwindFrame();
+                                if (!self.stack.hasFrame())
+                                    return Error.UncaughtException;
+                                if (self.stack.topFrame().instructions.len == 0)
+                                    return Error.UncaughtException;
+                            },
+                        }
+                    }
+                    continue;
+                }
+                return err;
+            };
 
             if (flow_ctrl != .none)
                 self.debugPrint("\t-> {f}\n", .{flow_ctrl});
@@ -447,6 +478,11 @@ pub const Instance = struct {
             .call_indirect => |arg| return try self.opCallIndirect(arg),
             .return_call => |func_idx| return try self.opReturnCall(func_idx),
             .return_call_indirect => |arg| return try self.opReturnCallIndirect(arg),
+
+            // exception handling instructions
+            .throw => |tag_idx| return try self.opThrow(tag_idx),
+            .throw_ref => return Error.UncaughtException,
+            .try_table => |info| try self.opTryTable(info),
 
             // reference instructions
             .ref_null => |ref_type| try self.opRefNull(ref_type),
@@ -1184,6 +1220,146 @@ pub const Instance = struct {
             return self.opBr(label_idx);
         }
         return FlowControl.none;
+    }
+
+    // exception handling instructions
+
+    fn opThrow(self: *Self, tag_idx: u32) (Error || error{OutOfMemory})!FlowControl {
+        const frame = self.stack.topFrame();
+        const mod = frame.module;
+        if (tag_idx >= mod.tag_addrs.len) return Error.OtherError;
+        const tag_addr = mod.tag_addrs[tag_idx];
+        const tag_inst = self.store.tags.items[tag_addr];
+        const param_count = tag_inst.type.parameter_types.len;
+
+        // Pop tag parameter values from stack
+        const exception_values = try self.allocator.alloc(Value, param_count);
+        var i = param_count;
+        while (i > 0) : (i -= 1) {
+            exception_values[i - 1] = self.stack.pop().value;
+        }
+
+        self.pending_exception = .{
+            .tag_addr = tag_addr,
+            .values = exception_values,
+        };
+        return Error.UncaughtException;
+    }
+
+    fn opTryTable(self: *Self, info: Instruction.TryTableInfo) (Error || error{OutOfMemory})!void {
+        const frame = self.stack.topFrame();
+        const mod = frame.module;
+
+        // Resolve catch clause tag indices to tag addresses
+        const resolved_catches = try self.allocator.alloc(local_types.CatchClauseRuntime, info.catches.len);
+        for (info.catches, 0..) |clause, ci| {
+            const tag_addr: local_types.TagAddr = switch (clause.kind) {
+                .@"catch", .catch_ref => blk: {
+                    if (clause.tag_idx >= mod.tag_addrs.len) return Error.OtherError;
+                    break :blk mod.tag_addrs[clause.tag_idx];
+                },
+                .catch_all, .catch_all_ref => 0,
+            };
+            resolved_catches[ci] = .{
+                .kind = clause.kind,
+                .tag_addr = tag_addr,
+                .label_idx = clause.label_idx,
+            };
+        }
+
+        const func_type = expandToFuncType(mod, info.type);
+        const arity = func_type.result_types.len;
+        const label = Label{
+            .arity = @intCast(arity),
+            .type = .{ .try_table = .{
+                .end_addr = info.end,
+                .catches = resolved_catches,
+            } },
+        };
+        try self.stack.insertAt(func_type.parameter_types.len, .{ .label = label });
+    }
+
+    const ExceptionData = struct {
+        tag_addr: local_types.TagAddr,
+        values: []Value,
+    };
+
+    const ExcHandleResult = union(enum) {
+        jump: InstractionAddr,
+        exit,
+        not_found,
+    };
+
+    fn handleException(self: *Self) (Error || error{OutOfMemory})!ExcHandleResult {
+        const exception = self.pending_exception orelse return .not_found;
+
+        // Search labels in current frame for a matching try_table
+        var i = self.stack.array.items.len;
+        while (i > 0) : (i -= 1) {
+            const item = self.stack.array.items[i - 1];
+            switch (item) {
+                .value => continue,
+                .frame => return .not_found, // hit frame boundary, no handler in this frame
+                .label => |label| {
+                    if (label.type == .try_table) {
+                        const tt = label.type.try_table;
+                        for (tt.catches) |clause| {
+                            const matches = switch (clause.kind) {
+                                .@"catch", .catch_ref => clause.tag_addr == exception.tag_addr,
+                                .catch_all, .catch_all_ref => true,
+                            };
+                            if (matches) {
+                                // Pop everything above the try_table label
+                                // i-1 is the index of the try_table label in the stack array
+                                while (self.stack.array.items.len > i) {
+                                    _ = self.stack.pop();
+                                }
+                                // Now try_table label is at the top of the stack
+
+                                // Push exception values and/or exnref
+                                switch (clause.kind) {
+                                    .@"catch" => {
+                                        for (exception.values) |val|
+                                            try self.stack.push(.{ .value = val });
+                                    },
+                                    .catch_ref => {
+                                        for (exception.values) |val|
+                                            try self.stack.push(.{ .value = val });
+                                        // Push dummy exnref (we don't have real exnref support)
+                                        try self.stack.push(.{ .value = .{ .extern_ref = null } });
+                                    },
+                                    .catch_all => {},
+                                    .catch_all_ref => {
+                                        // Push dummy exnref
+                                        try self.stack.push(.{ .value = .{ .extern_ref = null } });
+                                    },
+                                }
+
+                                // Clear exception
+                                self.pending_exception = null;
+                                self.allocator.free(exception.values);
+
+                                // Branch to the catch clause's target label
+                                const br_result = try self.opBr(clause.label_idx);
+                                return switch (br_result) {
+                                    .jump => |addr| .{ .jump = addr },
+                                    .exit => .exit,
+                                    else => .not_found,
+                                };
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        return .not_found;
+    }
+
+    /// Unwind the current frame without preserving return values (for exception propagation)
+    fn unwindFrame(self: *Self) void {
+        const top_frame = self.stack.topFrame();
+        self.stack.popValuesAndLabelsUntilFrame();
+        self.allocator.free(top_frame.locals);
     }
 
     // parametric instructions
@@ -2299,6 +2475,7 @@ const FlowControl = union(enum) {
         return switch (label.type) {
             .root => .exit,
             .loop => |idx| .{ .jump = idx }, // jump to `loop`
+            .try_table => |tt| .{ .jump = tt.end_addr + 1 }, // jump next to `end`
             inline else => |idx| .{ .jump = idx + 1 }, // jump next to `end`
         };
     }

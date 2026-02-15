@@ -2,8 +2,11 @@ const std = @import("std");
 const types = @import("wasm-core").types;
 
 pub fn sectionFromNum(section_id: u8) ?std.wasm.Section {
+    // Section IDs 0-12 are standard. Section 13 (tag) is decoded specially in loader.
     return if (0 <= section_id and section_id <= 12) @enumFromInt(section_id) else null;
 }
+
+pub const TAG_SECTION_ID: u8 = 13;
 
 pub fn valueTypeFromNum(byte: u8) ?types.ValueType {
     return switch (byte) {

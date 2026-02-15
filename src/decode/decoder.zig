@@ -27,7 +27,7 @@ pub const Decoder = struct {
             const pos: u32 = @intCast(instArray.items.len);
             try instArray.append(allocator, inst);
 
-            if (inst == .block or inst == .loop or inst == .@"if") {
+            if (inst == .block or inst == .loop or inst == .@"if" or inst == .try_table) {
                 try nested_blocks.append(allocator, pos);
             } else if (inst == .@"else") {
                 const idx = nested_blocks.getLast();
@@ -49,6 +49,7 @@ pub const Decoder = struct {
             .block => inst.block.end = pos,
             .loop => inst.loop.end = pos,
             .@"if" => inst.@"if".end = pos,
+            .try_table => inst.try_table.end = pos,
             else => return Error.OtherError,
         }
     }
@@ -83,10 +84,13 @@ pub const Decoder = struct {
             n(.@"return") => .@"return",
             n(.call) => .{ .call = try reader.readVarU32() },
             n(.call_indirect) => .{ .call_indirect = try callIndirect(reader) },
+            0x06 => .{ .throw = try reader.readVarU32() },
+            0x08 => .throw_ref,
             0x12 => .{ .return_call = try reader.readVarU32() },
             0x13 => .{ .return_call_indirect = try callIndirect(reader) },
             0x14 => .{ .call_ref = try reader.readVarU32() },
             0x15 => .{ .return_call_ref = try reader.readVarU32() },
+            0x1f => .{ .try_table = try tryTable(reader, allocator) },
 
             // reference instructions
             0xD0 => .{ .ref_null = try refType(reader) },
@@ -716,6 +720,29 @@ fn brTable(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{
 
     const default = try reader.readVarU32();
     return .{ .label_idxs = label_idxs, .default_label_idx = default };
+}
+
+fn tryTable(reader: *BinaryReader, allocator: std.mem.Allocator) (Error || error{OutOfMemory})!Instruction.TryTableInfo {
+    const bt = try blockType(reader);
+    const num_catches = try reader.readVarU32();
+    const catches = try allocator.alloc(Instruction.CatchClause, num_catches);
+    for (0..num_catches) |i| {
+        const kind_byte = try reader.readU8();
+        const kind: Instruction.CatchKind = switch (kind_byte) {
+            0 => .@"catch",
+            1 => .catch_ref,
+            2 => .catch_all,
+            3 => .catch_all_ref,
+            else => return Error.IllegalOpcode,
+        };
+        const tag_idx: u32 = switch (kind) {
+            .@"catch", .catch_ref => try reader.readVarU32(),
+            .catch_all, .catch_all_ref => 0,
+        };
+        const label_idx = try reader.readVarU32();
+        catches[i] = .{ .kind = kind, .tag_idx = tag_idx, .label_idx = label_idx };
+    }
+    return .{ .type = bt, .catches = catches, .end = 0 };
 }
 
 fn callIndirect(reader: *BinaryReader) Error!Instruction.CallIndirectArg {
