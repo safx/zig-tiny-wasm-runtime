@@ -3341,11 +3341,20 @@ pub const Parser = struct {
             return null;
         }
 
+        // catch/catch_ref/catch_all/catch_all_ref are only valid inside try_table, not as standalone instructions
+        if (std.mem.eql(u8, instr_name, "catch") or
+            std.mem.eql(u8, instr_name, "catch_ref") or
+            std.mem.eql(u8, instr_name, "catch_all") or
+            std.mem.eql(u8, instr_name, "catch_all_ref"))
+        {
+            return error.UnexpectedToken;
+        }
+
         // Validate instruction name using instruction_map
         // This provides early error detection for unknown instructions
         const instruction_map = @import("./instruction_map.zig");
         const opcode = instruction_map.opcodeFromName(instr_name) orelse {
-            // Unknown instruction (e.g., call_ref, return_call, throw, try_table)
+            // Unknown instruction (e.g., call_ref, return_call)
             // Return null to skip - callers handle this gracefully
             return null;
         };
