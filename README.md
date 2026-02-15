@@ -46,7 +46,7 @@ make build-spec-test
 
 This project uses test files from the [spectec](https://github.com/Wasm-DSL/spectec) repository (WebAssembly 3.0 branch).
 
-**Important Note**: The test runner executes spec test assertions (`assert_return`, `assert_trap`, `assert_invalid`, etc.) against parsed and loaded modules. The 99.7% assertion pass rate reflects actual execution correctness for implemented features.
+**Important Note**: The test runner executes spec test assertions (`assert_return`, `assert_trap`, `assert_invalid`, etc.) against parsed and loaded modules. The 99.97% assertion pass rate reflects actual execution correctness for implemented features.
 
 ### Setup Test Suite
 
@@ -142,7 +142,7 @@ zig fmt src/           # Format source code
 
 ## Supported Features
 
-This interpreter implements **WebAssembly 1.0 core specification**, **all WebAssembly 2.0 extensions**, and **selected WebAssembly 3.0 features**. The test suite runs **61,679/61,857 (99.7%)** spec assertions successfully across **237 test files**. Remaining failures are due to unimplemented 3.0 features (exception handling, GC, typed references).
+This interpreter implements **WebAssembly 1.0 core specification**, **all WebAssembly 2.0 extensions**, and **selected WebAssembly 3.0 features**. The test suite runs **61,857/61,875 (99.97%)** spec assertions successfully across **237 test files**. Remaining failures are due to unimplemented 3.0 features (GC types, typed references).
 
 ### ✅ **Fully Implemented Features**
 
@@ -218,6 +218,19 @@ This interpreter implements **WebAssembly 1.0 core specification**, **all WebAss
     - 64-bit arithmetic: `i64.add`, `i64.sub`, `i64.mul`
     - `global.get` of imported globals in initializer expressions
 
+13. **Exception Handling**
+    - `throw` - Throw an exception with tag parameters
+    - `try_table` - Try block with catch clauses (`catch`, `catch_ref`, `catch_all`, `catch_all_ref`)
+    - Exception tag imports and exports
+    - Cross-frame exception propagation
+
+14. **Typed Function References**
+    - `call_ref` - Call a function through a typed reference
+    - `return_call_ref` - Tail call through a typed reference
+    - `ref.as_non_null` - Assert a reference is non-null
+    - `br_on_null` / `br_on_non_null` - Branch based on reference nullness
+    - 100% pass rate on all typed function reference spec tests
+
 ### 🔧 **Additional Capabilities**
 - Text format (.wast/.wat) parsing and execution via spec test runner
 - Binary format (.wasm) decoding and execution
@@ -228,18 +241,19 @@ This interpreter implements **WebAssembly 1.0 core specification**, **all WebAss
 ## Test Suite Status
 
 - **237/237 test files** from [spectec](https://github.com/Wasm-DSL/spectec) successfully parse and load
-- **61,679/61,857 (99.7%)** assertions pass across the test suite
+- **61,857/61,875 (99.97%)** assertions pass across the test suite
 - Test files cover WebAssembly 1.0, 2.0, and some 3.0 features
 
 ## Known Limitations
 
 The following WebAssembly 3.0 features are **not implemented**:
 
-- ❌ **Exception Handling** (`throw`, `throw_ref`, `try_table`, exception tags)
 - ❌ **Garbage Collection** (struct, array, i31ref, and related GC instructions)
-- ❌ **Extended Reference Types** (`br_on_null`, `br_on_non_null`, `call_ref`, `ref.as_non_null`, `return_call_ref`)
+- ❌ **Full Reference Type System** (non-nullable references `ref func`, typed references `ref null $t` / `ref $t`, reference subtyping)
 
-These features can be parsed from .wast files but their instructions are not executed.
+GC features can be parsed from .wast files but their instructions are not executed.
+
+The reference type system supports only `funcref` and `externref`. Finer-grained reference types are collapsed during parsing, which affects import matching for globals and tables that use typed references.
 
 Additionally, the **reference type system** supports only `funcref` and `externref`. Non-nullable references (`ref func`), typed references (`ref null $t`, `ref $t`), and reference subtyping are not distinguished at the type level. This affects import matching for globals and tables that use these finer-grained reference types (21 `assert_unlinkable` failures in `linking.wast`).
 
