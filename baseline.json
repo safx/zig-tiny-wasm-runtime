@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "timestamp": "2026-02-15T17:02:07",
-    "git_commit": "8e9b314",
+    "timestamp": "2026-02-15T17:32:35",
+    "git_commit": "09d063b",
     "git_branch": "main"
   },
   "summary": {
     "files_passed": 235,
     "files_total": 237,
-    "assertions_passed": 61865,
+    "assertions_passed": 61857,
     "assertions_total": 61875
   },
   "files": {
@@ -167,9 +167,9 @@
       "status": "passed"
     },
     "elem.wast": {
-      "passed": 64,
+      "passed": 72,
       "total": 72,
-      "status": "partial"
+      "status": "passed"
     },
     "endianness.wast": {
       "passed": 68,
@@ -627,9 +627,9 @@
       "status": "passed"
     },
     "ref_is_null.wast": {
-      "passed": 18,
+      "passed": 2,
       "total": 18,
-      "status": "passed"
+      "status": "partial"
     },
     "ref_null.wast": {
       "passed": 32,

@@ -756,14 +756,14 @@ pub const Parser = struct {
                     try self.advance();
                     if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "offset")) {
                         try self.advance();
-                        offset = try self.parseSingleInitExpression();
+                        offset = try self.parseInitExpression();
                         try self.expectRightParen(); // close offset
                     } else {
                         // Restore and parse as init expression
                         self.lexer.pos = saved_pos2;
                         self.lexer.current_char = saved_char2;
                         self.current_token = saved_token2;
-                        offset = try self.parseSingleInitExpression();
+                        offset = try self.parseInitExpression();
                     }
                 }
 
@@ -771,7 +771,7 @@ pub const Parser = struct {
             } else if (self.current_token == .identifier and std.mem.eql(u8, self.current_token.identifier, "offset")) {
                 // (offset (i32.const 0))
                 try self.advance();
-                offset = try self.parseSingleInitExpression();
+                offset = try self.parseInitExpression();
                 try self.expectRightParen(); // close offset
                 mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
             } else {
@@ -779,7 +779,7 @@ pub const Parser = struct {
                 self.lexer.pos = saved_pos;
                 self.lexer.current_char = saved_char;
                 self.current_token = saved_token;
-                offset = try self.parseSingleInitExpression();
+                offset = try self.parseInitExpression();
                 mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
             }
         }
@@ -3057,104 +3057,6 @@ pub const Parser = struct {
 
     /// Parse exactly one parenthesized init expression (non-greedy).
     /// Used by parseElem for offset parsing to avoid consuming subsequent elem init expressions.
-    fn parseSingleInitExpression(self: *Parser) !wasm_core.types.InitExpression {
-        if (self.current_token != .left_paren) return .{ .i32_const = 0 };
-        try self.advance(); // consume '('
-
-        if (self.current_token != .identifier) {
-            try self.expectRightParen();
-            return .{ .i32_const = 0 };
-        }
-
-        const instr_name = self.current_token.identifier;
-        try self.advance();
-
-        if (std.mem.eql(u8, instr_name, "i32.const")) {
-            if (self.current_token == .number) {
-                const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
-                try self.advance();
-                try self.expectRightParen();
-                return .{ .i32_const = val };
-            }
-            try self.expectRightParen();
-            return .{ .i32_const = 0 };
-        } else if (std.mem.eql(u8, instr_name, "i64.const")) {
-            if (self.current_token == .number) {
-                const val = try std.fmt.parseInt(i64, self.current_token.number, 0);
-                try self.advance();
-                try self.expectRightParen();
-                return .{ .i64_const = val };
-            }
-            try self.expectRightParen();
-            return .{ .i64_const = 0 };
-        } else if (std.mem.eql(u8, instr_name, "f32.const")) {
-            if (self.current_token == .number) {
-                const val = try numeric_parser.parseFloat(f32, self.current_token.number);
-                try self.advance();
-                try self.expectRightParen();
-                return .{ .f32_const = val };
-            }
-            try self.expectRightParen();
-            return .{ .f32_const = 0.0 };
-        } else if (std.mem.eql(u8, instr_name, "f64.const")) {
-            if (self.current_token == .number) {
-                const val = try numeric_parser.parseFloat(f64, self.current_token.number);
-                try self.advance();
-                try self.expectRightParen();
-                return .{ .f64_const = val };
-            }
-            try self.expectRightParen();
-            return .{ .f64_const = 0.0 };
-        } else if (std.mem.eql(u8, instr_name, "ref.func")) {
-            if (self.current_token == .number) {
-                const val = try std.fmt.parseInt(u32, self.current_token.number, 10);
-                try self.advance();
-                try self.expectRightParen();
-                return .{ .ref_func = val };
-            } else if (self.current_token == .identifier) {
-                const name = self.current_token.identifier;
-                const func_idx = self.builder.func_names.get(name) orelse 0;
-                try self.advance();
-                try self.expectRightParen();
-                return .{ .ref_func = func_idx };
-            }
-            try self.expectRightParen();
-            return .{ .ref_func = 0 };
-        } else if (std.mem.eql(u8, instr_name, "ref.null")) {
-            const rt = try self.parseRefType();
-            try self.expectRightParen();
-            return .{ .ref_null = rt };
-        } else if (std.mem.eql(u8, instr_name, "global.get")) {
-            if (self.current_token == .number) {
-                const val = try std.fmt.parseInt(u32, self.current_token.number, 10);
-                try self.advance();
-                try self.expectRightParen();
-                return .{ .global_get = val };
-            } else if (self.current_token == .identifier) {
-                const name = self.current_token.identifier;
-                const global_idx = self.builder.global_names.get(name) orelse 0;
-                try self.advance();
-                try self.expectRightParen();
-                return .{ .global_get = global_idx };
-            }
-            try self.expectRightParen();
-            return .{ .global_get = 0 };
-        } else {
-            // Unknown init expression - skip to closing paren
-            var depth: u32 = 1;
-            while (depth > 0 and self.current_token != .eof) {
-                if (self.current_token == .left_paren) {
-                    depth += 1;
-                } else if (self.current_token == .right_paren) {
-                    depth -= 1;
-                }
-                if (depth > 0) try self.advance();
-            }
-            if (self.current_token == .right_paren) try self.advance();
-            return .{ .i32_const = 0 };
-        }
-    }
-
     /// Parse init expression for globals, data, and element offsets
     fn parseInitExpression(self: *Parser) !wasm_core.types.InitExpression {
         var instrs = std.ArrayList(wasm_core.types.Instruction){};
