@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a WebAssembly interpreter written in Zig 0.15. It implements WebAssembly 1.0 core specification with selected 2.0 extensions, primarily SIMD operations. The test suite includes 237 test files from the spectec repository (WebAssembly 3.0 branch) that successfully parse and load. This educational project demonstrates understanding of WebAssembly fundamentals and key extension features.
 
-**Important**: The test runner executes spec test assertions (assert_return, assert_trap, assert_invalid, etc.) against parsed and loaded modules. The 99.97% pass rate reflects actual execution correctness for implemented features. Remaining failures are due to unimplemented WebAssembly 3.0 features (GC types, typed references).
+**Important**: The test runner executes spec test assertions (assert_return, assert_trap, assert_invalid, etc.) against parsed and loaded modules. The 99.997% pass rate (61,873/61,875) reflects actual execution correctness for implemented features. The only 2 remaining failures are in recursive type groups requiring GC proposal support.
 
 ## Commands
 
@@ -81,7 +81,7 @@ Key architectural decisions:
 - The project uses Zig 0.15.2 and may need updates for newer Zig versions
 - When modifying instruction implementations, ensure both the decode and runtime modules are updated
 - The test suite (237 test files from spectec wasm-3.0 branch) runs 61,875 assertions - always run `make test` after changes
-- **Test coverage**: 61,857/61,875 (99.97%) assertions pass. Remaining 18 failures are due to unimplemented 3.0 features (GC types, typed references)
+- **Test coverage**: 61,873/61,875 (99.997%) assertions pass. Only 2 failures remain in type-rec.wast (GC proposal recursive type groups)
 - Text format (.wast/.wat) files are handled by the spec_test binary, binary format (.wasm) by the main interpreter
 - The project links with libc (uses C allocator) so platform-specific issues may arise
 - Exception handling (throw, try_table) and typed function references (call_ref, br_on_null, etc.) are implemented; GC is not implemented despite test files being present

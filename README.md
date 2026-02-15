@@ -46,7 +46,7 @@ make build-spec-test
 
 This project uses test files from the [spectec](https://github.com/Wasm-DSL/spectec) repository (WebAssembly 3.0 branch).
 
-**Important Note**: The test runner executes spec test assertions (`assert_return`, `assert_trap`, `assert_invalid`, etc.) against parsed and loaded modules. The 99.97% assertion pass rate reflects actual execution correctness for implemented features.
+**Important Note**: The test runner executes spec test assertions (`assert_return`, `assert_trap`, `assert_invalid`, etc.) against parsed and loaded modules. The 99.997% assertion pass rate reflects actual execution correctness for implemented features.
 
 ### Setup Test Suite
 
@@ -142,7 +142,7 @@ zig fmt src/           # Format source code
 
 ## Supported Features
 
-This interpreter implements **WebAssembly 1.0 core specification**, **all WebAssembly 2.0 extensions**, and **selected WebAssembly 3.0 features**. The test suite runs **61,857/61,875 (99.97%)** spec assertions successfully across **237 test files**. Remaining failures are due to unimplemented 3.0 features (GC types, typed references).
+This interpreter implements **WebAssembly 1.0 core specification**, **all WebAssembly 2.0 extensions**, and **selected WebAssembly 3.0 features**. The test suite runs **61,873/61,875 (99.997%)** spec assertions successfully across **237 test files**. The only 2 remaining failures are in recursive type groups requiring GC proposal support.
 
 ### ✅ **Fully Implemented Features**
 
@@ -241,21 +241,20 @@ This interpreter implements **WebAssembly 1.0 core specification**, **all WebAss
 ## Test Suite Status
 
 - **237/237 test files** from [spectec](https://github.com/Wasm-DSL/spectec) successfully parse and load
-- **61,857/61,875 (99.97%)** assertions pass across the test suite
+- **236/237 test files** achieve 100% assertion pass rate
+- **61,873/61,875 (99.997%)** assertions pass across the test suite
+- Only 2 failures remain in `type-rec.wast` (GC proposal recursive type groups)
 - Test files cover WebAssembly 1.0, 2.0, and some 3.0 features
 
 ## Known Limitations
 
 The following WebAssembly 3.0 features are **not implemented**:
 
-- ❌ **Garbage Collection** (struct, array, i31ref, and related GC instructions)
-- ❌ **Full Reference Type System** (non-nullable references `ref func`, typed references `ref null $t` / `ref $t`, reference subtyping)
+- ❌ **Garbage Collection** (struct, array, i31ref, recursive type groups, and related GC instructions)
 
 GC features can be parsed from .wast files but their instructions are not executed.
 
-The reference type system supports only `funcref` and `externref`. Finer-grained reference types are collapsed during parsing, which affects import matching for globals and tables that use typed references.
-
-Additionally, the **reference type system** supports only `funcref` and `externref`. Non-nullable references (`ref func`), typed references (`ref null $t`, `ref $t`), and reference subtyping are not distinguished at the type level. This affects import matching for globals and tables that use these finer-grained reference types (21 `assert_unlinkable` failures in `linking.wast`).
+The **reference type system** internally supports only `funcref` and `externref`. Non-nullable references (`ref func`), typed references (`ref null $t`, `ref $t`), and reference subtyping are collapsed to basic types during parsing. Most operations work correctly with collapsed types, but import matching for globals and tables that use finer-grained reference types may fail.
 
 ## Contributing
 

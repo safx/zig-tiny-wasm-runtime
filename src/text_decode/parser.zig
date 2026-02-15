@@ -759,11 +759,11 @@ pub const Parser = struct {
                         offset = try self.parseInitExpression();
                         try self.expectRightParen(); // close offset
                     } else {
-                        // Restore and parse as init expression
+                        // Restore and parse as single init expression (non-greedy)
                         self.lexer.pos = saved_pos2;
                         self.lexer.current_char = saved_char2;
                         self.current_token = saved_token2;
-                        offset = try self.parseInitExpression();
+                        offset = try self.parseSingleInitExpression();
                     }
                 }
 
@@ -775,11 +775,11 @@ pub const Parser = struct {
                 try self.expectRightParen(); // close offset
                 mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
             } else {
-                // Direct offset expression like (i32.const 0)
+                // Direct offset expression like (i32.const 0) — non-greedy
                 self.lexer.pos = saved_pos;
                 self.lexer.current_char = saved_char;
                 self.current_token = saved_token;
-                offset = try self.parseInitExpression();
+                offset = try self.parseSingleInitExpression();
                 mode = .{ .active = .{ .table_idx = 0, .offset = offset } };
             }
         }
@@ -3056,8 +3056,152 @@ pub const Parser = struct {
     }
 
     /// Parse exactly one parenthesized init expression (non-greedy).
-    /// Used by parseElem for offset parsing to avoid consuming subsequent elem init expressions.
-    /// Parse init expression for globals, data, and element offsets
+    /// Unlike parseInitExpression which greedily consumes all (expr) patterns,
+    /// this parses exactly one top-level S-expression.
+    /// Used by parseElem for non-wrapped offset parsing to avoid consuming
+    /// subsequent element type and body expressions.
+    fn parseSingleInitExpression(self: *Parser) !wasm_core.types.InitExpression {
+        if (self.current_token != .left_paren) return .{ .i32_const = 0 };
+        try self.advance(); // consume '('
+
+        if (self.current_token != .identifier) {
+            try self.expectRightParen();
+            return .{ .i32_const = 0 };
+        }
+
+        const instr_name = self.current_token.identifier;
+        try self.advance();
+
+        if (std.mem.eql(u8, instr_name, "i32.const")) {
+            if (self.current_token == .number) {
+                const val = try std.fmt.parseInt(i32, self.current_token.number, 0);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .i32_const = val };
+            }
+            try self.expectRightParen();
+            return .{ .i32_const = 0 };
+        } else if (std.mem.eql(u8, instr_name, "i64.const")) {
+            if (self.current_token == .number) {
+                const val = try std.fmt.parseInt(i64, self.current_token.number, 0);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .i64_const = val };
+            }
+            try self.expectRightParen();
+            return .{ .i64_const = 0 };
+        } else if (std.mem.eql(u8, instr_name, "f32.const")) {
+            if (self.current_token == .number) {
+                const val = try numeric_parser.parseFloat(f32, self.current_token.number);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .f32_const = val };
+            }
+            try self.expectRightParen();
+            return .{ .f32_const = 0.0 };
+        } else if (std.mem.eql(u8, instr_name, "f64.const")) {
+            if (self.current_token == .number) {
+                const val = try numeric_parser.parseFloat(f64, self.current_token.number);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .f64_const = val };
+            }
+            try self.expectRightParen();
+            return .{ .f64_const = 0.0 };
+        } else if (std.mem.eql(u8, instr_name, "v128.const")) {
+            const val = try self.parseV128Const();
+            try self.expectRightParen();
+            return .{ .v128_const = val };
+        } else if (std.mem.eql(u8, instr_name, "ref.func")) {
+            if (self.current_token == .number) {
+                const val = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .ref_func = val };
+            } else if (self.current_token == .identifier) {
+                const name = self.current_token.identifier;
+                const func_idx = self.builder.func_names.get(name) orelse 0;
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .ref_func = func_idx };
+            }
+            try self.expectRightParen();
+            return .{ .ref_func = 0 };
+        } else if (std.mem.eql(u8, instr_name, "ref.null")) {
+            const rt = try self.parseRefType();
+            try self.expectRightParen();
+            return .{ .ref_null = rt };
+        } else if (std.mem.eql(u8, instr_name, "global.get")) {
+            if (self.current_token == .number) {
+                const val = try std.fmt.parseInt(u32, self.current_token.number, 10);
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .global_get = val };
+            } else if (self.current_token == .identifier) {
+                const name = self.current_token.identifier;
+                const global_idx = self.builder.global_names.get(name) orelse 0;
+                try self.advance();
+                try self.expectRightParen();
+                return .{ .global_get = global_idx };
+            }
+            try self.expectRightParen();
+            return .{ .global_get = 0 };
+        } else if (std.mem.eql(u8, instr_name, "i32.add") or
+            std.mem.eql(u8, instr_name, "i32.sub") or
+            std.mem.eql(u8, instr_name, "i32.mul") or
+            std.mem.eql(u8, instr_name, "i64.add") or
+            std.mem.eql(u8, instr_name, "i64.sub") or
+            std.mem.eql(u8, instr_name, "i64.mul"))
+        {
+            // Operands are inside this paren — parseInitExpression reads until ')'
+            const sub_expr = try self.parseInitExpression();
+            var instrs = std.ArrayList(wasm_core.types.Instruction){};
+            defer instrs.deinit(self.allocator);
+            // Flatten sub-expression
+            switch (sub_expr) {
+                .instructions => |sub_instrs| try instrs.appendSlice(self.allocator, sub_instrs),
+                .i32_const => |v| try instrs.append(self.allocator, .{ .i32_const = v }),
+                .i64_const => |v| try instrs.append(self.allocator, .{ .i64_const = v }),
+                .f32_const => |v| try instrs.append(self.allocator, .{ .f32_const = v }),
+                .f64_const => |v| try instrs.append(self.allocator, .{ .f64_const = v }),
+                .v128_const => |v| try instrs.append(self.allocator, .{ .v128_const = v }),
+                .ref_null => |v| try instrs.append(self.allocator, .{ .ref_null = v }),
+                .ref_func => |v| try instrs.append(self.allocator, .{ .ref_func = v }),
+                .global_get => |v| try instrs.append(self.allocator, .{ .global_get = v }),
+            }
+            // Append the operation
+            if (std.mem.eql(u8, instr_name, "i32.add")) {
+                try instrs.append(self.allocator, .i32_add);
+            } else if (std.mem.eql(u8, instr_name, "i32.sub")) {
+                try instrs.append(self.allocator, .i32_sub);
+            } else if (std.mem.eql(u8, instr_name, "i32.mul")) {
+                try instrs.append(self.allocator, .i32_mul);
+            } else if (std.mem.eql(u8, instr_name, "i64.add")) {
+                try instrs.append(self.allocator, .i64_add);
+            } else if (std.mem.eql(u8, instr_name, "i64.sub")) {
+                try instrs.append(self.allocator, .i64_sub);
+            } else if (std.mem.eql(u8, instr_name, "i64.mul")) {
+                try instrs.append(self.allocator, .i64_mul);
+            }
+            try self.expectRightParen();
+            return .{ .instructions = try self.allocator.dupe(wasm_core.types.Instruction, instrs.items) };
+        } else {
+            // Unknown init expression - skip to closing paren
+            var depth: u32 = 1;
+            while (depth > 0 and self.current_token != .eof) {
+                if (self.current_token == .left_paren) {
+                    depth += 1;
+                } else if (self.current_token == .right_paren) {
+                    depth -= 1;
+                }
+                if (depth > 0) try self.advance();
+            }
+            if (self.current_token == .right_paren) try self.advance();
+            return .{ .i32_const = 0 };
+        }
+    }
+
+    /// Parse init expression for globals, data, and element offsets (greedy — consumes all expressions)
     fn parseInitExpression(self: *Parser) !wasm_core.types.InitExpression {
         var instrs = std.ArrayList(wasm_core.types.Instruction){};
         defer instrs.deinit(self.allocator);
