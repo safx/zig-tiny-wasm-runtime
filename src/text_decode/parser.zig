@@ -1996,6 +1996,88 @@ pub const Parser = struct {
                     });
                 }
                 return;
+            } else if (self.current_token == .identifier and
+                std.mem.eql(u8, self.current_token.identifier, "ref.func"))
+            {
+                // (ref.func $name_or_idx) initializer - fill all table slots
+                try self.advance();
+                const func_idx = try self.parseU32OrIdentifier();
+                try self.expectRightParen();
+
+                const table_idx: u32 = builder.countImportTables() + @as(u32, @intCast(builder.tables.items.len));
+                try builder.tables.append(self.allocator, .{
+                    .ref_type = ref_type,
+                    .limits = .{ .min = min, .max = max },
+                    .is_64 = local_is_64,
+                    .ref_type_ext = local_ref_ext,
+                });
+
+                if (table_name) |name| {
+                    try builder.table_names.put(name, table_idx);
+                }
+
+                const init_slice = try self.allocator.alloc(wasm_core.types.InitExpression, min);
+                for (init_slice) |*slot| {
+                    slot.* = .{ .ref_func = func_idx };
+                }
+                const element = wasm_core.types.Element{
+                    .type = ref_type,
+                    .init = init_slice,
+                    .mode = .{ .active = .{
+                        .table_idx = table_idx,
+                        .offset = if (local_is_64) .{ .i64_const = 0 } else .{ .i32_const = 0 },
+                    } },
+                };
+                try builder.elements.append(self.allocator, element);
+
+                if (export_name) |name| {
+                    try builder.exports.append(self.allocator, .{
+                        .name = try self.allocator.dupe(u8, name),
+                        .desc = .{ .table = table_idx },
+                    });
+                }
+                return;
+            } else if (self.current_token == .identifier and
+                std.mem.eql(u8, self.current_token.identifier, "global.get"))
+            {
+                // (global.get $name_or_idx) initializer - fill all table slots
+                try self.advance();
+                const global_idx = try self.parseU32OrIdentifier();
+                try self.expectRightParen();
+
+                const table_idx: u32 = builder.countImportTables() + @as(u32, @intCast(builder.tables.items.len));
+                try builder.tables.append(self.allocator, .{
+                    .ref_type = ref_type,
+                    .limits = .{ .min = min, .max = max },
+                    .is_64 = local_is_64,
+                    .ref_type_ext = local_ref_ext,
+                });
+
+                if (table_name) |name| {
+                    try builder.table_names.put(name, table_idx);
+                }
+
+                const init_slice = try self.allocator.alloc(wasm_core.types.InitExpression, min);
+                for (init_slice) |*slot| {
+                    slot.* = .{ .global_get = global_idx };
+                }
+                const element = wasm_core.types.Element{
+                    .type = ref_type,
+                    .init = init_slice,
+                    .mode = .{ .active = .{
+                        .table_idx = table_idx,
+                        .offset = if (local_is_64) .{ .i64_const = 0 } else .{ .i32_const = 0 },
+                    } },
+                };
+                try builder.elements.append(self.allocator, element);
+
+                if (export_name) |name| {
+                    try builder.exports.append(self.allocator, .{
+                        .name = try self.allocator.dupe(u8, name),
+                        .desc = .{ .table = table_idx },
+                    });
+                }
+                return;
             } else {
                 // Not elem, restore and skip
                 self.lexer.pos = saved_pos;

@@ -29,6 +29,7 @@ pub const SpecTestRunner = struct {
             \\  (global (export "global_f32") f32 (f32.const 666.6))
             \\  (global (export "global_f64") f64 (f64.const 666.6))
             \\  (table (export "table") 10 20 funcref)
+            \\  (table (export "table64") i64 10 20 funcref)
             \\  (memory (export "memory") 1 2)
             \\  (func (export "print"))
             \\  (func (export "print_i32") (param i32))
