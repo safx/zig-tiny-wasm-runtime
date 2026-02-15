@@ -50,6 +50,7 @@ pub const Instance = struct {
     stack: Stack,
     trace_mode: bool,
     pending_exception: ?ExceptionData = null,
+    caught_exceptions: std.ArrayList(ExceptionData) = .empty,
 
     pub fn new(allocator: std.mem.Allocator, trace_mode: bool) Self {
         return .{
@@ -432,6 +433,10 @@ pub const Instance = struct {
             self.allocator.free(exc.values);
             self.pending_exception = null;
         }
+        for (self.caught_exceptions.items) |exc| {
+            self.allocator.free(exc.values);
+        }
+        self.caught_exceptions.clearAndFree(self.allocator);
         while (self.stack.array.items.len > 0) {
             const item = self.stack.pop();
             switch (item) {
@@ -488,7 +493,7 @@ pub const Instance = struct {
 
             // exception handling instructions
             .throw => |tag_idx| return try self.opThrow(tag_idx),
-            .throw_ref => return Error.UncaughtException,
+            .throw_ref => return try self.opThrowRef(),
             .try_table => |info| try self.opTryTable(info),
 
             // reference instructions
@@ -1265,6 +1270,23 @@ pub const Instance = struct {
         return Error.UncaughtException;
     }
 
+    fn opThrowRef(self: *Self) (Error || error{OutOfMemory})!FlowControl {
+        const val = self.stack.pop().value;
+        const exn_idx = val.extern_ref orelse return Error.NullReference;
+        if (exn_idx >= self.caught_exceptions.items.len) return Error.OtherError;
+        const caught = self.caught_exceptions.items[exn_idx];
+
+        // Duplicate values so the caught_exceptions entry remains valid for reuse
+        const dup_values = try self.allocator.alloc(Value, caught.values.len);
+        @memcpy(dup_values, caught.values);
+
+        self.pending_exception = .{
+            .tag_addr = caught.tag_addr,
+            .values = dup_values,
+        };
+        return Error.UncaughtException;
+    }
+
     fn opTryTable(self: *Self, info: Instruction.TryTableInfo) (Error || error{OutOfMemory})!void {
         const frame = self.stack.topFrame();
         const mod = frame.module;
@@ -1338,27 +1360,30 @@ pub const Instance = struct {
                                 // Now try_table label is at the top of the stack
 
                                 // Push exception values and/or exnref
+                                const is_ref = clause.kind == .catch_ref or clause.kind == .catch_all_ref;
                                 switch (clause.kind) {
-                                    .@"catch" => {
+                                    .@"catch", .catch_ref => {
                                         for (exception.values) |val|
                                             try self.stack.push(.{ .value = val });
                                     },
-                                    .catch_ref => {
-                                        for (exception.values) |val|
-                                            try self.stack.push(.{ .value = val });
-                                        // Push dummy exnref (we don't have real exnref support)
-                                        try self.stack.push(.{ .value = .{ .extern_ref = null } });
-                                    },
-                                    .catch_all => {},
-                                    .catch_all_ref => {
-                                        // Push dummy exnref
-                                        try self.stack.push(.{ .value = .{ .extern_ref = null } });
-                                    },
+                                    .catch_all, .catch_all_ref => {},
+                                }
+                                if (is_ref) {
+                                    // Store exception data for throw_ref; index used as exnref
+                                    const exn_idx: u32 = @intCast(self.caught_exceptions.items.len);
+                                    try self.caught_exceptions.append(self.allocator, .{
+                                        .tag_addr = exception.tag_addr,
+                                        .values = exception.values, // transfer ownership
+                                    });
+                                    try self.stack.push(.{ .value = .{ .extern_ref = exn_idx } });
                                 }
 
                                 // Clear exception
                                 self.pending_exception = null;
-                                self.allocator.free(exception.values);
+                                if (!is_ref) {
+                                    // Only free values if not transferred to caught_exceptions
+                                    self.allocator.free(exception.values);
+                                }
 
                                 // Branch to the catch clause's target label
                                 const br_result = try self.opBr(clause.label_idx);
